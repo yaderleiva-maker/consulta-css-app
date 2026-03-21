@@ -123,33 +123,33 @@ if uploaded_file:
 
     from datetime import datetime
 
-    historial = pd.DataFrame([{
-    "usuario": usuario,
-    "fecha": datetime.now(),
-    "cantidad_registros": len(result)
-    }])
+historial = pd.DataFrame([{
+"usuario": usuario,
+"fecha": datetime.now(),
+"cantidad_registros": len(result)
+}])
 
-    client.load_table_from_dataframe(
-    historial,
-    "proyecto-css-panama.consultas.historial_consultas",
-    job_config=bigquery.LoadJobConfig(
-        write_disposition="WRITE_APPEND"
-    )
-    ).result()
+client.load_table_from_dataframe(
+historial,
+"proyecto-css-panama.consultas.historial_consultas",
+job_config=bigquery.LoadJobConfig(
+    write_disposition="WRITE_APPEND"
+)
+).result()
 
-    st.success("✅ Consulta lista 🎉")
+st.success("✅ Consulta lista 🎉")
 
-    # -----------------------
-    # DESCARGA
-    # -----------------------
+# -----------------------
+# DESCARGA
+# -----------------------
 
-    st.download_button(
-        "Descargar resultado",
-        result.to_csv(index=False),
-        file_name="resultado.csv",
-        mime="text/csv"
-    )
+st.download_button(
+    "Descargar resultado",
+    result.to_csv(index=False),
+    file_name="resultado.csv",
+    mime="text/csv"
+)
 
-    # Preview
-    st.write("Vista previa de resultados:")
-    st.dataframe(result.head(10))
+# Preview
+st.write("Vista previa de resultados:")
+st.dataframe(result.head(10))

@@ -95,12 +95,6 @@ if uploaded_file:
 
     st.success("✅ Datos subidos correctamente")
 
-    if st.checkbox("Ver archivo completo"):
-    st.dataframe(df)
-else:
-    st.dataframe(df.head())
-
-
     # -----------------------
     # QUERY (CORREGIDO)
     # -----------------------

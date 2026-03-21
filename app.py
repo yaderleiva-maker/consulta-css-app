@@ -143,7 +143,7 @@ st.success("✅ Consulta lista 🎉")
     # DESCARGA
     # -----------------------
 
-    st.download_button(
+st.download_button(
         "Descargar resultado",
         result.to_csv(index=False),
         file_name="resultado.csv",
@@ -151,5 +151,5 @@ st.success("✅ Consulta lista 🎉")
     )
 
     # Preview
-    st.write("Vista previa de resultados:")
-    st.dataframe(result.head(10))
+st.write("Vista previa de resultados:")
+st.dataframe(result.head(10))

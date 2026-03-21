@@ -24,11 +24,6 @@ if st.session_state.login_ok:
 if not st.session_state.login_ok:
     st.title("🔐 Acceso a Consulta CSS")
 
-if st.checkbox("Ver archivo completo"):
-    st.dataframe(df)
-else:
-    st.dataframe(df.head())
-
     usuario = st.text_input("Correo")
     password = st.text_input("Contraseña", type="password")
 
@@ -99,6 +94,12 @@ if uploaded_file:
         job.result()
 
     st.success("✅ Datos subidos correctamente")
+
+    if st.checkbox("Ver archivo completo"):
+    st.dataframe(df)
+else:
+    st.dataframe(df.head())
+
 
     # -----------------------
     # QUERY (CORREGIDO)

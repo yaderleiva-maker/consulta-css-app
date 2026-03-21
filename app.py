@@ -137,7 +137,7 @@ client.load_table_from_dataframe(
     )
 ).result()
 
-    st.success("✅ Consulta lista 🎉")
+st.success("✅ Consulta lista 🎉")
 
     # -----------------------
     # DESCARGA

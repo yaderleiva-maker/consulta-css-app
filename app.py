@@ -60,9 +60,9 @@ if uploaded_file:
     st.write("Archivo cargado:", df.head())
 
     if st.checkbox("Ver archivo completo"):
-    st.dataframe(df)
+        st.dataframe(df)
     else:
-    st.dataframe(df.head())
+        st.dataframe(df.head())
 
     # -----------------------
     # CONEXIÓN BIGQUERY

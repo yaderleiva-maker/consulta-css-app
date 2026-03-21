@@ -109,7 +109,7 @@ if uploaded_file:
       b.FECHA,
       b.SALARIO
     FROM `proyecto-css-panama.consultas.temp_clientes` a
-    LEFT JOIN `proyecto-css-panama.css_data.css_actual` b
+    LEFT JOIN `proyecto-css-panama.css_data.css-actual` b
     ON a.cedula = b.cedula
     """
 

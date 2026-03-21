@@ -16,10 +16,14 @@ usuarios = {
 if "login_ok" not in st.session_state:
     st.session_state.login_ok = False
 
+if "usuario" not in st.session_state:
+    st.session_state.usuario = ""
+
 # Botón cerrar sesión
 if st.session_state.login_ok:
     if st.button("Cerrar sesión"):
         st.session_state.login_ok = False
+        st.session_state.usuario = ""
         st.rerun()
 
 if not st.session_state.login_ok:
@@ -31,6 +35,7 @@ if not st.session_state.login_ok:
     if st.button("Ingresar"):
         if usuario in usuarios and usuarios[usuario] == password:
             st.session_state.login_ok = True
+            st.session_state.usuario = usuario  # 🔥 GUARDAMOS USUARIO
             st.success("Acceso concedido ✅")
             st.rerun()
         else:
@@ -43,6 +48,7 @@ if not st.session_state.login_ok:
 # -----------------------
 
 st.title("Consulta CSS Panamá 🔍")
+st.info(f"👤 Usuario: {st.session_state.usuario}")
 
 uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
@@ -126,7 +132,7 @@ if uploaded_file:
     # -----------------------
 
     historial = pd.DataFrame([{
-        "usuario": usuario,
+        "usuario": st.session_state.usuario,
         "fecha": datetime.now(),
         "cantidad_registros": len(result)
     }])

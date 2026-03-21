@@ -59,9 +59,9 @@ if uploaded_file:
 
     st.write("Archivo cargado:", df.head())
 
-if st.checkbox("Ver archivo completo"):
+    if st.checkbox("Ver archivo completo"):
     st.dataframe(df)
-else:
+    else:
     st.dataframe(df.head())
 
     # -----------------------

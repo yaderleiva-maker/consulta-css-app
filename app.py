@@ -121,6 +121,22 @@ if uploaded_file:
     with st.spinner("Ejecutando consulta..."):
         result = client.query(query).to_dataframe()
 
+    from datetime import datetime
+
+historial = pd.DataFrame([{
+    "usuario": usuario,
+    "fecha": datetime.now(),
+    "cantidad_registros": len(result)
+}])
+
+client.load_table_from_dataframe(
+    historial,
+    "proyecto-css-panama.consultas.historial_consultas",
+    job_config=bigquery.LoadJobConfig(
+        write_disposition="WRITE_APPEND"
+    )
+).result()
+
     st.success("✅ Consulta lista 🎉")
 
     # -----------------------

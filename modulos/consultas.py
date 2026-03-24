@@ -1,25 +1,35 @@
-import streamlit as st
-import pandas as pd
-from google.cloud import bigquery
-from google.oauth2 import service_account
+# -----------------------
+# APP PRINCIPAL
+# -----------------------
 
-def run(usuario):
+st.title("Consulta CSS Panamá 🔍")
+st.info(f"👤 Usuario: {st.session_state.usuario}")
 
-    st.title("Consulta CSS Panamá 🔍")
+uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
-    uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
+if uploaded_file:
 
-    if uploaded_file:
+    # Leer archivo
+    df = pd.read_csv(uploaded_file, sep=None, engine='python', encoding='utf-8-sig')
 
-        df = pd.read_csv(uploaded_file, sep=None, engine='python', encoding='utf-8-sig')
+    # Limpiar columnas
+    df.columns = df.columns.str.strip().str.lower()
 
-        df.columns = df.columns.str.strip().str.lower()
+    if 'cedula' in df.columns:
+        df['cedula'] = df['cedula'].astype(str).str.strip()
 
-        if 'cedula' in df.columns:
-            df['cedula'] = df['cedula'].astype(str).str.strip()
+    st.write("Archivo cargado:")
 
-        st.write("Archivo cargado:", df.head())
+    if st.checkbox("Ver archivo completo"):
+        st.dataframe(df)
+    else:
+        st.dataframe(df.head())
 
+    # -----------------------
+    # CONEXIÓN BIGQUERY
+    # -----------------------
+
+    try:
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"]
         )
@@ -29,8 +39,17 @@ def run(usuario):
             project=credentials.project_id
         )
 
-        table_id = "proyecto-css-panama.consultas.temp_clientes"
+    except Exception as e:
+        st.error(f"❌ Error de conexión a BigQuery: {e}")
+        st.stop()
 
+    # -----------------------
+    # SUBIR DATA
+    # -----------------------
+
+    table_id = "proyecto-css-panama.consultas.temp_clientes"
+
+    with st.spinner("Subiendo datos a BigQuery..."):
         job = client.load_table_from_dataframe(
             df,
             table_id,
@@ -40,23 +59,30 @@ def run(usuario):
         )
         job.result()
 
-        query = """
-        SELECT 
-          a.cedula,
-          b.NOMBRE,
-          b.PATRONO,
-          b.RAZON_SO,
-          b.TEL1,
-          b.FECHA,
-          b.SALARIO
-        FROM `proyecto-css-panama.consultas.temp_clientes` a
-        LEFT JOIN `proyecto-css-panama.css_data.css-actual` b
-        ON a.cedula = b.cedula
-        """
+    st.success("✅ Datos subidos correctamente")
 
+    # -----------------------
+    # QUERY
+    # -----------------------
+
+    query = """
+    SELECT 
+      a.cedula,
+      b.NOMBRE,
+      b.PATRONO,
+      b.RAZON_SO,
+      b.TEL1,
+      b.FECHA,
+      b.SALARIO
+    FROM `proyecto-css-panama.consultas.temp_clientes` a
+    LEFT JOIN `proyecto-css-panama.css_data.css-actual` b
+    ON a.cedula = b.cedula
+    """
+
+    with st.spinner("Ejecutando consulta..."):
         result = client.query(query).to_dataframe()
 
-         # -----------------------
+    # -----------------------
     # HISTORIAL
     # -----------------------
 

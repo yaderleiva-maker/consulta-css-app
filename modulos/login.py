@@ -27,6 +27,8 @@ def login():
                 st.session_state.usuario = usuario
                 st.success("Acceso concedido ✅")
                 st.rerun()
+                # En login.py cuando hace login correcto
+                st.session_state.usuario = usuario
             else:
                 st.error("Credenciales incorrectas ❌")
 

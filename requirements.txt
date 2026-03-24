@@ -3,3 +3,5 @@ pandas
 google-cloud-bigquery
 db-dtypes
 pyarrow
+streamlit-oauth
+PyJWT

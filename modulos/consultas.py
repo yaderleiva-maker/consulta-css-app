@@ -63,3 +63,5 @@ def run(usuario):
             result.to_csv(index=False),
             file_name="resultado.csv"
         )
+        st.write("Vista previa de resultados:")
+        st.dataframe(result.head(10))

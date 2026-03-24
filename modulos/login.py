@@ -1,41 +1,59 @@
 import streamlit as st
+from streamlit_oauth import OAuth2Component
+import jwt
 
-# Usuarios (por ahora simple)
-usuarios = {
-    "yader@gmail.com": "1234",
-    "supervisor@gmail.com": "abcd"
-}
+# Config OAuth
+CLIENT_ID = st.secrets["google"]["client_id"]
+CLIENT_SECRET = st.secrets["google"]["client_secret"]
 
-def login():
+AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/auth"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
 
-    if "login_ok" not in st.session_state:
-        st.session_state.login_ok = False
+oauth2 = OAuth2Component(
+    CLIENT_ID,
+    CLIENT_SECRET,
+    AUTHORIZE_URL,
+    TOKEN_URL
+)
 
-    if "usuario" not in st.session_state:
-        st.session_state.usuario = None
+# Estado inicial
+if "login_ok" not in st.session_state:
+    st.session_state.login_ok = False
 
-    if not st.session_state.login_ok:
+if not st.session_state.login_ok:
 
-        st.title("🔐 Acceso a la plataforma")
+    st.title("🔐 Acceso con Google")
 
-        usuario = st.text_input("Correo")
-        password = st.text_input("Contraseña", type="password")
+    result = oauth2.authorize_button(
+        name="Ingresar con Google",
+        icon="https://www.google.com/favicon.ico",
+        redirect_uri="https://consulta-css-app-fq8jetxy8yzjd3hzuwmbwj.streamlit.app",
+        scope="openid email profile",
+        key="google"
+    )
 
-        if st.button("Ingresar"):
-            if usuario in usuarios and usuarios[usuario] == password:
-                st.session_state.login_ok = True
-                st.session_state.usuario = usuario
-                st.success("Acceso concedido ✅")
-                st.rerun()
-                # En login.py cuando hace login correcto
-                st.session_state.usuario = usuario
-            else:
-                st.error("Credenciales incorrectas ❌")
+    if result:
+        token = result["token"]["id_token"]
 
-        st.stop()
+        user_info = jwt.decode(token, options={"verify_signature": False})
 
-def logout():
-    if st.button("Cerrar sesión"):
-        st.session_state.login_ok = False
-        st.session_state.usuario = None
+        email = user_info["email"]
+
+        # 🔒 CONTROL DE ACCESO
+        usuarios_permitidos = [
+            "yader@gmail.com",
+            "supervisor@gmail.com"
+        ]
+
+        if email not in usuarios_permitidos:
+            st.error("❌ No tienes acceso")
+            st.stop()
+
+        # Guardar sesión
+        st.session_state.login_ok = True
+        st.session_state.usuario = email
+
+        st.success(f"Bienvenido {email} 🎉")
         st.rerun()
+
+    st.stop()

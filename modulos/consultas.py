@@ -4,6 +4,7 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 
 def run(usuario):
+    st.write(f"👤 Usuario: {st.session_state.usuario}")
 
     st.title("Consulta CSS Panamá 🔍")
 

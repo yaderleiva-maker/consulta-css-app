@@ -1,35 +1,25 @@
-# -----------------------
-# APP PRINCIPAL
-# -----------------------
+import streamlit as st
+import pandas as pd
+from google.cloud import bigquery
+from google.oauth2 import service_account
 
-st.title("Consulta CSS Panamá 🔍")
-st.info(f"👤 Usuario: {st.session_state.usuario}")
+def run(usuario):
 
-uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
+    st.title("Consulta CSS Panamá 🔍")
 
-if uploaded_file:
+    uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
-    # Leer archivo
-    df = pd.read_csv(uploaded_file, sep=None, engine='python', encoding='utf-8-sig')
+    if uploaded_file:
 
-    # Limpiar columnas
-    df.columns = df.columns.str.strip().str.lower()
+        df = pd.read_csv(uploaded_file, sep=None, engine='python', encoding='utf-8-sig')
 
-    if 'cedula' in df.columns:
-        df['cedula'] = df['cedula'].astype(str).str.strip()
+        df.columns = df.columns.str.strip().str.lower()
 
-    st.write("Archivo cargado:")
+        if 'cedula' in df.columns:
+            df['cedula'] = df['cedula'].astype(str).str.strip()
 
-    if st.checkbox("Ver archivo completo"):
-        st.dataframe(df)
-    else:
-        st.dataframe(df.head())
+        st.write("Archivo cargado:", df.head())
 
-    # -----------------------
-    # CONEXIÓN BIGQUERY
-    # -----------------------
-
-    try:
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"]
         )
@@ -39,17 +29,8 @@ if uploaded_file:
             project=credentials.project_id
         )
 
-    except Exception as e:
-        st.error(f"❌ Error de conexión a BigQuery: {e}")
-        st.stop()
+        table_id = "proyecto-css-panama.consultas.temp_clientes"
 
-    # -----------------------
-    # SUBIR DATA
-    # -----------------------
-
-    table_id = "proyecto-css-panama.consultas.temp_clientes"
-
-    with st.spinner("Subiendo datos a BigQuery..."):
         job = client.load_table_from_dataframe(
             df,
             table_id,
@@ -59,59 +40,26 @@ if uploaded_file:
         )
         job.result()
 
-    st.success("✅ Datos subidos correctamente")
+        query = """
+        SELECT 
+          a.cedula,
+          b.NOMBRE,
+          b.PATRONO,
+          b.RAZON_SO,
+          b.TEL1,
+          b.FECHA,
+          b.SALARIO
+        FROM `proyecto-css-panama.consultas.temp_clientes` a
+        LEFT JOIN `proyecto-css-panama.css_data.css-actual` b
+        ON a.cedula = b.cedula
+        """
 
-    # -----------------------
-    # QUERY
-    # -----------------------
-
-    query = """
-    SELECT 
-      a.cedula,
-      b.NOMBRE,
-      b.PATRONO,
-      b.RAZON_SO,
-      b.TEL1,
-      b.FECHA,
-      b.SALARIO
-    FROM `proyecto-css-panama.consultas.temp_clientes` a
-    LEFT JOIN `proyecto-css-panama.css_data.css-actual` b
-    ON a.cedula = b.cedula
-    """
-
-    with st.spinner("Ejecutando consulta..."):
         result = client.query(query).to_dataframe()
 
-    # -----------------------
-    # HISTORIAL
-    # -----------------------
+        st.success("Consulta lista 🎉")
 
-    historial = pd.DataFrame([{
-        "usuario": st.session_state.usuario,
-        "fecha": datetime.now(),
-        "cantidad_registros": len(result)
-    }])
-
-    client.load_table_from_dataframe(
-        historial,
-        "proyecto-css-panama.consultas.historial_consultas",
-        job_config=bigquery.LoadJobConfig(
-            write_disposition="WRITE_APPEND"
+        st.download_button(
+            "Descargar resultado",
+            result.to_csv(index=False),
+            file_name="resultado.csv"
         )
-    ).result()
-
-    # -----------------------
-    # RESULTADO
-    # -----------------------
-
-    st.success("✅ Consulta lista 🎉")
-
-    st.download_button(
-        "Descargar resultado",
-        result.to_csv(index=False),
-        file_name="resultado.csv",
-        mime="text/csv"
-    )
-
-    st.write("Vista previa de resultados:")
-    st.dataframe(result.head(10))

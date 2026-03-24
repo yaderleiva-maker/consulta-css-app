@@ -56,10 +56,36 @@ def run(usuario):
 
         result = client.query(query).to_dataframe()
 
-        st.success("Consulta lista 🎉")
+         # -----------------------
+    # HISTORIAL
+    # -----------------------
 
-        st.download_button(
-            "Descargar resultado",
-            result.to_csv(index=False),
-            file_name="resultado.csv"
+    historial = pd.DataFrame([{
+        "usuario": st.session_state.usuario,
+        "fecha": datetime.now(),
+        "cantidad_registros": len(result)
+    }])
+
+    client.load_table_from_dataframe(
+        historial,
+        "proyecto-css-panama.consultas.historial_consultas",
+        job_config=bigquery.LoadJobConfig(
+            write_disposition="WRITE_APPEND"
         )
+    ).result()
+
+    # -----------------------
+    # RESULTADO
+    # -----------------------
+
+    st.success("✅ Consulta lista 🎉")
+
+    st.download_button(
+        "Descargar resultado",
+        result.to_csv(index=False),
+        file_name="resultado.csv",
+        mime="text/csv"
+    )
+
+    st.write("Vista previa de resultados:")
+    st.dataframe(result.head(10))

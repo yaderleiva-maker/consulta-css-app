@@ -1,4 +1,5 @@
 import streamlit as st
+import jwt
 from streamlit_oauth import OAuth2Component
 
 # -----------------------
@@ -42,9 +43,17 @@ def login():
 
         if result:
             try:
-                # 👇 AQUÍ ESTABA EL PROBLEMA ANTES
-                user_info = result.get("user_info", {})
-                email = user_info.get("email")
+             
+
+        token = result.get("token", {})
+        id_token = token.get("id_token")
+
+        if id_token:
+            decoded = jwt.decode(id_token, options={"verify_signature": False})
+            email = decoded.get("email")
+        else:
+            email = None
+
 
                 if not email:
                     st.error("No se pudo obtener el correo ❌")

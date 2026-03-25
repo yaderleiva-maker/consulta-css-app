@@ -15,7 +15,7 @@ oauth2 = OAuth2Component(
     AUTHORIZE_URL,
     TOKEN_URL
 )
-
+def login():
 # Estado inicial
 if "login_ok" not in st.session_state:
     st.session_state.login_ok = False

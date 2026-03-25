@@ -1,8 +1,6 @@
 import streamlit as st
 from streamlit_oauth import OAuth2Component
-import jwt
 
-# Config OAuth
 CLIENT_ID = st.secrets["google"]["client_id"]
 CLIENT_SECRET = st.secrets["google"]["client_secret"]
 
@@ -16,44 +14,24 @@ oauth2 = OAuth2Component(
     TOKEN_URL
 )
 
-# Estado inicial
-if "login_ok" not in st.session_state:
-    st.session_state.login_ok = False
+result = oauth2.authorize_button(
+    name="Ingresar con Google 🔐",
+    icon="https://www.google.com/favicon.ico",
+    redirect_uri="https://consulta-css-app-fq8jetxy8yzjd3hzuwmbwj.streamlit.app",
+    scope="openid email profile",
+    key="google"
+)
 
-if not st.session_state.login_ok:
+if result:
+    id_token = result["token"]["id_token"]
 
-    st.title("🔐 Acceso con Google")
+    import jwt
+    user_info = jwt.decode(id_token, options={"verify_signature": False})
 
-    result = oauth2.authorize_button(
-        name="Ingresar con Google",
-        icon="https://www.google.com/favicon.ico",
-        redirect_uri="https://consulta-css-app-fq8jetxy8yzjd3hzuwmbwj.streamlit.app",
-        scope="openid email profile",
-        key="google"
-    )
+    email = user_info["email"]
 
-    if result:
-        token = result["token"]["id_token"]
+    st.session_state.login_ok = True
+    st.session_state.usuario = email
 
-        user_info = jwt.decode(token, options={"verify_signature": False})
-
-        email = user_info["email"]
-
-        # 🔒 CONTROL DE ACCESO
-        usuarios_permitidos = [
-            "yader@gmail.com",
-            "supervisor@gmail.com"
-        ]
-
-        if email not in usuarios_permitidos:
-            st.error("❌ No tienes acceso")
-            st.stop()
-
-        # Guardar sesión
-        st.session_state.login_ok = True
-        st.session_state.usuario = email
-
-        st.success(f"Bienvenido {email} 🎉")
-        st.rerun()
-
-    st.stop()
+    st.success(f"Bienvenido {email} 🎉")
+    st.rerun()

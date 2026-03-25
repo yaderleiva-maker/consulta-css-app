@@ -1,20 +1,30 @@
 import streamlit as st
 from streamlit_oauth import OAuth2Component
-import jwt
 
-# Config OAuth
+# -----------------------
+# CONFIGURACIÓN OAUTH
+# -----------------------
+
 CLIENT_ID = st.secrets["google"]["client_id"]
 CLIENT_SECRET = st.secrets["google"]["client_secret"]
 
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
+# 👇 IMPORTANTE: DEFINIDO AQUÍ ARRIBA
+REDIRECT_URI = "https://consulta-css-app-fq8jetxy8yzjd3hzuwmbwj.streamlit.app"
+
 oauth2 = OAuth2Component(
     CLIENT_ID,
     CLIENT_SECRET,
     AUTHORIZE_URL,
-    TOKEN_URL
+    TOKEN_URL,
 )
+
+# -----------------------
+# LOGIN
+# -----------------------
+
 def login():
 
     if "login_ok" not in st.session_state:
@@ -32,16 +42,17 @@ def login():
 
         if result:
             try:
-                user_info = result.get("token", {})
+                # 👇 AQUÍ ESTABA EL PROBLEMA ANTES
+                user_info = result.get("user_info", {})
                 email = user_info.get("email")
 
                 if not email:
                     st.error("No se pudo obtener el correo ❌")
+                    st.write(result)  # 👈 DEBUG TEMPORAL
                     st.stop()
 
-                # 🔒 CONTROL DE ACCESO
                 usuarios_permitidos = [
-                    "yaderleiva@gmail.com",
+                    "yader@gmail.com",
                     "supervisor@gmail.com",
                     "contenalfa@gmail.com"
                 ]
@@ -52,7 +63,7 @@ def login():
                     st.success(f"Bienvenido {email} ✅")
                     st.rerun()
                 else:
-                    st.error("No tienes acceso a esta aplicación ❌")
+                    st.error("No tienes acceso ❌")
 
             except Exception as e:
                 st.error(f"Error en login: {e}")

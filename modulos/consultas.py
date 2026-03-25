@@ -55,29 +55,26 @@ def run(usuario):
         ON a.cedula = b.cedula
         """
 
-        result = client.query(query).to_dataframe()
+        # 1. Ejecutas query
+result = client.query(query).to_dataframe()
 
-        # 2. Guardas historial 👇 AQUÍ
-        historial = pd.DataFrame([{
-            "usuario": usuario,
-            "fecha": datetime.now(),
-            "cantidad_registros": len(result)
-        }])
+# 2. Guardas historial 👇 AQUÍ
+historial = pd.DataFrame([{
+    "usuario": usuario,
+    "fecha": datetime.now(),
+    "cantidad_registros": len(result)
+}])
 
-        client.load_table_from_dataframe(
-            historial,
-            "proyecto-css-panama.consultas.historial_consultas",
-            job_config=bigquery.LoadJobConfig(
-                write_disposition="WRITE_APPEND"
-            )
-        ).result()
+client.load_table_from_dataframe(
+    historial,
+    "proyecto-css-panama.consultas.historial_consultas",
+    job_config=bigquery.LoadJobConfig(
+        write_disposition="WRITE_APPEND"
+    )
+).result()
 
-        st.success("Consulta lista 🎉")
+# 3. Luego muestras resultado
+st.success("✅ Consulta lista 🎉")
 
-        st.download_button(
-            "Descargar resultado",
-            result.to_csv(index=False),
-            file_name="resultado.csv"
-        )
-        st.write("Vista previa de resultados:")
-        st.dataframe(result.head(10))
+st.download_button(...)
+st.dataframe(result.head(10))

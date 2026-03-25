@@ -51,7 +51,7 @@ def login():
 
                 # 🔒 CONTROL DE ACCESO
                 usuarios_permitidos = [
-                    "yader@gmail.com",
+                    "yaderleiva@gmail.com",
                     "supervisor@gmail.com",
                     "contenalfa@gmail.com"
                 ]

@@ -12,7 +12,6 @@ CLIENT_SECRET = st.secrets["google"]["client_secret"]
 AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 
-# 👇 IMPORTANTE: DEFINIDO AQUÍ ARRIBA
 REDIRECT_URI = "https://consulta-css-app-fq8jetxy8yzjd3hzuwmbwj.streamlit.app"
 
 oauth2 = OAuth2Component(
@@ -43,23 +42,23 @@ def login():
 
         if result:
             try:
-             
+                # 🔥 EXTRAER TOKEN
+                token = result.get("token", {})
+                id_token = token.get("id_token")
 
-        token = result.get("token", {})
-        id_token = token.get("id_token")
+                if id_token:
+                    decoded = jwt.decode(id_token, options={"verify_signature": False})
+                    email = decoded.get("email")
+                else:
+                    email = None
 
-        if id_token:
-            decoded = jwt.decode(id_token, options={"verify_signature": False})
-            email = decoded.get("email")
-        else:
-            email = None
-
-
+                # VALIDACIÓN
                 if not email:
                     st.error("No se pudo obtener el correo ❌")
-                    st.write(result)  # 👈 DEBUG TEMPORAL
+                    st.write(result)
                     st.stop()
 
+                # 🔒 CONTROL DE ACCESO
                 usuarios_permitidos = [
                     "yader@gmail.com",
                     "supervisor@gmail.com",
@@ -78,7 +77,6 @@ def login():
                 st.error(f"Error en login: {e}")
 
         st.stop()
-
 
 # -----------------------
 # LOGOUT

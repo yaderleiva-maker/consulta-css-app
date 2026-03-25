@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
+from datetime import datetime
 
 def run(usuario):
-    st.write(f"👤 Usuario: {st.session_state.usuario}")
 
+    st.write(f"👤 Usuario: {usuario}")
     st.title("Consulta CSS Panamá 🔍")
 
     uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
@@ -21,6 +22,9 @@ def run(usuario):
 
         st.write("Archivo cargado:", df.head())
 
+        # -----------------------
+        # CONEXIÓN
+        # -----------------------
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"]
         )
@@ -30,6 +34,9 @@ def run(usuario):
             project=credentials.project_id
         )
 
+        # -----------------------
+        # SUBIR DATA
+        # -----------------------
         table_id = "proyecto-css-panama.consultas.temp_clientes"
 
         job = client.load_table_from_dataframe(
@@ -41,6 +48,9 @@ def run(usuario):
         )
         job.result()
 
+        # -----------------------
+        # QUERY
+        # -----------------------
         query = """
         SELECT 
           a.cedula,
@@ -55,26 +65,35 @@ def run(usuario):
         ON a.cedula = b.cedula
         """
 
-        # 1. Ejecutas query
-result = client.query(query).to_dataframe()
+        result = client.query(query).to_dataframe()
 
-# 2. Guardas historial 👇 AQUÍ
-historial = pd.DataFrame([{
-    "usuario": usuario,
-    "fecha": datetime.now(),
-    "cantidad_registros": len(result)
-}])
+        # -----------------------
+        # HISTORIAL
+        # -----------------------
+        historial = pd.DataFrame([{
+            "usuario": usuario,
+            "fecha": datetime.now(),
+            "cantidad_registros": len(result)
+        }])
 
-client.load_table_from_dataframe(
-    historial,
-    "proyecto-css-panama.consultas.historial_consultas",
-    job_config=bigquery.LoadJobConfig(
-        write_disposition="WRITE_APPEND"
-    )
-).result()
+        client.load_table_from_dataframe(
+            historial,
+            "proyecto-css-panama.consultas.historial_consultas",
+            job_config=bigquery.LoadJobConfig(
+                write_disposition="WRITE_APPEND"
+            )
+        ).result()
 
-# 3. Luego muestras resultado
-st.success("✅ Consulta lista 🎉")
+        # -----------------------
+        # RESULTADO
+        # -----------------------
+        st.success("✅ Consulta lista 🎉")
 
-st.download_button(...)
-st.dataframe(result.head(10))
+        st.download_button(
+            "Descargar resultado",
+            result.to_csv(index=False),
+            file_name="resultado.csv",
+            mime="text/csv"
+        )
+
+        st.dataframe(result.head(10))

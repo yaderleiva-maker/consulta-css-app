@@ -72,6 +72,16 @@ def login():
                     st.rerun()
                 else:
                     st.error("No tienes acceso ❌")
+                    st.markdown(
+                        """
+                        <script>
+                        setTimeout(function(){
+                        window.location.reload();
+                        }, 2000);
+                        </script>
+                        """,
+                        unsafe_allow_html=True
+                    )
 
             except Exception as e:
                 st.error(f"Error en login: {e}")
@@ -85,5 +95,15 @@ def login():
 def logout():
     if st.session_state.get("login_ok"):
         if st.button("Cerrar sesión"):
+            # Limpia todo el estado
             st.session_state.clear()
-            st.rerun()
+            
+            # Fuerza recarga completa del navegador
+            st.markdown(
+                """
+                <script>
+                    window.location.reload();
+                </script>
+                """,
+                unsafe_allow_html=True
+            )

@@ -41,7 +41,7 @@ if not st.session_state.login_ok:
 
         # 🔒 CONTROL DE ACCESO
         usuarios_permitidos = [
-            "yader@gmail.com",
+            "yaderleiva@gmail.com",
             "supervisor@gmail.com"
         ]
 

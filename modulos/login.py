@@ -23,14 +23,15 @@ if "login_ok" not in st.session_state:
 if not st.session_state.login_ok:
 
     st.title("🔐 Acceso con Google")
-
+    
     result = oauth2.authorize_button(
-        name="Ingresar con Google",
-        icon="https://www.google.com/favicon.ico",
-        redirect_uri="https://consulta-css-app-fq8jetxy8yzjd3hzuwmbwj.streamlit.app",
-        scope="openid email profile",
-        key="google"
-    )
+    name="Ingresar con Google",
+    redirect_uri="https://consulta-css-app-fq8jetxy8yzjd3hzuwmbwj.streamlit.app",
+    scope="openid email profile",
+    key="google_login"
+)
+
+
 
     if result:
         token = result["token"]["id_token"]

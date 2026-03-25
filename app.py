@@ -4,9 +4,12 @@ from modulos import login, consultas
 # LOGIN
 login.login()
 
-# BOTÓN LOGOUT
+# LOGOUT
 login.logout()
 
+# SOLO ejecutar consultas si está logueado
+if st.session_state.get("login_ok"):
+    consultas.run(st.session_state.get("usuario"))
 # MENÚ
 opcion = st.sidebar.selectbox(
     "Selecciona módulo",

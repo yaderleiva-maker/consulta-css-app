@@ -17,6 +17,38 @@ def run(usuario):
 
         df.columns = df.columns.str.strip().str.lower()
 
+        # -----------------------
+# VALIDACIÓN DE ESTRUCTURA
+# -----------------------
+
+        columnas_validas = [
+            "cedula", "nombre", "correo1", "correo2",
+            "telf1", "telf2", "telf3", "telf4", "telf5",
+            "telf6", "telf7", "telf8", "telf9", "telf10"
+        ]
+
+    # Columnas del archivo
+        columnas_archivo = list(df.columns)
+
+# 1. Validar columnas inválidas
+        columnas_invalidas = [col for col in columnas_archivo if col not in columnas_validas]
+
+        if columnas_invalidas:
+            st.error(f"❌ Columnas no permitidas: {columnas_invalidas}")
+            st.stop()
+
+# 2. Validar que exista cedula
+        if "cedula" not in df.columns:
+            st.error("❌ El archivo debe contener la columna 'cedula' obligatoriamente")
+            st.stop()
+
+# 3. Validar que cedula no esté vacía
+        if df["cedula"].isnull().all():
+            st.error("❌ La columna 'cedula' está vacía")
+            st.stop()
+
+        st.success("✅ Archivo válido, estructura correcta")
+       
         if 'cedula' in df.columns:
             df['cedula'] = df['cedula'].astype(str).str.strip()
 

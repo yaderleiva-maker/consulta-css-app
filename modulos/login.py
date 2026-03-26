@@ -62,7 +62,8 @@ def login():
                 usuarios_permitidos = [
                     "yaderleiva@gmail.com",
                     "supervisor@gmail.com",
-                    "contenalfa@gmail.com"
+                    "contenalfa@gmail.com",
+                    "arismaytte@gmail.com"
                 ]
 
                 if email in usuarios_permitidos:

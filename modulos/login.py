@@ -64,7 +64,8 @@ def login():
                     "supervisor@gmail.com",
                     "contenalfa@gmail.com",
                     "arismaytte@gmail.com",
-                    "sgonzalez.hex@gmail.com"
+                    "sgonzalez.hex@gmail.com",
+                    "yesturainhexagon@gmail.com"
                 ]
 
                 if email in usuarios_permitidos:

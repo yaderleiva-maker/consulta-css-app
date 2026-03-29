@@ -7,7 +7,7 @@ from datetime import datetime
 def run(usuario):
 
     st.write(f"👤 Usuario: {usuario}")
-    st.title("Consulta CSS Panamá 🔍")
+    st.title("HEXAGON - Extractor de Datos 🔍")
 
     uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 

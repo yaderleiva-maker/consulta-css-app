@@ -79,7 +79,10 @@ def run(usuario):
             )
         )
         job.result()
-
+        tipo_consulta = st.selectbox(
+            "¿Qué deseas consultar?",
+            ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
+        )
         # -----------------------
         # QUERY
         # -----------------------

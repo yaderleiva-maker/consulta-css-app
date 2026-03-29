@@ -9,6 +9,11 @@ def run(usuario):
     st.write(f"👤 Usuario: {usuario}")
     st.title("HEXAGON - Extractor de Datos 🔍")
 
+         tipo_consulta = st.selectbox(
+            "¿Qué deseas consultar?",
+            ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
+        )
+
     uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
     if uploaded_file:
@@ -79,10 +84,7 @@ def run(usuario):
             )
         )
         job.result()
-        tipo_consulta = st.selectbox(
-            "¿Qué deseas consultar?",
-            ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
-        )
+       
         # -----------------------
         # QUERY
         # -----------------------

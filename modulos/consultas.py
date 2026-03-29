@@ -18,46 +18,39 @@ def run(usuario):
 
     if uploaded_file:
 
+        # -----------------------
+        # LEER ARCHIVO
+        # -----------------------
         df = pd.read_csv(uploaded_file, sep=None, engine='python', encoding='utf-8-sig')
-
         df.columns = df.columns.str.strip().str.lower()
 
         # -----------------------
-# VALIDACIÓN DE ESTRUCTURA
-# -----------------------
-
+        # VALIDACIONES
+        # -----------------------
         columnas_validas = [
             "cedula", "nombre", "correo1", "correo2",
             "telf1", "telf2", "telf3", "telf4", "telf5",
             "telf6", "telf7", "telf8", "telf9", "telf10"
         ]
 
-    # Columnas del archivo
-        columnas_archivo = list(df.columns)
-
-# 1. Validar columnas inválidas
-        columnas_invalidas = [col for col in columnas_archivo if col not in columnas_validas]
+        columnas_invalidas = [col for col in df.columns if col not in columnas_validas]
 
         if columnas_invalidas:
             st.error(f"❌ Columnas no permitidas: {columnas_invalidas}")
             st.stop()
 
-# 2. Validar que exista cedula
         if "cedula" not in df.columns:
-            st.error("❌ El archivo debe contener la columna 'cedula' obligatoriamente")
+            st.error("❌ Falta la columna 'cedula'")
             st.stop()
 
-# 3. Validar que cedula no esté vacía
         if df["cedula"].isnull().all():
             st.error("❌ La columna 'cedula' está vacía")
             st.stop()
 
-        st.success("✅ Archivo válido, estructura correcta")
-       
-        if 'cedula' in df.columns:
-            df['cedula'] = df['cedula'].astype(str).str.strip()
+        df["cedula"] = df["cedula"].astype(str).str.strip()
 
-        st.write("Archivo cargado:", df.head())
+        st.success("✅ Archivo válido")
+        st.write(df.head())
 
         # -----------------------
         # CONEXIÓN
@@ -76,79 +69,97 @@ def run(usuario):
         # -----------------------
         table_id = "proyecto-css-panama.consultas.temp_clientes"
 
-        job = client.load_table_from_dataframe(
+        client.load_table_from_dataframe(
             df,
             table_id,
             job_config=bigquery.LoadJobConfig(
                 write_disposition="WRITE_TRUNCATE"
             )
-        )
-        job.result()
-       
+        ).result()
+
         # -----------------------
-        # QUERY
+        # QUERY DINÁMICO
         # -----------------------
-    if tipo_consulta == "CSS":
 
-        query = """
-        SELECT 
-          a.cedula,
-          b.NOMBRE,
-          b.PATRONO,
-          b.RAZON_SO,
-          b.TEL1,
-          b.FECHA,
-          b.SALARIO
-        FROM `proyecto-css-panama.consultas.temp_clientes` a
-        LEFT JOIN `proyecto-css-panama.css_data.css-actual` b
-        ON a.cedula = b.cedula
-        """
+        if tipo_consulta == "CSS":
 
-    elif tipo_consulta == "TELÉFONOS NUEVOS":
+            query = """
+            SELECT 
+              a.cedula,
+              b.NOMBRE,
+              b.PATRONO,
+              b.RAZON_SO,
+              b.TEL1,
+              b.FECHA,
+              b.SALARIO
+            FROM `proyecto-css-panama.consultas.temp_clientes` a
+            LEFT JOIN `proyecto-css-panama.css_data.css_actual` b
+            ON a.cedula = b.cedula
+            """
 
-        query = """
-        WITH archivo AS (
-          SELECT cedula, telf1 AS numero FROM `proyecto-css-panama.consultas.temp_clientes`
-          UNION ALL SELECT cedula, telf2 FROM `proyecto-css-panama.consultas.temp_clientes`
-          UNION ALL SELECT cedula, telf3 FROM `proyecto-css-panama.consultas.temp_clientes`
-          UNION ALL SELECT cedula, telf4 FROM `proyecto-css-panama.consultas.temp_clientes`
-          UNION ALL SELECT cedula, telf5 FROM `proyecto-css-panama.consultas.temp_clientes`
-          UNION ALL SELECT cedula, telf6 FROM `proyecto-css-panama.consultas.temp_clientes`
-          UNION ALL SELECT cedula, telf7 FROM `proyecto-css-panama.consultas.temp_clientes`
-          UNION ALL SELECT cedula, telf8 FROM `proyecto-css-panama.consultas.temp_clientes`
-          UNION ALL SELECT cedula, telf9 FROM `proyecto-css-panama.consultas.temp_clientes`
-          UNION ALL SELECT cedula, telf10 FROM `proyecto-css-panama.consultas.temp_clientes`
-        ),
+        elif tipo_consulta == "TELÉFONOS NUEVOS":
 
-        archivo_limpio AS (
-          SELECT 
-            cedula,
-            numero,
-            CONCAT(cedula, numero) AS clave
-          FROM archivo
-          WHERE numero IS NOT NULL AND numero != ''
-        ),
+            query = """
+            WITH archivo AS (
+              SELECT cedula, telf1 AS valor FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, telf2 FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, telf3 FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, telf4 FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, telf5 FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, telf6 FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, telf7 FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, telf8 FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, telf9 FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, telf10 FROM `proyecto-css-panama.consultas.temp_clientes`
+            ),
 
-        bigquery_data AS (
-          SELECT 
-            cedula,
-            numero,
-            CONCAT(cedula, numero) AS clave
-          FROM `proyecto-css-panama.css_data.telefonos-actual`
-        )
+            archivo_limpio AS (
+              SELECT cedula, valor, CONCAT(cedula, valor) clave
+              FROM archivo
+              WHERE valor IS NOT NULL AND valor != ''
+            ),
 
-        SELECT 
-          b.cedula,
-          b.numero
-        FROM bigquery_data b
-        LEFT JOIN archivo_limpio a
-        ON b.clave = a.clave
-        WHERE a.clave IS NULL
-        """
+            base AS (
+              SELECT cedula, numero AS valor, CONCAT(cedula, numero) clave
+              FROM `proyecto-css-panama.css_data.telefonos-actual`
+            )
 
-# luego aquí ejecutas SIEMPRE igual
-result = client.query(query).to_dataframe()
+            SELECT b.cedula, b.valor AS numero
+            FROM base b
+            LEFT JOIN archivo_limpio a
+            ON b.clave = a.clave
+            WHERE a.clave IS NULL
+            """
 
+        elif tipo_consulta == "CORREOS NUEVOS":
+
+            query = """
+            WITH archivo AS (
+              SELECT cedula, correo1 AS valor FROM `proyecto-css-panama.consultas.temp_clientes`
+              UNION ALL SELECT cedula, correo2 FROM `proyecto-css-panama.consultas.temp_clientes`
+            ),
+
+            archivo_limpio AS (
+              SELECT cedula, valor, CONCAT(cedula, valor) clave
+              FROM archivo
+              WHERE valor IS NOT NULL AND valor != ''
+            ),
+
+            base AS (
+              SELECT cedula, correo AS valor, CONCAT(cedula, correo) clave
+              FROM `proyecto-css-panama.css_data.correos-actual`
+            )
+
+            SELECT b.cedula, b.valor AS correo
+            FROM base b
+            LEFT JOIN archivo_limpio a
+            ON b.clave = a.clave
+            WHERE a.clave IS NULL
+            """
+
+        # -----------------------
+        # EJECUTAR QUERY
+        # -----------------------
         result = client.query(query).to_dataframe()
 
         # -----------------------
@@ -171,7 +182,7 @@ result = client.query(query).to_dataframe()
         # -----------------------
         # RESULTADO
         # -----------------------
-        st.success("✅ Consulta lista 🎉")
+        st.success(f"✅ Consulta {tipo_consulta} lista 🎉")
 
         st.download_button(
             "Descargar resultado",

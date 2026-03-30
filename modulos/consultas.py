@@ -146,6 +146,7 @@ def run(usuario):
               SELECT 
                 CAST(CEDULA AS STRING) AS cedula,
                 CAST(NUMERO AS STRING) AS valor,
+                CAST(TIPO AS STRING) AS tipo,
                 CONCAT(CAST(CEDULA AS STRING), CAST(NUMERO AS STRING)) AS clave
               FROM `proyecto-css-panama.css_data.telefonos-actual`
               WHERE CEDULA IN (

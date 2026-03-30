@@ -135,7 +135,7 @@ def run(usuario):
             archivo_limpio AS (
               SELECT 
                 CAST(cedula AS STRING) AS cedula,
-                CAST(valor AS STRING) AS valor,
+                REGEXP_REPLACE(CAST(valor AS STRING), r'\.0$', ''),
                 CONCAT(CAST(cedula AS STRING), CAST(valor AS STRING)) AS clave
               FROM archivo
               WHERE valor IS NOT NULL 

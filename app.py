@@ -10,18 +10,38 @@ login.logout()
 # SOLO si está logueado mostramos el sistema
 if st.session_state.get("login_ok"):
 
+    usuario = st.session_state.get("usuario")
+
+    # -----------------------
+    # ROLES
+    # -----------------------
     roles = {
-    "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-    "contenalfa@gmail.com":  ["TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+        "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+        "contenalfa@gmail.com": ["TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
     }
 
-    # MENÚ
-    opcion = st.sidebar.selectbox(
-        "Selecciona módulo",
+    permisos = roles.get(usuario, [])
+
+    # -----------------------
+    # MENÚ PRINCIPAL
+    # -----------------------
+    modulo = st.sidebar.selectbox(
+        "Módulos",
         ["Consultas"]
     )
 
-    # NAVEGACIÓN
-    if opcion == "Consultas":
-        usuario = st.session_state.get("usuario")
-        permisos = roles.get(usuario, [])
+    # -----------------------
+    # SUBMENÚ CONSULTAS
+    # -----------------------
+    if modulo == "Consultas":
+
+        if not permisos:
+            st.error("❌ No tienes permisos asignados")
+            st.stop()
+
+        tipo_consulta = st.sidebar.radio(
+            "Opciones",
+            permisos
+        )
+
+        consultas.run(usuario, tipo_consulta)

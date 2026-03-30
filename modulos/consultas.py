@@ -4,15 +4,12 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 from datetime import datetime
 
-def run(usuario):
+def run(usuario, tipo_consulta):
 
     st.write(f"👤 Usuario: {usuario}")
     st.title("HEXAGON - Extractor de Datos 🔍")
 
-    tipo_consulta = st.selectbox(
-        "¿Qué deseas consultar?",
-        ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
-    )
+
 
     uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 

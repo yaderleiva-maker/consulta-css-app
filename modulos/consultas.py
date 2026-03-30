@@ -25,6 +25,23 @@ def run(usuario):
         df.columns = df.columns.str.strip().str.lower()
 
         # -----------------------
+        # LIMPIAR DECIMALES .0 EN TELÉFONOS
+        # -----------------------
+
+        columnas_telefono = [
+            "telf1","telf2","telf3","telf4","telf5",
+            "telf6","telf7","telf8","telf9","telf10"
+        ]
+
+        for col in columnas_telefono:
+            if col in df.columns:
+                df[col] = (
+                    df[col]
+                    .astype(str)
+                    .str.replace(r"\.0$", "", regex=True)  # 🔥 elimina .0 al final
+                .str.strip()
+                )
+        # -----------------------
         # VALIDACIONES
         # -----------------------
         columnas_validas = [

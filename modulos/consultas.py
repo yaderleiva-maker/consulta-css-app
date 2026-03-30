@@ -120,7 +120,7 @@ def run(usuario):
             ),
 
             base AS (
-              SELECT cedula, numero AS valor, CONCAT(cedula, numero) clave
+              SELECT CEDULA, NUMERO AS valor, CONCAT(CEDULA, NUMERO) clave
               FROM `proyecto-css-panama.css_data.telefonos-actual`
             )
 
@@ -146,7 +146,7 @@ def run(usuario):
             ),
 
             base AS (
-              SELECT cedula, correo AS valor, CONCAT(cedula, correo) clave
+              SELECT CEDULA, EMAIL AS valor, CONCAT(CEDULA, EMAIL) clave
               FROM `proyecto-css-panama.css_data.correos-actual`
             )
 

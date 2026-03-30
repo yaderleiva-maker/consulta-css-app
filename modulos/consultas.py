@@ -47,7 +47,9 @@ def run(usuario):
             st.error("❌ La columna 'cedula' está vacía")
             st.stop()
 
-        df["cedula"] = df["cedula"].astype(str).str.strip()
+        # Normalizar TODO a string (clave para evitar errores en BigQuery)
+        for col in df.columns:
+            df[col] = df[col].astype(str).str.strip()
 
         st.success("✅ Archivo válido")
         st.write(df.head())
@@ -113,21 +115,21 @@ def run(usuario):
               UNION ALL SELECT cedula, telf10 FROM `proyecto-css-panama.consultas.temp_clientes`
             ),
 
-
             archivo_limpio AS (
               SELECT 
                 CAST(cedula AS STRING) AS cedula,
                 CAST(valor AS STRING) AS valor,
                 CONCAT(CAST(cedula AS STRING), CAST(valor AS STRING)) AS clave
               FROM archivo
-              WHERE valor IS NOT NULL AND valor != ''
+              WHERE valor IS NOT NULL 
+                AND TRIM(CAST(valor AS STRING)) != ''
             ),
 
             base AS (
               SELECT 
-                  CAST(CEDULA AS STRING) AS cedula,
-                  CAST(NUMERO AS STRING) AS valor,
-                  CONCAT(CAST(CEDULA AS STRING), CAST(NUMERO AS STRING)) AS clave
+                CAST(CEDULA AS STRING) AS cedula,
+                CAST(NUMERO AS STRING) AS valor,
+                CONCAT(CAST(CEDULA AS STRING), CAST(NUMERO AS STRING)) AS clave
               FROM `proyecto-css-panama.css_data.telefonos-actual`
             )
 
@@ -147,16 +149,20 @@ def run(usuario):
             ),
 
             archivo_limpio AS (
-              SELECT cedula, valor, CONCAT(cedula, valor) clave
+              SELECT 
+                CAST(cedula AS STRING) AS cedula,
+                CAST(valor AS STRING) AS valor,
+                CONCAT(CAST(cedula AS STRING), CAST(valor AS STRING)) AS clave
               FROM archivo
-              WHERE valor IS NOT NULL AND valor != ''
+              WHERE valor IS NOT NULL 
+                AND TRIM(CAST(valor AS STRING)) != ''
             ),
 
             base AS (
               SELECT 
-                  CAST(CEDULA AS STRING) AS cedula, 
-                  CAST(EMAIL AS STRING) AS valor,
-                  CONCAT(CAST(CEDULA AS STRING), CAST(EMAIL AS STRING)) AS clave
+                CAST(CEDULA AS STRING) AS cedula, 
+                CAST(EMAIL AS STRING) AS valor,
+                CONCAT(CAST(CEDULA AS STRING), CAST(EMAIL AS STRING)) AS clave
               FROM `proyecto-css-panama.css_data.correos-actual`
             )
 
@@ -168,14 +174,9 @@ def run(usuario):
             """
 
         # -----------------------
-        # EJECUTAR QUERY 
+        # EJECUTAR QUERY
         # -----------------------
-        
-    try:
         result = client.query(query).to_dataframe()
-    except Exception as e:
-        st.error(f"🔥 ERROR REAL: {e}")
-        st.stop()
 
         # -----------------------
         # HISTORIAL

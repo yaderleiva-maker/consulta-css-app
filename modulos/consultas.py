@@ -47,7 +47,7 @@ def run(usuario):
             st.error("❌ La columna 'cedula' está vacía")
             st.stop()
 
-        # Normalizar TODO a string (clave para evitar errores en BigQuery)
+        # 🔥 NORMALIZAR TODO A STRING (CLAVE)
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip()
 
@@ -131,6 +131,10 @@ def run(usuario):
                 CAST(NUMERO AS STRING) AS valor,
                 CONCAT(CAST(CEDULA AS STRING), CAST(NUMERO AS STRING)) AS clave
               FROM `proyecto-css-panama.css_data.telefonos-actual`
+              WHERE CEDULA IN (
+                  SELECT DISTINCT cedula 
+                  FROM `proyecto-css-panama.consultas.temp_clientes`
+              )
             )
 
             SELECT b.cedula, b.valor AS numero
@@ -164,6 +168,10 @@ def run(usuario):
                 CAST(EMAIL AS STRING) AS valor,
                 CONCAT(CAST(CEDULA AS STRING), CAST(EMAIL AS STRING)) AS clave
               FROM `proyecto-css-panama.css_data.correos-actual`
+              WHERE CEDULA IN (
+                  SELECT DISTINCT cedula 
+                  FROM `proyecto-css-panama.consultas.temp_clientes`
+              )
             )
 
             SELECT b.cedula, b.valor AS correo

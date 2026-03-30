@@ -168,9 +168,14 @@ def run(usuario):
             """
 
         # -----------------------
-        # EJECUTAR QUERY
+        # EJECUTAR QUERY 
         # -----------------------
+        
+    try:
         result = client.query(query).to_dataframe()
+    except Exception as e:
+        st.error(f"🔥 ERROR REAL: {e}")
+        st.stop()
 
         # -----------------------
         # HISTORIAL

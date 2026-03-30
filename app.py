@@ -10,6 +10,11 @@ login.logout()
 # SOLO si está logueado mostramos el sistema
 if st.session_state.get("login_ok"):
 
+    roles = {
+    "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+    "contenalfa@gmail.com":  ["TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+    }
+
     # MENÚ
     opcion = st.sidebar.selectbox(
         "Selecciona módulo",
@@ -18,4 +23,5 @@ if st.session_state.get("login_ok"):
 
     # NAVEGACIÓN
     if opcion == "Consultas":
-        consultas.run(st.session_state.get("usuario"))
+        usuario = st.session_state.get("usuario")
+        permisos = roles.get(usuario, [])

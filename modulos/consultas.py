@@ -155,7 +155,7 @@ def run(usuario):
               )
             )
 
-            SELECT b.cedula, b.valor AS numero
+            SELECT b.cedula, b.valor AS numero, b.tipo,
             FROM base b
             LEFT JOIN archivo_limpio a
             ON b.clave = a.clave

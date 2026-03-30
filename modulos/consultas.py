@@ -113,14 +113,21 @@ def run(usuario):
               UNION ALL SELECT cedula, telf10 FROM `proyecto-css-panama.consultas.temp_clientes`
             ),
 
+
             archivo_limpio AS (
-              SELECT cedula, valor, CONCAT(cedula, valor) clave
+              SELECT 
+                CAST(cedula AS STRING) AS cedula,
+                CAST(valor AS STRING) AS valor,
+                CONCAT(CAST(cedula AS STRING), CAST(valor AS STRING)) AS clave
               FROM archivo
               WHERE valor IS NOT NULL AND valor != ''
             ),
 
             base AS (
-              SELECT CEDULA, NUMERO AS valor, CONCAT(CEDULA, NUMERO) clave
+              SELECT 
+                  CAST(CEDULA AS STRING) AS cedula,
+                  CAST(NUMERO AS STRING) AS valor,
+                  CONCAT(CAST(CEDULA AS STRING), CAST(NUMERO AS STRING)) AS clave
               FROM `proyecto-css-panama.css_data.telefonos-actual`
             )
 
@@ -146,7 +153,10 @@ def run(usuario):
             ),
 
             base AS (
-              SELECT CEDULA, EMAIL AS valor, CONCAT(CEDULA, EMAIL) clave
+              SELECT 
+                  CAST(CEDULA AS STRING) AS cedula, 
+                  CAST(EMAIL AS STRING) AS valor,
+                  CONCAT(CAST(CEDULA AS STRING), CAST(EMAIL AS STRING)) AS clave
               FROM `proyecto-css-panama.css_data.correos-actual`
             )
 

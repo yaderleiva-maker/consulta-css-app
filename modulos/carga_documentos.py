@@ -5,7 +5,7 @@ import uuid
 import re
 import hashlib
 from google.cloud import bigquery
-from datetime import datetime
+from datetime import datetime, date
 
 def run(usuario, tipo_consulta):
     """Módulo de carga de clientes, teléfonos y correos"""
@@ -116,7 +116,7 @@ def run(usuario, tipo_consulta):
         for fmt in formatos:
             try:
                 fecha_obj = datetime.strptime(fecha_str, fmt)
-                return fecha_obj.strftime("%Y-%m-%d")
+                return fecha_obj.date()
             except ValueError:
                 continue
         return None
@@ -252,7 +252,7 @@ def run(usuario, tipo_consulta):
                             "nombre": row['nombre'],
                             "cedula": cedula,
                             "genero": row.get('genero', ''),
-                            "fecha_nac": row.get('fecha_nac', None) if row.get('fecha_nac') else None,
+                            "fecha_nac": row.get('fecha_nac', None),
                             "direccion": row.get('direccion', '')
                         })
                         mapa_cedula_id[cedula] = id_cliente
@@ -263,25 +263,28 @@ def run(usuario, tipo_consulta):
                             "nombre": row['nombre'],
                             "cedula": cedula,
                             "genero": row.get('genero', ''),
-                            "fecha_nac": row.get('fecha_nac', None) if row.get('fecha_nac') else None,
+                            "fecha_nac": row.get('fecha_nac', None),
                             "direccion": row.get('direccion', ''),
                             "estado": "Activo"
                         })
                         mapa_cedula_id[cedula] = id_cliente
                 
                 # =====================
-                # 3. INSERTAR NUEVOS CLIENTES (con MERGE)
+                # 3. INSERTAR NUEVOS CLIENTES
                 # =====================
                 if clientes_insertar:
                     df_insert = pd.DataFrame(clientes_insertar)
                     
-                    # Crear tabla temporal
+                    # Convertir fecha_nac a date si existe
+                    if 'fecha_nac' in df_insert.columns:
+                        df_insert['fecha_nac'] = pd.to_datetime(df_insert['fecha_nac'], errors='coerce')
+                        df_insert['fecha_nac'] = df_insert['fecha_nac'].dt.date
+                    
                     temp_suffix = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
                     table_temp = f"{PROJECT_ID}.{DATASET}.tmp_clientes_{temp_suffix}"
                     
                     client.load_table_from_dataframe(df_insert, table_temp).result()
                     
-                    # MERGE con CURRENT_TIMESTAMP()
                     query_merge = f"""
                     MERGE `{PROJECT_ID}.{DATASET}.cliente` T
                     USING `{table_temp}` S
@@ -450,9 +453,9 @@ def run(usuario, tipo_consulta):
                 with col2:
                     st.metric("Actualizados", len(clientes_actualizar))
                 with col3:
-                    st.metric("Teléfonos", len(df_tel) if 'df_tel' in locals() else 0)
+                    st.metric("Teléfonos", len(df_tel) if not df_tel.empty else 0)
                 with col4:
-                    st.metric("Correos", len(df_correo) if 'df_correo' in locals() else 0)
+                    st.metric("Correos", len(df_correo) if not df_correo.empty else 0)
                 
             except Exception as e:
                 st.error(f"❌ Error: {e}")

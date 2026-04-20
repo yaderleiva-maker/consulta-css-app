@@ -320,7 +320,7 @@ def run(usuario, tipo_consulta):
                         table = f"{PROJECT_ID}.{DATASET}.tmp_tel"
                         client.load_table_from_dataframe(df_tel, table).result()
                         client.query(f"""
-                        MERGE `{PROJECT_ID}.{DATASET}.telefono` T
+                        MERGE `{PROJECT_ID}.{DATASET}.telefonos` T
                         USING `{table}` S
                         ON T.id_cliente = S.id_cliente AND T.numero = S.numero
                         WHEN NOT MATCHED THEN INSERT ROW

@@ -138,7 +138,7 @@ def run(usuario, tipo_consulta):
                 "usuario": usuario,
                 "filas_procesadas": filas_procesadas,
                 "estado": estado,
-                "fecha_carga": pd.Timestamp.utcnow()
+                # fecha_creacion se asigna automáticamente por BigQuery
             }]
             df_log = pd.DataFrame(log_data)
             

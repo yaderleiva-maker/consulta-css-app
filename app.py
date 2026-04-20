@@ -44,7 +44,7 @@ if st.session_state.get("login_ok"):
             st.stop()
         tipo_consulta = st.sidebar.radio(
             "Opciones",
-            [p for p in permisos if p != "subir"]
+            [p for p in permisos if p != "CARGA_DOCUMENTOS"]
         )
         consultas.run(usuario, tipo_consulta)
     
@@ -52,7 +52,7 @@ if st.session_state.get("login_ok"):
     # NUEVO: SUBMENÚ CARGA DE DOCUMENTOS
     # -----------------------
     elif modulo == "Carga de Documentos":
-        if "subir" not in permisos:
+        if "CARGA_DOCUMENTOS" not in permisos:
             st.error("❌ No tienes permisos para acceder a este módulo")
             st.stop()
         

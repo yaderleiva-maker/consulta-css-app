@@ -1,4 +1,5 @@
-# modulos/carga_documentos.py
+# modulos/carga_documentos.py - Versión simplificada
+
 import streamlit as st
 import pandas as pd
 import uuid
@@ -13,23 +14,14 @@ def run(usuario, tipo_consulta):
     st.info(f"👤 Usuario: {usuario} | Permiso: {tipo_consulta}")
     
     # =====================
-    # CONEXIÓN A BIGQUERY (USANDO SECRETOS DE STREAMLIT)
+    # CONEXIÓN A BIGQUERY
     # =====================
     try:
-        # Verificar que el secreto existe
         if "gcp_service_account" not in st.secrets:
             st.error("❌ No se encontró la configuración 'gcp_service_account' en los secretos")
-            st.info("Por favor, configura los secretos en Streamlit Cloud")
             return
         
-        # Cargar desde secretos
         service_account_info = dict(st.secrets["gcp_service_account"])
-        
-        # Convertir private_key a string con saltos de línea
-        if "private_key" in service_account_info:
-            # La clave ya viene con saltos de línea del TOML
-            service_account_info["private_key"] = service_account_info["private_key"]
-        
         client = bigquery.Client.from_service_account_info(service_account_info)
         st.success("✅ Conectado a BigQuery")
         
@@ -37,26 +29,25 @@ def run(usuario, tipo_consulta):
         DATASET = "crm_core"
         
     except Exception as e:
-        st.error(f"❌ Error de conexión a BigQuery: {e}")
-        st.info("Verifica que las credenciales en 'gcp_service_account' sean correctas")
+        st.error(f"❌ Error de conexión: {e}")
         return
     
     # =====================
-    # SELECCIÓN DE PROYECTO
+    # SELECCIÓN DE PROYECTO (MANUAL - SIN ERRORES)
     # =====================
-    try:
-        query_proyectos = f"""
-        SELECT id_proyecto, nombre 
-        FROM `{PROJECT_ID}.{DATASET}.proyectos`
-        WHERE estado = 'Activo'
-        ORDER BY nombre
-        """
-        df_proyectos = client.query(query_proyectos).to_dataframe()
-        lista_proyectos = df_proyectos['id_proyecto'].tolist()
-        st.success(f"✅ {len(lista_proyectos)} proyectos cargados")
-    except Exception as e:
-        st.warning(f"No se pudieron cargar proyectos: {e}")
-        lista_proyectos = ["veterinaria_001", "cobros_001", "ventas_001"]
+    
+    # Lista manual de proyectos - TÚ LA MANTIENES
+    # Cuando agregues un nuevo proyecto en Sheets, agrégalo aquí también
+    lista_proyectos = [
+        "VETPET001",
+        "cobros_001", 
+        "ventas_001"
+    ]
+    
+    # Mostrar proyectos disponibles
+    st.markdown("### 📋 Proyectos disponibles")
+    for p in lista_proyectos:
+        st.markdown(f"- `{p}`")
     
     id_proyecto = st.selectbox("Selecciona el proyecto", lista_proyectos)
     
@@ -66,7 +57,7 @@ def run(usuario, tipo_consulta):
     uploaded_file = st.file_uploader(
         "Sube tu archivo CSV",
         type=["csv"],
-        help="El CSV debe tener columnas: id_cliente, nombre, cedula, telefono1...telefono15, correo1...correo5"
+        help="Formato esperado: id_cliente, nombre, cedula, telefono1...telefono15, correo1...correo5"
     )
     
     # =====================
@@ -158,7 +149,6 @@ def run(usuario, tipo_consulta):
         st.info(f"📄 Archivo: {uploaded_file.name}")
         st.info(f"📅 Fecha/Hora: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
-        # Verificar si el usuario tiene permiso para cargar teléfonos/correos
         permite_telefonos = tipo_consulta in ["CSS", "TELÉFONOS NUEVOS"]
         permite_correos = tipo_consulta in ["CSS", "CORREOS NUEVOS"]
         
@@ -208,9 +198,9 @@ def run(usuario, tipo_consulta):
                 st.success(f"✅ Clientes procesados: {len(df_clientes)}")
                 
                 # =====================
-                # TELÉFONOS (solo si tiene permiso)
+                # TELÉFONOS
                 # =====================
-                df_tel = pd.DataFrame()  # Inicializar para el resumen
+                df_tel = pd.DataFrame()
                 if permite_telefonos:
                     telefonos = []
                     for _, row in df.iterrows():
@@ -249,9 +239,9 @@ def run(usuario, tipo_consulta):
                     st.info("ℹ️ Sin permiso para cargar teléfonos")
                 
                 # =====================
-                # CORREOS (solo si tiene permiso)
+                # CORREOS
                 # =====================
-                df_correo = pd.DataFrame()  # Inicializar para el resumen
+                df_correo = pd.DataFrame()
                 if permite_correos:
                     correos = []
                     for _, row in df.iterrows():
@@ -312,9 +302,7 @@ def run(usuario, tipo_consulta):
                 """
                 client.query(query_cp).result()
                 
-                # =====================
-                # LOG DE CARGA EXITOSA
-                # =====================
+                # LOG
                 registrar_log(
                     archivo=uploaded_file.name,
                     proyecto=id_proyecto,
@@ -322,9 +310,7 @@ def run(usuario, tipo_consulta):
                     estado="EXITOSO"
                 )
                 
-                # =====================
-                # RESUMEN FINAL
-                # =====================
+                # RESUMEN
                 st.success("🎉 ¡Carga completada exitosamente!")
                 
                 st.subheader("📊 Resumen de carga")

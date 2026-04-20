@@ -36,7 +36,7 @@ def run(usuario, tipo_consulta):
     # SELECCIÓN DE PROYECTO (MANUAL)
     # =====================
     lista_proyectos = [
-        "veterinaria_001",
+        "VETPET001",
         "cobros_001", 
         "ventas_001"
     ]

@@ -379,7 +379,7 @@ def run(usuario, tipo_consulta):
                         for i in range(1, 6):
                             email = validar_email(row.get(f"correo{i}", ""))
                             if email:
-                                correo.append({
+                                correos.append({
                                     "id_correo": f"{row['id_cliente']}_{email}",
                                     "id_cliente": row["id_cliente"],
                                     "correo": email,

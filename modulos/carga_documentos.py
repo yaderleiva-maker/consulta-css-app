@@ -389,7 +389,7 @@ def run(usuario, tipo_consulta):
                                     "fuente": uploaded_file.name
                                 })
                     
-                    df_correo = pd.DataFrame(correo).drop_duplicates(subset=["id_cliente", "correo"])
+                    df_correo = pd.DataFrame(correo).drop_duplicates(subset=["id_cliente", "correos"])
                     if not df_correo.empty:
                         temp_suffix = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
                         table = f"{PROJECT_ID}.{DATASET}.tmp_correo_{temp_suffix}"

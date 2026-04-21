@@ -5,7 +5,7 @@ import uuid
 import re
 import hashlib
 from google.cloud import bigquery
-from datetime import datetime, date
+from datetime import datetime
 
 def run(usuario, tipo_consulta):
     """Módulo de carga de clientes, teléfonos y correos"""
@@ -270,7 +270,7 @@ def run(usuario, tipo_consulta):
                         mapa_cedula_id[cedula] = id_cliente
                 
                 # =====================
-                # 3. INSERTAR NUEVOS CLIENTES
+                # 3. INSERTAR NUEVOS CLIENTES (MASIVO)
                 # =====================
                 if clientes_insertar:
                     df_insert = pd.DataFrame(clientes_insertar)
@@ -281,11 +281,42 @@ def run(usuario, tipo_consulta):
                         df_insert['fecha_nac'] = df_insert['fecha_nac'].dt.date
                     
                     temp_suffix = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
-                    table_temp = f"{PROJECT_ID}.{DATASET}.tmp_clientes_{temp_suffix}"
+                    table_temp = f"{PROJECT_ID}.{DATASET}.tmp_clientes_insert_{temp_suffix}"
                     
                     client.load_table_from_dataframe(df_insert, table_temp).result()
                     
-                    query_merge = f"""
+                    query_merge_insert = f"""
+                    MERGE `{PROJECT_ID}.{DATASET}.cliente` T
+                    USING `{table_temp}` S
+                    ON T.id_cliente = S.id_cliente
+                    WHEN NOT MATCHED THEN INSERT (
+                      id_cliente, nombre, cedula, genero, fecha_nac, direccion, estado, fecha_creacion
+                    ) VALUES (
+                      S.id_cliente, S.nombre, S.cedula, S.genero, S.fecha_nac, S.direccion, S.estado, CURRENT_TIMESTAMP()
+                    )
+                    """
+                    client.query(query_merge_insert).result()
+                    
+                    client.delete_table(table_temp)
+                    st.success(f"✅ Clientes nuevos: {len(clientes_insertar)}")
+                
+                # =====================
+                # 4. ACTUALIZAR CLIENTES EXISTENTES (MASIVO - 1 SOLA QUERY)
+                # =====================
+                if clientes_actualizar:
+                    df_update = pd.DataFrame(clientes_actualizar)
+                    
+                    # Convertir fecha_nac a date si existe
+                    if 'fecha_nac' in df_update.columns:
+                        df_update['fecha_nac'] = pd.to_datetime(df_update['fecha_nac'], errors='coerce')
+                        df_update['fecha_nac'] = df_update['fecha_nac'].dt.date
+                    
+                    temp_suffix = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
+                    table_temp = f"{PROJECT_ID}.{DATASET}.tmp_clientes_update_{temp_suffix}"
+                    
+                    client.load_table_from_dataframe(df_update, table_temp).result()
+                    
+                    query_merge_update = f"""
                     MERGE `{PROJECT_ID}.{DATASET}.cliente` T
                     USING `{table_temp}` S
                     ON T.id_cliente = S.id_cliente
@@ -295,34 +326,11 @@ def run(usuario, tipo_consulta):
                       T.genero = S.genero,
                       T.fecha_nac = S.fecha_nac,
                       T.direccion = S.direccion,
-                      T.estado = S.estado
-                    WHEN NOT MATCHED THEN INSERT (
-                      id_cliente, nombre, cedula, genero, fecha_nac, direccion, estado, fecha_creacion
-                    ) VALUES (
-                      S.id_cliente, S.nombre, S.cedula, S.genero, S.fecha_nac, S.direccion, S.estado, CURRENT_TIMESTAMP()
-                    )
+                      T.estado = 'Activo'
                     """
-                    client.query(query_merge).result()
+                    client.query(query_merge_update).result()
                     
                     client.delete_table(table_temp)
-                    st.success(f"✅ Clientes nuevos: {len(clientes_insertar)}")
-                
-                # =====================
-                # 4. ACTUALIZAR CLIENTES EXISTENTES
-                # =====================
-                if clientes_actualizar:
-                    for c in clientes_actualizar:
-                        fecha_nac_sql = f"DATE('{c['fecha_nac']}')" if c['fecha_nac'] else 'NULL'
-                        query = f"""
-                        UPDATE `{PROJECT_ID}.{DATASET}.cliente`
-                        SET nombre = '{c['nombre'].replace("'", "''")}',
-                            genero = '{c['genero']}',
-                            fecha_nac = {fecha_nac_sql},
-                            direccion = '{c['direccion'].replace("'", "''")}',
-                            estado = 'Activo'
-                        WHERE id_cliente = '{c['id_cliente']}'
-                        """
-                        client.query(query).result()
                     st.success(f"✅ Clientes actualizados: {len(clientes_actualizar)}")
                 
                 # Agregar columna id_cliente al DataFrame original
@@ -330,7 +338,7 @@ def run(usuario, tipo_consulta):
                 df = df[df['id_cliente'].notna()]
                 
                 # =====================
-                # 5. TELÉFONOS
+                # 5. TELÉFONOS (MASIVO)
                 # =====================
                 df_tel = pd.DataFrame()
                 if permite_telefonos and not df.empty:
@@ -370,7 +378,7 @@ def run(usuario, tipo_consulta):
                         st.success(f"✅ {len(df_tel)} teléfonos")
                 
                 # =====================
-                # 6. CORREOS
+                # 6. CORREOS (MASIVO)
                 # =====================
                 df_correo = pd.DataFrame()
                 if permite_correos and not df.empty:
@@ -410,14 +418,13 @@ def run(usuario, tipo_consulta):
                         st.success(f"✅ {len(df_correo)} correos")
                 
                 # =====================
-                # 7. RELACIÓN CLIENTE_PROYECTO
+                # 7. RELACIÓN CLIENTE_PROYECTO (MASIVO)
                 # =====================
                 if not df.empty:
                     df_rel = df[['id_cliente']].drop_duplicates()
                     df_rel['id_proyecto'] = id_proyecto
                     df_rel['id_cliente_proyecto'] = df_rel.apply(lambda x: f"{x['id_cliente']}_{x['id_proyecto']}", axis=1)
                     df_rel['estado'] = "En localizacion"
-                    df_rel['prioridad_inicial'] = 1
                     
                     temp_suffix = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
                     table = f"{PROJECT_ID}.{DATASET}.tmp_cp_{temp_suffix}"
@@ -428,9 +435,9 @@ def run(usuario, tipo_consulta):
                     USING `{table}` S
                     ON T.id_cliente = S.id_cliente AND T.id_proyecto = S.id_proyecto
                     WHEN NOT MATCHED THEN INSERT (
-                      id_cliente_proyecto, id_cliente, id_proyecto, estado, fecha_asignacion, prioridad_inicial
+                      id_cliente_proyecto, id_cliente, id_proyecto, estado, fecha_asignacion
                     ) VALUES (
-                      S.id_cliente_proyecto, S.id_cliente, S.id_proyecto, S.estado, CURRENT_DATE(), S.prioridad_inicial
+                      S.id_cliente_proyecto, S.id_cliente, S.id_proyecto, S.estado, CURRENT_DATE()
                     )
                     """
                     client.query(query_cp).result()

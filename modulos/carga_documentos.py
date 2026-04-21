@@ -373,13 +373,13 @@ def run(usuario, tipo_consulta):
                 # 6. CORREOS
                 # =====================
                 df_correo = pd.DataFrame()
-                if permite_correos and not df.empty:
-                    correos = []
+                if permite_correo and not df.empty:
+                    correo = []
                     for _, row in df.iterrows():
                         for i in range(1, 6):
                             email = validar_email(row.get(f"correo{i}", ""))
                             if email:
-                                correos.append({
+                                correo.append({
                                     "id_correo": f"{row['id_cliente']}_{email}",
                                     "id_cliente": row["id_cliente"],
                                     "correo": email,
@@ -389,14 +389,14 @@ def run(usuario, tipo_consulta):
                                     "fuente": uploaded_file.name
                                 })
                     
-                    df_correo = pd.DataFrame(correos).drop_duplicates(subset=["id_cliente", "correo"])
+                    df_correo = pd.DataFrame(correo).drop_duplicates(subset=["id_cliente", "correo"])
                     if not df_correo.empty:
                         temp_suffix = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
                         table = f"{PROJECT_ID}.{DATASET}.tmp_correo_{temp_suffix}"
                         client.load_table_from_dataframe(df_correo, table).result()
                         
                         query_correo = f"""
-                        MERGE `{PROJECT_ID}.{DATASET}.correos` T
+                        MERGE `{PROJECT_ID}.{DATASET}.correo` T
                         USING `{table}` S
                         ON T.id_cliente = S.id_cliente AND T.correo = S.correo
                         WHEN NOT MATCHED THEN INSERT (
@@ -407,7 +407,7 @@ def run(usuario, tipo_consulta):
                         """
                         client.query(query_correo).result()
                         client.delete_table(table)
-                        st.success(f"✅ {len(df_correo)} correos")
+                        st.success(f"✅ {len(df_correo)} correo")
                 
                 # =====================
                 # 7. RELACIÓN CLIENTE_PROYECTO

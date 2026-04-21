@@ -374,7 +374,7 @@ def run(usuario, tipo_consulta):
                 # =====================
                 df_correo = pd.DataFrame()
                 if permite_correos and not df.empty:
-                    correo = []
+                    correos = []
                     for _, row in df.iterrows():
                         for i in range(1, 6):
                             email = validar_email(row.get(f"correo{i}", ""))
@@ -407,7 +407,7 @@ def run(usuario, tipo_consulta):
                         """
                         client.query(query_correo).result()
                         client.delete_table(table)
-                        st.success(f"✅ {len(df_correo)} correo")
+                        st.success(f"✅ {len(df_correo)} correos")
                 
                 # =====================
                 # 7. RELACIÓN CLIENTE_PROYECTO

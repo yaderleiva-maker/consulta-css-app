@@ -373,7 +373,7 @@ def run(usuario, tipo_consulta):
                 # 6. CORREOS
                 # =====================
                 df_correo = pd.DataFrame()
-                if permite_correo and not df.empty:
+                if permite_correos and not df.empty:
                     correo = []
                     for _, row in df.iterrows():
                         for i in range(1, 6):

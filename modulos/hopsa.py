@@ -76,9 +76,34 @@ def actualizar_agentes():
         except Exception as e:
             st.error(f"Error: {e}")
 
+def subir_informacion():
+    st.subheader("📂 Subir informacion del dia")
+    
+    # Verificar agentes
+    agentes = cargar_agentes()
+    if agentes is None or agentes.empty:
+        st.warning("⚠️ Primero carga los agentes")
+        return
+    
+    fecha_reporte = st.date_input("Fecha del reporte", datetime.date.today())
+    st.info(f"📋 {len(agentes)} agentes activos")
+    
+    st.markdown("---")
+    st.markdown("### Archivos del dia")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        ventas_file = st.file_uploader("Ventas", type=['csv', 'xlsx'], key="ventas")
+    with col2:
+        llamadas_file = st.file_uploader("Llamadas", type=['csv'], key="llamadas")
+    with col3:
+        cotizaciones_file = st.file_uploader("Cotizaciones", type=['csv', 'xlsx'], key="cotizaciones")
+    
+    if st.button("Procesar (demo)"):
+        st.success(f"Datos procesados para {fecha_reporte}")
+
 def descargar_reportes():
     st.subheader("📥 Descargar reportes")
-    st.info("Funcion descargar_reportes - version simple")
     
     col1, col2 = st.columns(2)
     with col1:
@@ -86,7 +111,7 @@ def descargar_reportes():
     with col2:
         fecha_fin = st.date_input("Fecha fin", datetime.date.today())
     
-    if st.button("Generar reporte simple"):
+    if st.button("Generar reporte"):
         st.write(f"Rango: {fecha_inicio} a {fecha_fin}")
         st.success("Reporte generado (demo)")
 
@@ -99,6 +124,6 @@ def run(usuario):
     if opcion == "Agentes":
         actualizar_agentes()
     elif opcion == "Subir Informacion":
-        st.info("En construccion - Subir informacion (proximamente)")
+        subir_informacion()
     else:
         descargar_reportes()

@@ -61,23 +61,48 @@ def run(usuario, tipo_consulta):
     )
     
     # =====================
-    # FUNCIONES
+    # FUNCIONES MEJORADAS
     # =====================
     def limpiar_numero(numero):
+        """Limpia y valida número de teléfono (Panamá)"""
         if pd.isna(numero) or numero == "":
             return None
+        
+        # Limpiar: eliminar .0 y cualquier carácter no numérico
         numero = str(numero).replace(".0", "").strip()
         numero = ''.join(filter(str.isdigit, numero))
-        if len(numero) not in [7, 8]:
+        
+        # Validación de longitud
+        if len(numero) == 8:
+            # Celular: debe empezar con 6
+            if not numero.startswith('6'):
+                return None
+            # Evitar números con todos dígitos iguales (ej: 60000000)
+            if len(set(numero)) == 1:
+                return None
+            # Evitar patrones sospechosos (6 seguido de muchos ceros)
+            if numero[1:].count('0') >= 6:
+                return None
+            return numero
+            
+        elif len(numero) == 7:
+            # Fijo: NO puede empezar con 6 ni con 0
+            if numero.startswith('6') or numero.startswith('0'):
+                return None
+            # Evitar números con todos dígitos iguales
+            if len(set(numero)) == 1:
+                return None
+            return numero
+            
+        else:
+            # Longitud incorrecta
             return None
-        if len(set(numero)) == 1:
-            return None
-        return numero
     
     def tipo_telefono(numero):
-        if numero.startswith("6") and len(numero) == 8:
+        """Determina el tipo de teléfono según el número limpio"""
+        if numero and len(numero) == 8 and numero.startswith('6'):
             return "celular"
-        elif not numero.startswith("0") and len(numero) == 7:
+        elif numero and len(numero) == 7:
             return "fijo"
         return "otro"
     
@@ -337,24 +362,35 @@ def run(usuario, tipo_consulta):
                 df = df[df['id_cliente'].notna()]
                 
                 # =====================
-                # 5. TELÉFONOS (MASIVO)
+                # 5. TELÉFONOS (MASIVO CON VALIDACIÓN MEJORADA)
                 # =====================
                 df_tel = pd.DataFrame()
+                telefonos_invalidos = []
+                
                 if permite_telefonos and not df.empty:
                     telefonos = []
                     for _, row in df.iterrows():
+                        cliente_nombre = row.get('nombre', 'Desconocido')
                         for i in range(1, 16):
-                            num = limpiar_numero(row.get(f"telefono{i}", ""))
-                            if num:
+                            num_raw = row.get(f"telefono{i}", "")
+                            num_limpio = limpiar_numero(num_raw)
+                            if num_limpio:
                                 telefonos.append({
-                                    "id_telefono": f"{row['id_cliente']}_{num}",
+                                    "id_telefono": f"{row['id_cliente']}_{num_limpio}",
                                     "id_cliente": row["id_cliente"],
-                                    "numero": num,
-                                    "tipo": tipo_telefono(num),
+                                    "numero": num_limpio,
+                                    "tipo": tipo_telefono(num_limpio),
                                     "estado": "Activo",
                                     "prioridad": 1,
                                     "fuente": uploaded_file.name
                                 })
+                            elif num_raw and num_raw != "":
+                                telefonos_invalidos.append(f"{cliente_nombre}: telefono{i}={num_raw}")
+                    
+                    if telefonos_invalidos:
+                        st.warning(f"⚠️ Teléfonos inválidos omitidos:\n" + "\n".join(telefonos_invalidos[:10]))
+                        if len(telefonos_invalidos) > 10:
+                            st.info(f"... y {len(telefonos_invalidos) - 10} más")
                     
                     df_tel = pd.DataFrame(telefonos).drop_duplicates(subset=["id_cliente", "numero"])
                     if not df_tel.empty:
@@ -374,7 +410,7 @@ def run(usuario, tipo_consulta):
                         """
                         client.query(query_tel).result()
                         client.delete_table(table)
-                        st.success(f"✅ {len(df_tel)} teléfonos")
+                        st.success(f"✅ {len(df_tel)} teléfonos válidos cargados")
                 
                 # =====================
                 # 6. CORREOS (MASIVO)
@@ -462,6 +498,13 @@ def run(usuario, tipo_consulta):
                     st.metric("Teléfonos", len(df_tel) if not df_tel.empty else 0)
                 with col4:
                     st.metric("Correos", len(df_correo) if not df_correo.empty else 0)
+                
+                if telefonos_invalidos:
+                    with st.expander("📋 Ver teléfonos inválidos omitidos"):
+                        for inv in telefonos_invalidos[:20]:
+                            st.write(f"- {inv}")
+                        if len(telefonos_invalidos) > 20:
+                            st.write(f"... y {len(telefonos_invalidos) - 20} más")
                 
             except Exception as e:
                 st.error(f"❌ Error: {e}")

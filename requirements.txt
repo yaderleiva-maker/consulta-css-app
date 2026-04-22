@@ -5,3 +5,4 @@ db-dtypes
 pyarrow
 streamlit-oauth
 PyJWT
+openpyxl

@@ -6,3 +6,4 @@ pyarrow
 streamlit-oauth
 PyJWT
 openpyxl
+xlrd

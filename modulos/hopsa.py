@@ -99,8 +99,65 @@ def subir_informacion():
     with col3:
         cotizaciones_file = st.file_uploader("Cotizaciones", type=['csv', 'xlsx'], key="cotizaciones")
     
-    if st.button("Procesar (demo)"):
-        st.success(f"Datos procesados para {fecha_reporte}")
+    # Datos manuales simplificados
+    st.markdown("---")
+    st.markdown("### Datos manuales")
+    
+    with st.form("datos_form"):
+        datos_manuales = []
+        for _, row in agentes.iterrows():
+            st.markdown(f"**{row['nombre']}**")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                leads = st.number_input("Leads", min_value=0, value=0, key=f"leads_{row['id_asesor']}")
+            with col_b:
+                nps = st.number_input("NPS", min_value=0, max_value=10, value=0, key=f"nps_{row['id_asesor']}")
+            
+            datos_manuales.append({
+                "id_asesor": str(row['id_asesor']),
+                "leads": leads,
+                "nps": nps
+            })
+        
+        submit = st.form_submit_button("Procesar")
+    
+    if submit:
+        if not all([ventas_file, llamadas_file, cotizaciones_file]):
+            st.error("❌ Faltan archivos")
+            return
+        
+        try:
+            # 1. Procesar ventas - SOLO LECTURA
+            if ventas_file.name.endswith('.csv'):
+                df_ventas = pd.read_csv(ventas_file)
+            else:
+                df_ventas = pd.read_excel(ventas_file)
+            
+            st.success(f"✅ Ventas: {len(df_ventas)} registros leidos")
+            st.write("Columnas ventas:", list(df_ventas.columns))
+            st.dataframe(df_ventas.head())
+            
+            # 2. Procesar llamadas - SOLO LECTURA
+            df_llamadas = pd.read_csv(llamadas_file)
+            st.success(f"✅ Llamadas: {len(df_llamadas)} registros leidos")
+            st.write("Columnas llamadas:", list(df_llamadas.columns))
+            st.dataframe(df_llamadas.head())
+            
+            # 3. Procesar cotizaciones - SOLO LECTURA
+            if cotizaciones_file.name.endswith('.csv'):
+                df_cotizaciones = pd.read_csv(cotizaciones_file)
+            else:
+                df_cotizaciones = pd.read_excel(cotizaciones_file)
+            
+            st.success(f"✅ Cotizaciones: {len(df_cotizaciones)} registros leidos")
+            st.write("Columnas cotizaciones:", list(df_cotizaciones.columns))
+            st.dataframe(df_cotizaciones.head())
+            
+            st.success("✅ Todos los archivos leidos correctamente")
+            
+        except Exception as e:
+            st.error(f"Error al leer archivos: {e}")
+            st.exception(e)
 
 def descargar_reportes():
     st.subheader("📥 Descargar reportes")

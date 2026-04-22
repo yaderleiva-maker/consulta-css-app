@@ -36,9 +36,8 @@ def run(usuario, tipo_consulta):
     # SELECCIÓN DE PROYECTO
     # =====================
     lista_proyectos = [
-        "veterinaria_001",
-        "cobros_001", 
-        "ventas_001"
+        "VETPET001",
+        "generico"
     ]
     
     st.markdown("### 📋 Proyectos disponibles")

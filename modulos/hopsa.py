@@ -19,8 +19,10 @@ def init_bq_client():
         return bigquery.Client(credentials=credentials, project=PROJECT_ID)
     return bigquery.Client(project=PROJECT_ID)
 
+def cargar_agentes():
+    """Carga agentes desde BigQuery"""
+    pass
+
 def run(usuario):
     st.title("HOPSA - TEST")
-    st.write("Paso 3: init_bq_client OK")
-    client = init_bq_client()
-    st.write("Cliente BQ creado")
+    st.write("Paso 4: Funciones basicas OK")

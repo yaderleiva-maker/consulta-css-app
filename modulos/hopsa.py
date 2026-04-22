@@ -43,6 +43,7 @@ def actualizar_agentes():
     - `nombre` - Nombre completo
     - `supervisor` - Supervisor
     - `id_llamadas` (opcional) - ID alternativo para cruce con llamadas
+    
     """)
 
 archivo = st.file_uploader("Subir archivo", type=['csv', 'xlsx'], key="upload_agentes")
@@ -108,7 +109,7 @@ with col2:
     st.markdown("**📞 Llamadas**")
     llamadas_file = st.file_uploader("Llamadas (CSV)", type=['csv'], key="llamadas")
     if llamadas_file:
-        st.caption("Columnas: Identificación, Llamadas (ya viene el numero)")
+        st.caption("Columnas: Identificación, Llamadas")
 
 with col3:
     st.markdown("**📝 Cotizaciones**")
@@ -180,13 +181,12 @@ if submit:
         client = init_bq_client()
         df_manual = pd.DataFrame(datos_manuales)
         
-        # 1. Procesar VENTAS (columnas: Vendedor, Venta, Factura)
+        # 1. Procesar VENTAS
         if ventas_file.name.endswith('.csv'):
             df_ventas = pd.read_csv(ventas_file)
         else:
             df_ventas = pd.read_excel(ventas_file)
         
-        # Renombrar columna Vendedor a id_asesor
         df_ventas = df_ventas.rename(columns={'Vendedor': 'id_asesor'})
         df_ventas['id_asesor'] = df_ventas['id_asesor'].astype(str).str.strip()
         
@@ -194,37 +194,33 @@ if submit:
             ventas=('Venta', 'sum'),
             cierres=('Factura', 'count')
         ).reset_index()
-        st.success(f"✅ Ventas: {len(ventas_agg)} agentes con ventas")
+        st.success(f"✅ Ventas procesadas: {len(ventas_agg)} agentes")
         
-        # 2. Procesar LLAMADAS (columnas: Identificación, Llamadas)
+        # 2. Procesar LLAMADAS
         df_llamadas = pd.read_csv(llamadas_file)
         
-        # Detectar si ya viene resumido o hay que contar
-        if 'Llamadas' in df_llamadas.columns and len(df_llamadas) <= len(agentes):
-            # Ya viene resumido, usar el valor directo
-            df_llamadas = df_llamadas.rename(columns={'Identificación': 'id_original'})
-            df_llamadas['id_original'] = df_llamadas['id_original'].astype(str).str.strip()
-            
-            # Crear mapeo de IDs
-            mapeo = dict(zip(agentes['id_llamadas'].astype(str), agentes['id_asesor'].astype(str)))
-            df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo).fillna(df_llamadas['id_original'])
-            
-            # Usar el valor de Llamadas directamente
-            llamadas_agg = df_llamadas[['id_asesor', 'Llamadas']].copy()
-            llamadas_agg = llamadas_agg.rename(columns={'Llamadas': 'llamadas'})
-        else:
-            # Hay que contar por agente
-            df_llamadas['id_original'] = df_llamadas['Identificación'].astype(str).str.strip()
-            
-            # Crear mapeo de IDs
-            mapeo = dict(zip(agentes['id_llamadas'].astype(str), agentes['id_asesor'].astype(str)))
-            df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo).fillna(df_llamadas['id_original'])
-            
-            llamadas_agg = df_llamadas.groupby('id_asesor').size().reset_index(name='llamadas')
+        # Normalizar IDs de llamadas
+        df_llamadas['id_original'] = df_llamadas['Identificación'].astype(str).str.strip()
         
-        st.success(f"✅ Llamadas: {len(llamadas_agg)} agentes con datos")
+        # Crear mapeo de id_llamadas a id_asesor
+        mapeo = dict(zip(agentes['id_llamadas'].astype(str).str.strip(), agentes['id_asesor'].astype(str)))
         
-        # 3. Procesar COTIZACIONES (columna: Vendedor)
+        # Mapear los IDs
+        df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo)
+        
+        # Los que no tienen mapeo, mostrar advertencia
+        sin_mapeo = df_llamadas[df_llamadas['id_asesor'].isna()]['id_original'].unique()
+        if len(sin_mapeo) > 0:
+            st.warning(f"⚠️ {len(sin_mapeo)} IDs de llamadas sin mapeo: {list(sin_mapeo)[:5]}")
+            # Asignar el ID original a los que no tienen mapeo
+            df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['id_original'])
+        
+        # Usar el valor de Llamadas (ya viene el número)
+        llamadas_agg = df_llamadas.groupby('id_asesor')['Llamadas'].sum().reset_index()
+        llamadas_agg = llamadas_agg.rename(columns={'Llamadas': 'llamadas'})
+        st.success(f"✅ Llamadas procesadas: {len(llamadas_agg)} agentes")
+        
+        # 3. Procesar COTIZACIONES
         if cotizaciones_file.name.endswith('.csv'):
             df_cotizaciones = pd.read_csv(cotizaciones_file)
         else:
@@ -233,7 +229,7 @@ if submit:
         df_cotizaciones = df_cotizaciones.rename(columns={'Vendedor': 'id_asesor'})
         df_cotizaciones['id_asesor'] = df_cotizaciones['id_asesor'].astype(str).str.strip()
         cotizaciones_agg = df_cotizaciones.groupby('id_asesor').size().reset_index(name='cantidad_cotizaciones')
-        st.success(f"✅ Cotizaciones: {len(cotizaciones_agg)} agentes con cotizaciones")
+        st.success(f"✅ Cotizaciones procesadas: {len(cotizaciones_agg)} agentes")
         
         # 4. Construir reporte final
         reporte = agentes.merge(ventas_agg, on='id_asesor', how='left')
@@ -260,33 +256,35 @@ if submit:
         reporte['año'] = fecha_reporte.year
         reporte['fecha_creacion'] = datetime.datetime.now()
         
-        # Guardar en BigQuery
-        job = client.load_table_from_dataframe(
-            reporte, TABLE_REPORTE,
-            job_config=bigquery.LoadJobConfig(
-                write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+        # 5. Guardar en BigQuery
+        with st.spinner("Guardando en BigQuery..."):
+            # Guardar reporte
+            job = client.load_table_from_dataframe(
+                reporte, TABLE_REPORTE,
+                job_config=bigquery.LoadJobConfig(
+                    write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+                )
             )
-        )
-        job.result()
-        
-        # Guardar datos manuales
-        df_manual['fecha'] = fecha_reporte
-        df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
-        df_manual['timestamp'] = datetime.datetime.now()
-        
-        job_manual = client.load_table_from_dataframe(
-            df_manual, TABLE_MANUAL,
-            job_config=bigquery.LoadJobConfig(
-                write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+            job.result()
+            
+            # Guardar datos manuales
+            df_manual['fecha'] = fecha_reporte
+            df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
+            df_manual['timestamp'] = datetime.datetime.now()
+            
+            job_manual = client.load_table_from_dataframe(
+                df_manual, TABLE_MANUAL,
+                job_config=bigquery.LoadJobConfig(
+                    write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+                )
             )
-        )
-        job_manual.result()
+            job_manual.result()
         
-        st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente")
+        st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente en BigQuery")
         
-        # Resumen
+        # 6. Mostrar resumen
         st.subheader("📊 Resumen del dia")
-        resumen = reporte[['nombre', 'leads', 'cierres', 'ventas', 'conversion']].copy()
+        resumen = reporte[['nombre', 'leads', 'cierres', 'ventas', 'conversion', 'llamadas', 'cantidad_cotizaciones']].copy()
         resumen['ventas'] = resumen['ventas'].round(2)
         st.dataframe(resumen, use_container_width=True)
         
@@ -295,7 +293,7 @@ if submit:
         col1.metric("Total Ventas", f"${reporte['ventas'].sum():,.0f}")
         col2.metric("Total Cierres", f"{reporte['cierres'].sum():,.0f}")
         col3.metric("Total Leads", f"{reporte['leads'].sum():,.0f}")
-        col4.metric("Conversion Promedio", f"{reporte['conversion'].mean():.1f}%")
+        col4.metric("Total Llamadas", f"{reporte['llamadas'].sum():,.0f}")
         
     except Exception as e:
         st.error(f"Error al procesar: {e}")
@@ -324,10 +322,13 @@ if st.button("🔍 Generar reporte", type="primary"):
                 supervisor,
                 leads,
                 cierres,
-                ROUND(conversion, 2) as conversion,
+                ROUND(conversion, 2) as conversion_pct,
+                nps,
                 ROUND(ventas, 2) as ventas,
+                ROUND(ticket_promedio, 2) as ticket_promedio,
                 llamadas,
                 cantidad_cotizaciones,
+                pra_90,
                 asistencia
             FROM `{TABLE_REPORTE}`
             WHERE fecha BETWEEN @fecha_inicio AND @fecha_fin
@@ -341,8 +342,12 @@ if st.button("🔍 Generar reporte", type="primary"):
                 SUM(leads) as total_leads,
                 SUM(cierres) as total_cierres,
                 ROUND(AVG(conversion), 2) as conversion_promedio,
+                ROUND(AVG(nps), 2) as nps_promedio,
                 ROUND(SUM(ventas), 2) as total_ventas,
+                ROUND(AVG(ticket_promedio), 2) as ticket_promedio,
                 SUM(llamadas) as total_llamadas,
+                SUM(cantidad_cotizaciones) as total_cotizaciones,
+                ROUND(AVG(pra_90), 2) as pra_promedio,
                 ROUND(AVG(asistencia), 0) as asistencia_promedio
             FROM `{TABLE_REPORTE}`
             WHERE fecha BETWEEN @fecha_inicio AND @fecha_fin

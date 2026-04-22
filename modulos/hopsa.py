@@ -32,11 +32,11 @@ def actualizar_agentes():
     st.subheader("👥 Cargar Agentes (HEXAGON)")
     
     st.markdown("""
-    **Archivo Excel o CSV con estas columnas:**
+    **Archivo Excel o CSV:**
     - `id_asesor` (texto o número)
     - `nombre` (texto)
     - `supervisor` (texto)
-    
+    """
     # 📌 **Solo 25 personas aprox**, puedes usar Excel directamente.
     
     """)

@@ -36,9 +36,8 @@ def actualizar_agentes():
     - `id_asesor` (texto o número)
     - `nombre` (texto)
     - `supervisor` (texto)
-    """
-    # 📌 **Solo 25 personas aprox**, puedes usar Excel directamente.
-    """
+    
+    📌 **Solo 25 personas aprox**, puedes usar Excel directamente.
     """)
     
     # Subir archivo
@@ -63,7 +62,6 @@ def actualizar_agentes():
             
             # Validar columnas
             columnas_necesarias = ['id_asesor', 'nombre', 'supervisor']
-            columnas_existentes = [col.lower() for col in df.columns]
             
             # Buscar coincidencias sin importar mayúsculas
             mapeo = {}
@@ -107,116 +105,10 @@ def actualizar_agentes():
             st.session_state.agentes_df = None
             st.rerun()
 
-import streamlit as st
-import pandas as pd
-import datetime
-from google.cloud import bigquery
-from google.oauth2 import service_account
-import io
-
-# Configuración
-PROJECT_ID = "proyecto-css-panama"
-DATASET_HOPSA = "hopsa"
-TABLE_REPORTE = f"{PROJECT_ID}.{DATASET_HOPSA}.reporte_diario"
-TABLE_MANUAL = f"{PROJECT_ID}.{DATASET_HOPSA}.datos_manuales"
-
-@st.cache_resource
-def init_bq_client():
-    if 'gcp_service_account' in st.secrets:
-        credentials = service_account.Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"]
-        )
-        return bigquery.Client(credentials=credentials, project=PROJECT_ID)
-    else:
-        return bigquery.Client(project=PROJECT_ID)
-
 # -------------------------------
-# SESSION STATE para agentes
+# SUBIR INFORMACIÓN (corregida indentación)
 # -------------------------------
-def init_session_state():
-    if 'agentes_df' not in st.session_state:
-        st.session_state.agentes_df = None
-
-def actualizar_agentes():
-    st.subheader("👥 Cargar Agentes (HEXAGON)")
-    
-    st.markdown("""
-    **Archivo Excel o CSV:**
-    - `id_asesor` (texto o número)
-    - `nombre` (texto)
-    - `supervisor` (texto)
-    """
-    # 📌 **Solo 25 personas aprox**, puedes usar Excel directamente.
-    """
-    """)
-    
-    # Subir archivo
-    archivo = st.file_uploader(
-        "Seleccionar archivo", 
-        type=['xlsx', 'xls', 'csv'],
-        key="upload_agentes"
-    )
-    
-    if archivo:
-        try:
-            # Leer según extensión
-            if archivo.name.endswith('.csv'):
-                # Probar diferentes separadores
-                try:
-                    df = pd.read_csv(archivo, encoding='utf-8')
-                except:
-                    archivo.seek(0)
-                    df = pd.read_csv(archivo, encoding='latin1', sep=';')
-            else:
-                df = pd.read_excel(archivo)
-            
-            # Validar columnas
-            columnas_necesarias = ['id_asesor', 'nombre', 'supervisor']
-            columnas_existentes = [col.lower() for col in df.columns]
-            
-            # Buscar coincidencias sin importar mayúsculas
-            mapeo = {}
-            for col_needed in columnas_necesarias:
-                for col_exist in df.columns:
-                    if col_exist.lower() == col_needed.lower():
-                        mapeo[col_needed] = col_exist
-                        break
-            
-            if len(mapeo) != 3:
-                st.error(f"❌ Columnas requeridas: {columnas_necesarias}")
-                st.write("Columnas encontradas:", list(df.columns))
-                return
-            
-            # Renombrar columnas
-            df = df.rename(columns={mapeo['id_asesor']: 'id_asesor', 
-                                     mapeo['nombre']: 'nombre', 
-                                     mapeo['supervisor']: 'supervisor'})
-            
-            # Limpiar datos
-            df['id_asesor'] = df['id_asesor'].astype(str).str.strip()
-            df['nombre'] = df['nombre'].astype(str).str.strip()
-            df['supervisor'] = df['supervisor'].astype(str).str.strip()
-            
-            # Guardar en session state
-            st.session_state.agentes_df = df
-            
-            st.success(f"✅ {len(df)} agentes cargados correctamente")
-            st.dataframe(df, use_container_width=True)
-            
-        except Exception as e:
-            st.error(f"Error al leer archivo: {e}")
-            st.info("💡 Asegúrate de que el archivo no esté corrupto")
-    
-    # Mostrar agentes actuales
-    if st.session_state.agentes_df is not None:
-        st.subheader("📋 Agentes actualmente cargados")
-        st.dataframe(st.session_state.agentes_df, use_container_width=True)
-        
-        if st.button("🗑️ Limpiar agentes"):
-            st.session_state.agentes_df = None
-            st.rerun()
-
-    def subir_informacion():
+def subir_informacion():
     st.subheader("📂 Subir información del día")
     
     # Verificar que hay agentes cargados
@@ -291,7 +183,7 @@ def actualizar_agentes():
     with st.form("datos_manuales_form"):
         datos_manuales = []
         
-        for idx, (_, row) in enumerate(df_asesores.iterrows()):
+        for _, row in df_asesores.iterrows():
             with st.container():
                 st.markdown(f"**👤 {row['nombre']}** (ID: `{row['id_asesor']}`)")
                 
@@ -464,3 +356,88 @@ def actualizar_agentes():
         except Exception as e:
             st.error(f"Error al procesar: {e}")
             st.exception(e)
+
+# -------------------------------
+# DESCARGAR REPORTES
+# -------------------------------
+def descargar_reportes():
+    st.subheader("📥 Descargar reportes históricos")
+    
+    client = init_bq_client()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        fecha_inicio = st.date_input("Fecha inicio", datetime.date.today() - datetime.timedelta(days=30))
+    with col2:
+        fecha_fin = st.date_input("Fecha fin", datetime.date.today())
+    
+    if st.button("🔍 Generar reporte", type="primary"):
+        try:
+            query = f"""
+            SELECT 
+                fecha,
+                nombre as agente,
+                supervisor,
+                leads,
+                cierres,
+                ROUND(conversion, 2) as conversion,
+                nps,
+                ROUND(ventas, 2) as ventas,
+                ROUND(ticket_promedio, 2) as ticket_promedio,
+                llamadas,
+                cantidad_cotizaciones,
+                pra_90,
+                asistencia
+            FROM `{TABLE_REPORTE}`
+            WHERE fecha BETWEEN @fecha_inicio AND @fecha_fin
+            ORDER BY fecha DESC, nombre
+            """
+            
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("fecha_inicio", "DATE", fecha_inicio),
+                    bigquery.ScalarQueryParameter("fecha_fin", "DATE", fecha_fin),
+                ]
+            )
+            
+            df = client.query(query, job_config=job_config).to_dataframe()
+            
+            if df.empty:
+                st.warning("No hay datos en el rango seleccionado")
+            else:
+                st.success(f"✅ {len(df)} registros encontrados")
+                st.dataframe(df, use_container_width=True)
+                
+                # Descargar
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "📥 Descargar CSV",
+                    csv,
+                    f"hopsa_report_{fecha_inicio}_{fecha_fin}.csv",
+                    "text/csv"
+                )
+                
+        except Exception as e:
+            st.error(f"Error: {e}")
+
+# -------------------------------
+# FUNCIÓN PRINCIPAL
+# -------------------------------
+def run(usuario):
+    st.title("🎯 HOPSA - Gestión de Ventas")
+    st.caption(f"Usuario: {usuario}")
+    
+    # Inicializar session state
+    init_session_state()
+    
+    opcion = st.sidebar.radio(
+        "Opciones",
+        ["1. Actualizar Agentes", "2. Subir Información", "3. Descargar Reportes"]
+    )
+    
+    if opcion == "1. Actualizar Agentes":
+        actualizar_agentes()
+    elif opcion == "2. Subir Información":
+        subir_informacion()
+    elif opcion == "3. Descargar Reportes":
+        descargar_reportes()

@@ -33,18 +33,14 @@ def run(usuario, tipo_consulta):
         return
     
     # =====================
-    # SELECCIÓN DE PROYECTO
+    # SELECCIÓN DE PROYECTO (SOLO SELECTBOX)
     # =====================
     lista_proyectos = [
         "VETPET001",
         "generico"
     ]
     
-    st.markdown("### 📋 Proyectos disponibles")
-    for p in lista_proyectos:
-        st.markdown(f"- `{p}`")
-    
-    id_proyecto = st.selectbox("Selecciona el proyecto", lista_proyectos)
+    id_proyecto = st.selectbox("📁 Selecciona el proyecto", lista_proyectos)
     
     # =====================
     # SUBIR ARCHIVO
@@ -61,26 +57,22 @@ def run(usuario, tipo_consulta):
     )
     
     # =====================
-    # FUNCIONES MEJORADAS
+    # FUNCIONES
     # =====================
     def limpiar_numero(numero):
         """Limpia y valida número de teléfono (Panamá)"""
         if pd.isna(numero) or numero == "":
             return None
         
-        # Limpiar: eliminar .0 y cualquier carácter no numérico
         numero = str(numero).replace(".0", "").strip()
         numero = ''.join(filter(str.isdigit, numero))
         
-        # Validación de longitud
         if len(numero) == 8:
             # Celular: debe empezar con 6
             if not numero.startswith('6'):
                 return None
-            # Evitar números con todos dígitos iguales (ej: 60000000)
             if len(set(numero)) == 1:
                 return None
-            # Evitar patrones sospechosos (6 seguido de muchos ceros)
             if numero[1:].count('0') >= 6:
                 return None
             return numero
@@ -89,17 +81,14 @@ def run(usuario, tipo_consulta):
             # Fijo: NO puede empezar con 6 ni con 0
             if numero.startswith('6') or numero.startswith('0'):
                 return None
-            # Evitar números con todos dígitos iguales
             if len(set(numero)) == 1:
                 return None
             return numero
             
         else:
-            # Longitud incorrecta
             return None
     
     def tipo_telefono(numero):
-        """Determina el tipo de teléfono según el número limpio"""
         if numero and len(numero) == 8 and numero.startswith('6'):
             return "celular"
         elif numero and len(numero) == 7:
@@ -248,11 +237,9 @@ def run(usuario, tipo_consulta):
                 # =====================
                 df_clientes = df[['nombre','cedula','genero','fecha_nac','direccion']].drop_duplicates('cedula')
                 
-                # Normalizar fechas
                 if 'fecha_nac' in df_clientes.columns:
                     df_clientes['fecha_nac'] = df_clientes['fecha_nac'].apply(normalizar_fecha)
                 
-                # Validar cédulas
                 df_clientes['cedula_validada'] = df_clientes['cedula'].apply(validar_cedula)
                 df_clientes = df_clientes[df_clientes['cedula_validada'].notna()]
                 df_clientes['cedula'] = df_clientes['cedula_validada']
@@ -294,19 +281,16 @@ def run(usuario, tipo_consulta):
                         mapa_cedula_id[cedula] = id_cliente
                 
                 # =====================
-                # 3. INSERTAR NUEVOS CLIENTES (MASIVO)
+                # 3. INSERTAR NUEVOS CLIENTES
                 # =====================
                 if clientes_insertar:
                     df_insert = pd.DataFrame(clientes_insertar)
-                    
-                    # Convertir fecha_nac a date si existe
                     if 'fecha_nac' in df_insert.columns:
                         df_insert['fecha_nac'] = pd.to_datetime(df_insert['fecha_nac'], errors='coerce')
                         df_insert['fecha_nac'] = df_insert['fecha_nac'].dt.date
                     
                     temp_suffix = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
                     table_temp = f"{PROJECT_ID}.{DATASET}.tmp_clientes_insert_{temp_suffix}"
-                    
                     client.load_table_from_dataframe(df_insert, table_temp).result()
                     
                     query_merge_insert = f"""
@@ -320,24 +304,20 @@ def run(usuario, tipo_consulta):
                     )
                     """
                     client.query(query_merge_insert).result()
-                    
                     client.delete_table(table_temp)
                     st.success(f"✅ Clientes nuevos: {len(clientes_insertar)}")
                 
                 # =====================
-                # 4. ACTUALIZAR CLIENTES EXISTENTES (MASIVO - 1 SOLA QUERY)
+                # 4. ACTUALIZAR CLIENTES EXISTENTES
                 # =====================
                 if clientes_actualizar:
                     df_update = pd.DataFrame(clientes_actualizar)
-                    
-                    # Convertir fecha_nac a date si existe
                     if 'fecha_nac' in df_update.columns:
                         df_update['fecha_nac'] = pd.to_datetime(df_update['fecha_nac'], errors='coerce')
                         df_update['fecha_nac'] = df_update['fecha_nac'].dt.date
                     
                     temp_suffix = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
                     table_temp = f"{PROJECT_ID}.{DATASET}.tmp_clientes_update_{temp_suffix}"
-                    
                     client.load_table_from_dataframe(df_update, table_temp).result()
                     
                     query_merge_update = f"""
@@ -353,16 +333,14 @@ def run(usuario, tipo_consulta):
                       T.estado = 'Activo'
                     """
                     client.query(query_merge_update).result()
-                    
                     client.delete_table(table_temp)
                     st.success(f"✅ Clientes actualizados: {len(clientes_actualizar)}")
                 
-                # Agregar columna id_cliente al DataFrame original
                 df['id_cliente'] = df['cedula'].map(mapa_cedula_id)
                 df = df[df['id_cliente'].notna()]
                 
                 # =====================
-                # 5. TELÉFONOS (MASIVO CON VALIDACIÓN MEJORADA)
+                # 5. TELÉFONOS
                 # =====================
                 df_tel = pd.DataFrame()
                 telefonos_invalidos = []
@@ -387,11 +365,6 @@ def run(usuario, tipo_consulta):
                             elif num_raw and num_raw != "":
                                 telefonos_invalidos.append(f"{cliente_nombre}: telefono{i}={num_raw}")
                     
-                    if telefonos_invalidos:
-                        st.warning(f"⚠️ Teléfonos inválidos omitidos:\n" + "\n".join(telefonos_invalidos[:10]))
-                        if len(telefonos_invalidos) > 10:
-                            st.info(f"... y {len(telefonos_invalidos) - 10} más")
-                    
                     df_tel = pd.DataFrame(telefonos).drop_duplicates(subset=["id_cliente", "numero"])
                     if not df_tel.empty:
                         temp_suffix = hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]
@@ -410,10 +383,9 @@ def run(usuario, tipo_consulta):
                         """
                         client.query(query_tel).result()
                         client.delete_table(table)
-                        st.success(f"✅ {len(df_tel)} teléfonos válidos cargados")
                 
                 # =====================
-                # 6. CORREOS (MASIVO)
+                # 6. CORREOS
                 # =====================
                 df_correo = pd.DataFrame()
                 if permite_correos and not df.empty:
@@ -450,10 +422,9 @@ def run(usuario, tipo_consulta):
                         """
                         client.query(query_correo).result()
                         client.delete_table(table)
-                        st.success(f"✅ {len(df_correo)} correos")
                 
                 # =====================
-                # 7. RELACIÓN CLIENTE_PROYECTO (MASIVO)
+                # 7. RELACIÓN CLIENTE_PROYECTO
                 # =====================
                 if not df.empty:
                     df_rel = df[['id_cliente']].drop_duplicates()
@@ -485,22 +456,24 @@ def run(usuario, tipo_consulta):
                 registrar_log(uploaded_file.name, id_proyecto, len(df), "EXITOSO")
                 
                 # =====================
-                # 9. RESUMEN
+                # 9. RESUMEN (UNA SOLA VEZ)
                 # =====================
                 st.success("🎉 ¡Carga completada!")
-                st.subheader("📊 Resumen")
+                
+                # Mostrar resumen en columnas
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    st.metric("Nuevos", len(clientes_insertar))
+                    st.metric("🆕 Clientes nuevos", len(clientes_insertar))
                 with col2:
-                    st.metric("Actualizados", len(clientes_actualizar))
+                    st.metric("🔄 Clientes actualizados", len(clientes_actualizar))
                 with col3:
-                    st.metric("Teléfonos", len(df_tel) if not df_tel.empty else 0)
+                    st.metric("📞 Teléfonos", len(df_tel) if not df_tel.empty else 0)
                 with col4:
-                    st.metric("Correos", len(df_correo) if not df_correo.empty else 0)
+                    st.metric("✉️ Correos", len(df_correo) if not df_correo.empty else 0)
                 
+                # Mostrar detalles de teléfonos inválidos en un expander (solo si hay)
                 if telefonos_invalidos:
-                    with st.expander("📋 Ver teléfonos inválidos omitidos"):
+                    with st.expander(f"⚠️ {len(telefonos_invalidos)} teléfonos inválidos omitidos"):
                         for inv in telefonos_invalidos[:20]:
                             st.write(f"- {inv}")
                         if len(telefonos_invalidos) > 20:

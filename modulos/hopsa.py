@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import io
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
@@ -28,6 +29,35 @@ def cargar_agentes():
     except:
         return None
 
+def detectar_separador(archivo):
+    """Detecta el separador de un archivo CSV"""
+    contenido = archivo.getvalue().decode('utf-8')
+    primera_linea = contenido.split('\n')[0]
+    
+    if ';' in primera_linea:
+        return ';'
+    elif '\t' in primera_linea:
+        return '\t'
+    else:
+        return ','
+
+def leer_csv_inteligente(archivo):
+    """Lee CSV detectando automáticamente el separador y encoding"""
+    try:
+        # Probar con utf-8
+        separador = detectar_separador(archivo)
+        archivo.seek(0)
+        return pd.read_csv(archivo, sep=separador, encoding='utf-8')
+    except:
+        try:
+            # Probar con latin1
+            archivo.seek(0)
+            return pd.read_csv(archivo, sep=separador, encoding='latin1')
+        except:
+            # Probar sin encoding específico
+            archivo.seek(0)
+            return pd.read_csv(archivo, sep=separador)
+
 def actualizar_agentes():
     st.subheader("👥 Gestionar Agentes")
     
@@ -39,7 +69,7 @@ def actualizar_agentes():
     st.markdown("---")
     st.markdown("""
     **Formato requerido:**
-    - `id_asesor` - ID del sistema de ventas (ej: heyanez)
+    - `id_asesor` - ID del sistema de ventas
     - `nombre` - Nombre completo
     - `supervisor` - Supervisor
     - `id_llamadas` (opcional) - ID alternativo para cruce con llamadas
@@ -50,7 +80,7 @@ def actualizar_agentes():
     if archivo:
         try:
             if archivo.name.endswith('.csv'):
-                df = pd.read_csv(archivo)
+                df = leer_csv_inteligente(archivo)
             else:
                 df = pd.read_excel(archivo)
             
@@ -89,6 +119,9 @@ def subir_informacion():
     agentes = cargar_agentes()
     if agentes is None or agentes.empty:
         st.warning("⚠️ Primero carga los agentes")
+        if st.button("Ir a Gestionar Agentes"):
+            st.session_state.menu_hopsa = "Agentes"
+            st.rerun()
         return
     
     fecha_reporte = st.date_input("Fecha del reporte", datetime.date.today())
@@ -108,7 +141,7 @@ def subir_informacion():
         st.markdown("**📞 Llamadas**")
         llamadas_file = st.file_uploader("Llamadas (CSV)", type=['csv'], key="llamadas")
         if llamadas_file:
-            st.caption("Columnas: Identificación, Llamadas")
+            st.caption("Columnas: Identificación o Usuario, más columna de llamadas")
     
     with col3:
         st.markdown("**📝 Cotizaciones**")
@@ -182,7 +215,7 @@ def subir_informacion():
             
             # 1. Procesar VENTAS
             if ventas_file.name.endswith('.csv'):
-                df_ventas = pd.read_csv(ventas_file)
+                df_ventas = leer_csv_inteligente(ventas_file)
             else:
                 df_ventas = pd.read_excel(ventas_file)
             
@@ -195,11 +228,38 @@ def subir_informacion():
             ).reset_index()
             st.success(f"✅ Ventas procesadas: {len(ventas_agg)} agentes")
             
-            # 2. Procesar LLAMADAS
-            df_llamadas = pd.read_csv(llamadas_file)
+            # 2. Procesar LLAMADAS - CON LECTURA INTELIGENTE
+            st.info("Leyendo archivo de llamadas...")
             
-            # Normalizar IDs de llamadas
-            df_llamadas['id_original'] = df_llamadas['Identificación'].astype(str).str.strip()
+            # Leer con detección automática
+            df_llamadas = leer_csv_inteligente(llamadas_file)
+            
+            # Mostrar columnas para debug
+            st.write("Columnas en llamadas:", list(df_llamadas.columns))
+            
+            # Buscar columna de ID (puede ser 'Identificación' o 'Usuario')
+            col_id = None
+            for col in df_llamadas.columns:
+                col_lower = col.lower()
+                if col_lower in ['identificación', 'identificacion', 'usuario', 'id', 'vendedor']:
+                    col_id = col
+                    break
+            
+            if col_id is None:
+                # Si no encuentra, usar la primera columna
+                col_id = df_llamadas.columns[0]
+                st.warning(f"No se encontró columna de ID, usando: {col_id}")
+            
+            # Buscar columna de llamadas
+            col_llamadas = None
+            for col in df_llamadas.columns:
+                col_lower = col.lower()
+                if col_lower in ['llamadas', 'llamadas_totales', 'total_llamadas', 'cantidad', 'llam']:
+                    col_llamadas = col
+                    break
+            
+            # Normalizar IDs
+            df_llamadas['id_original'] = df_llamadas[col_id].astype(str).str.strip()
             
             # Crear mapeo de id_llamadas a id_asesor
             mapeo = dict(zip(agentes['id_llamadas'].astype(str).str.strip(), agentes['id_asesor'].astype(str)))
@@ -207,21 +267,24 @@ def subir_informacion():
             # Mapear los IDs
             df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo)
             
-            # Los que no tienen mapeo, mostrar advertencia
+            # Los que no tienen mapeo
             sin_mapeo = df_llamadas[df_llamadas['id_asesor'].isna()]['id_original'].unique()
             if len(sin_mapeo) > 0:
-                st.warning(f"⚠️ {len(sin_mapeo)} IDs de llamadas sin mapeo: {list(sin_mapeo)[:5]}")
-                # Asignar el ID original a los que no tienen mapeo
+                st.warning(f"⚠️ {len(sin_mapeo)} IDs sin mapeo: {list(sin_mapeo)[:5]}")
                 df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['id_original'])
             
-            # Usar el valor de Llamadas (ya viene el número)
-            llamadas_agg = df_llamadas.groupby('id_asesor')['Llamadas'].sum().reset_index()
-            llamadas_agg = llamadas_agg.rename(columns={'Llamadas': 'llamadas'})
+            # Agrupar llamadas
+            if col_llamadas:
+                llamadas_agg = df_llamadas.groupby('id_asesor')[col_llamadas].sum().reset_index()
+                llamadas_agg = llamadas_agg.rename(columns={col_llamadas: 'llamadas'})
+            else:
+                llamadas_agg = df_llamadas.groupby('id_asesor').size().reset_index(name='llamadas')
+            
             st.success(f"✅ Llamadas procesadas: {len(llamadas_agg)} agentes")
             
             # 3. Procesar COTIZACIONES
             if cotizaciones_file.name.endswith('.csv'):
-                df_cotizaciones = pd.read_csv(cotizaciones_file)
+                df_cotizaciones = leer_csv_inteligente(cotizaciones_file)
             else:
                 df_cotizaciones = pd.read_excel(cotizaciones_file)
             
@@ -257,7 +320,6 @@ def subir_informacion():
             
             # 5. Guardar en BigQuery
             with st.spinner("Guardando en BigQuery..."):
-                # Guardar reporte
                 job = client.load_table_from_dataframe(
                     reporte, TABLE_REPORTE,
                     job_config=bigquery.LoadJobConfig(
@@ -266,7 +328,6 @@ def subir_informacion():
                 )
                 job.result()
                 
-                # Guardar datos manuales
                 df_manual['fecha'] = fecha_reporte
                 df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
                 df_manual['timestamp'] = datetime.datetime.now()
@@ -384,7 +445,13 @@ def run(usuario):
     st.title("🎯 HOPSA - Gestion de Ventas")
     st.caption(f"Usuario: {usuario}")
     
-    opcion = st.sidebar.radio("Menu", ["Agentes", "Subir Informacion", "Reportes"])
+    if 'menu_hopsa' not in st.session_state:
+        st.session_state.menu_hopsa = "Agentes"
+    
+    opcion = st.sidebar.radio("Menu", ["Agentes", "Subir Informacion", "Reportes"],
+                              index=["Agentes", "Subir Informacion", "Reportes"].index(st.session_state.menu_hopsa))
+    
+    st.session_state.menu_hopsa = opcion
     
     if opcion == "Agentes":
         actualizar_agentes()

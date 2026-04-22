@@ -43,353 +43,352 @@ def actualizar_agentes():
     - `nombre` - Nombre completo
     - `supervisor` - Supervisor
     - `id_llamadas` (opcional) - ID alternativo para cruce con llamadas
-    
     """)
-
-archivo = st.file_uploader("Subir archivo", type=['csv', 'xlsx'], key="upload_agentes")
-
-if archivo:
-    try:
-        if archivo.name.endswith('.csv'):
-            df = pd.read_csv(archivo)
-        else:
-            df = pd.read_excel(archivo)
-        
-        if 'id_asesor' not in df.columns or 'nombre' not in df.columns:
-            st.error("Faltan columnas: id_asesor, nombre")
-            return
-        
-        if 'id_llamadas' not in df.columns:
-            df['id_llamadas'] = df['id_asesor']
-        if 'supervisor' not in df.columns:
-            df['supervisor'] = ''
-        
-        st.success(f"✅ {len(df)} agentes cargados")
-        st.dataframe(df.head(), use_container_width=True)
-        
-        if st.button("💾 Guardar en BigQuery"):
-            client = init_bq_client()
-            df['fecha_actualizacion'] = datetime.datetime.now()
+    
+    archivo = st.file_uploader("Subir archivo", type=['csv', 'xlsx'], key="upload_agentes")
+    
+    if archivo:
+        try:
+            if archivo.name.endswith('.csv'):
+                df = pd.read_csv(archivo)
+            else:
+                df = pd.read_excel(archivo)
             
-            job = client.load_table_from_dataframe(
-                df, TABLE_ASESORES,
-                job_config=bigquery.LoadJobConfig(
-                    write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
+            if 'id_asesor' not in df.columns or 'nombre' not in df.columns:
+                st.error("Faltan columnas: id_asesor, nombre")
+                return
+            
+            if 'id_llamadas' not in df.columns:
+                df['id_llamadas'] = df['id_asesor']
+            if 'supervisor' not in df.columns:
+                df['supervisor'] = ''
+            
+            st.success(f"✅ {len(df)} agentes cargados")
+            st.dataframe(df.head(), use_container_width=True)
+            
+            if st.button("💾 Guardar en BigQuery"):
+                client = init_bq_client()
+                df['fecha_actualizacion'] = datetime.datetime.now()
+                
+                job = client.load_table_from_dataframe(
+                    df, TABLE_ASESORES,
+                    job_config=bigquery.LoadJobConfig(
+                        write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE
+                    )
                 )
-            )
-            job.result()
-            st.success("✅ Agentes guardados")
-            st.rerun()
-    except Exception as e:
-        st.error(f"Error: {e}")
+                job.result()
+                st.success("✅ Agentes guardados")
+                st.rerun()
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 def subir_informacion():
-st.subheader("📂 Subir informacion del dia")
-
-# Verificar agentes
-agentes = cargar_agentes()
-if agentes is None or agentes.empty:
-    st.warning("⚠️ Primero carga los agentes")
-    return
-
-fecha_reporte = st.date_input("Fecha del reporte", datetime.date.today())
-st.info(f"📋 {len(agentes)} agentes activos")
-
-st.markdown("---")
-st.markdown("### Archivos del dia")
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    st.markdown("**📊 Ventas**")
-    ventas_file = st.file_uploader("Ventas (Excel o CSV)", type=['csv', 'xlsx'], key="ventas")
-    if ventas_file:
-        st.caption("Columnas: Vendedor, Venta, Factura")
-
-with col2:
-    st.markdown("**📞 Llamadas**")
-    llamadas_file = st.file_uploader("Llamadas (CSV)", type=['csv'], key="llamadas")
-    if llamadas_file:
-        st.caption("Columnas: Identificación, Llamadas")
-
-with col3:
-    st.markdown("**📝 Cotizaciones**")
-    cotizaciones_file = st.file_uploader("Cotizaciones (Excel o CSV)", type=['csv', 'xlsx'], key="cotizaciones")
-    if cotizaciones_file:
-        st.caption("Columnas: Vendedor, Cotizacion")
-
-st.markdown("---")
-st.markdown("### Datos manuales")
-
-# Modo rapido
-modo_rapido = st.checkbox("⚡ Modo rapido - mismo valor para todos")
-
-if modo_rapido:
-    col_a, col_b, col_c, col_d = st.columns(4)
-    with col_a:
-        leads_default = st.number_input("Leads", min_value=0, value=0)
-    with col_b:
-        nps_default = st.number_input("NPS", min_value=0, max_value=10, value=0)
-    with col_c:
-        pra_default = st.number_input("PRA 90%", min_value=0, max_value=100, value=90)
-    with col_d:
-        asistencia_default = st.selectbox("Asistencia", [100, 0], 
-                                         format_func=lambda x: "✅ Asistio" if x == 100 else "❌ No asistio")
-
-with st.form("datos_manuales_form"):
-    datos_manuales = []
+    st.subheader("📂 Subir informacion del dia")
     
-    for _, row in agentes.iterrows():
-        with st.container():
-            st.markdown(f"**👤 {row['nombre']}** (ID ventas: `{row['id_asesor']}`, ID llamadas: `{row.get('id_llamadas', row['id_asesor'])}`)")
-            
-            if modo_rapido:
-                leads = leads_default
-                nps = nps_default
-                pra = pra_default
-                asistencia = asistencia_default
-                st.caption(f"📊 Leads: {leads} | ⭐ NPS: {nps} | 🎯 PRA: {pra}% | 📅 Asistencia: {'✅' if asistencia == 100 else '❌'}")
-            else:
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    leads = st.number_input("Leads", min_value=0, value=0, key=f"leads_{row['id_asesor']}")
-                with col2:
-                    nps = st.number_input("NPS", min_value=0, max_value=10, value=0, key=f"nps_{row['id_asesor']}")
-                with col3:
-                    pra = st.number_input("PRA 90%", min_value=0, max_value=100, value=90, key=f"pra_{row['id_asesor']}")
-                with col4:
-                    asistencia = st.selectbox("Asistencia", [100, 0], 
-                                             format_func=lambda x: "✅" if x == 100 else "❌",
-                                             key=f"asis_{row['id_asesor']}")
-            
-            datos_manuales.append({
-                "id_asesor": str(row['id_asesor']),
-                "leads": leads,
-                "nps": nps,
-                "pra_90": pra,
-                "asistencia": asistencia
-            })
-            st.markdown("---")
-    
-    submit = st.form_submit_button("🚀 Procesar y guardar todo", type="primary")
-
-if submit:
-    if not all([ventas_file, llamadas_file, cotizaciones_file]):
-        st.error("❌ Faltan archivos por subir")
+    # Verificar agentes
+    agentes = cargar_agentes()
+    if agentes is None or agentes.empty:
+        st.warning("⚠️ Primero carga los agentes")
         return
     
-    try:
-        client = init_bq_client()
-        df_manual = pd.DataFrame(datos_manuales)
+    fecha_reporte = st.date_input("Fecha del reporte", datetime.date.today())
+    st.info(f"📋 {len(agentes)} agentes activos")
+    
+    st.markdown("---")
+    st.markdown("### Archivos del dia")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("**📊 Ventas**")
+        ventas_file = st.file_uploader("Ventas (Excel o CSV)", type=['csv', 'xlsx'], key="ventas")
+        if ventas_file:
+            st.caption("Columnas: Vendedor, Venta, Factura")
+    
+    with col2:
+        st.markdown("**📞 Llamadas**")
+        llamadas_file = st.file_uploader("Llamadas (CSV)", type=['csv'], key="llamadas")
+        if llamadas_file:
+            st.caption("Columnas: Identificación, Llamadas")
+    
+    with col3:
+        st.markdown("**📝 Cotizaciones**")
+        cotizaciones_file = st.file_uploader("Cotizaciones (Excel o CSV)", type=['csv', 'xlsx'], key="cotizaciones")
+        if cotizaciones_file:
+            st.caption("Columnas: Vendedor, Cotizacion")
+    
+    st.markdown("---")
+    st.markdown("### Datos manuales")
+    
+    # Modo rapido
+    modo_rapido = st.checkbox("⚡ Modo rapido - mismo valor para todos")
+    
+    if modo_rapido:
+        col_a, col_b, col_c, col_d = st.columns(4)
+        with col_a:
+            leads_default = st.number_input("Leads", min_value=0, value=0)
+        with col_b:
+            nps_default = st.number_input("NPS", min_value=0, max_value=10, value=0)
+        with col_c:
+            pra_default = st.number_input("PRA 90%", min_value=0, max_value=100, value=90)
+        with col_d:
+            asistencia_default = st.selectbox("Asistencia", [100, 0], 
+                                             format_func=lambda x: "✅ Asistio" if x == 100 else "❌ No asistio")
+    
+    with st.form("datos_manuales_form"):
+        datos_manuales = []
         
-        # 1. Procesar VENTAS
-        if ventas_file.name.endswith('.csv'):
-            df_ventas = pd.read_csv(ventas_file)
-        else:
-            df_ventas = pd.read_excel(ventas_file)
+        for _, row in agentes.iterrows():
+            with st.container():
+                st.markdown(f"**👤 {row['nombre']}** (ID ventas: `{row['id_asesor']}`, ID llamadas: `{row.get('id_llamadas', row['id_asesor'])}`)")
+                
+                if modo_rapido:
+                    leads = leads_default
+                    nps = nps_default
+                    pra = pra_default
+                    asistencia = asistencia_default
+                    st.caption(f"📊 Leads: {leads} | ⭐ NPS: {nps} | 🎯 PRA: {pra}% | 📅 Asistencia: {'✅' if asistencia == 100 else '❌'}")
+                else:
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        leads = st.number_input("Leads", min_value=0, value=0, key=f"leads_{row['id_asesor']}")
+                    with col2:
+                        nps = st.number_input("NPS", min_value=0, max_value=10, value=0, key=f"nps_{row['id_asesor']}")
+                    with col3:
+                        pra = st.number_input("PRA 90%", min_value=0, max_value=100, value=90, key=f"pra_{row['id_asesor']}")
+                    with col4:
+                        asistencia = st.selectbox("Asistencia", [100, 0], 
+                                                 format_func=lambda x: "✅" if x == 100 else "❌",
+                                                 key=f"asis_{row['id_asesor']}")
+                
+                datos_manuales.append({
+                    "id_asesor": str(row['id_asesor']),
+                    "leads": leads,
+                    "nps": nps,
+                    "pra_90": pra,
+                    "asistencia": asistencia
+                })
+                st.markdown("---")
         
-        df_ventas = df_ventas.rename(columns={'Vendedor': 'id_asesor'})
-        df_ventas['id_asesor'] = df_ventas['id_asesor'].astype(str).str.strip()
+        submit = st.form_submit_button("🚀 Procesar y guardar todo", type="primary")
+    
+    if submit:
+        if not all([ventas_file, llamadas_file, cotizaciones_file]):
+            st.error("❌ Faltan archivos por subir")
+            return
         
-        ventas_agg = df_ventas.groupby('id_asesor').agg(
-            ventas=('Venta', 'sum'),
-            cierres=('Factura', 'count')
-        ).reset_index()
-        st.success(f"✅ Ventas procesadas: {len(ventas_agg)} agentes")
-        
-        # 2. Procesar LLAMADAS
-        df_llamadas = pd.read_csv(llamadas_file)
-        
-        # Normalizar IDs de llamadas
-        df_llamadas['id_original'] = df_llamadas['Identificación'].astype(str).str.strip()
-        
-        # Crear mapeo de id_llamadas a id_asesor
-        mapeo = dict(zip(agentes['id_llamadas'].astype(str).str.strip(), agentes['id_asesor'].astype(str)))
-        
-        # Mapear los IDs
-        df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo)
-        
-        # Los que no tienen mapeo, mostrar advertencia
-        sin_mapeo = df_llamadas[df_llamadas['id_asesor'].isna()]['id_original'].unique()
-        if len(sin_mapeo) > 0:
-            st.warning(f"⚠️ {len(sin_mapeo)} IDs de llamadas sin mapeo: {list(sin_mapeo)[:5]}")
-            # Asignar el ID original a los que no tienen mapeo
-            df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['id_original'])
-        
-        # Usar el valor de Llamadas (ya viene el número)
-        llamadas_agg = df_llamadas.groupby('id_asesor')['Llamadas'].sum().reset_index()
-        llamadas_agg = llamadas_agg.rename(columns={'Llamadas': 'llamadas'})
-        st.success(f"✅ Llamadas procesadas: {len(llamadas_agg)} agentes")
-        
-        # 3. Procesar COTIZACIONES
-        if cotizaciones_file.name.endswith('.csv'):
-            df_cotizaciones = pd.read_csv(cotizaciones_file)
-        else:
-            df_cotizaciones = pd.read_excel(cotizaciones_file)
-        
-        df_cotizaciones = df_cotizaciones.rename(columns={'Vendedor': 'id_asesor'})
-        df_cotizaciones['id_asesor'] = df_cotizaciones['id_asesor'].astype(str).str.strip()
-        cotizaciones_agg = df_cotizaciones.groupby('id_asesor').size().reset_index(name='cantidad_cotizaciones')
-        st.success(f"✅ Cotizaciones procesadas: {len(cotizaciones_agg)} agentes")
-        
-        # 4. Construir reporte final
-        reporte = agentes.merge(ventas_agg, on='id_asesor', how='left')
-        reporte = reporte.merge(llamadas_agg, on='id_asesor', how='left')
-        reporte = reporte.merge(cotizaciones_agg, on='id_asesor', how='left')
-        reporte = reporte.merge(df_manual, on='id_asesor', how='left')
-        
-        # Rellenar nulos
-        for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia']:
-            if col in reporte.columns:
-                reporte[col] = reporte[col].fillna(0)
-        
-        # Calcular metricas
-        reporte['conversion'] = (reporte['cierres'] / reporte['leads'].replace(0, 1)) * 100
-        reporte['conversion'] = reporte['conversion'].round(2)
-        reporte['ticket_promedio'] = (reporte['ventas'] / reporte['cierres'].replace(0, 1)).round(2)
-        
-        # Fechas
-        reporte['fecha'] = fecha_reporte
-        reporte['mes'] = fecha_reporte.strftime('%B')
-        reporte['dia'] = fecha_reporte.strftime('%A')
-        reporte['sem_mes'] = (fecha_reporte.day - 1) // 7 + 1
-        reporte['sem_año'] = fecha_reporte.isocalendar()[1]
-        reporte['año'] = fecha_reporte.year
-        reporte['fecha_creacion'] = datetime.datetime.now()
-        
-        # 5. Guardar en BigQuery
-        with st.spinner("Guardando en BigQuery..."):
-            # Guardar reporte
-            job = client.load_table_from_dataframe(
-                reporte, TABLE_REPORTE,
-                job_config=bigquery.LoadJobConfig(
-                    write_disposition=bigquery.WriteDisposition.WRITE_APPEND
-                )
-            )
-            job.result()
+        try:
+            client = init_bq_client()
+            df_manual = pd.DataFrame(datos_manuales)
             
-            # Guardar datos manuales
-            df_manual['fecha'] = fecha_reporte
-            df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
-            df_manual['timestamp'] = datetime.datetime.now()
+            # 1. Procesar VENTAS
+            if ventas_file.name.endswith('.csv'):
+                df_ventas = pd.read_csv(ventas_file)
+            else:
+                df_ventas = pd.read_excel(ventas_file)
             
-            job_manual = client.load_table_from_dataframe(
-                df_manual, TABLE_MANUAL,
-                job_config=bigquery.LoadJobConfig(
-                    write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+            df_ventas = df_ventas.rename(columns={'Vendedor': 'id_asesor'})
+            df_ventas['id_asesor'] = df_ventas['id_asesor'].astype(str).str.strip()
+            
+            ventas_agg = df_ventas.groupby('id_asesor').agg(
+                ventas=('Venta', 'sum'),
+                cierres=('Factura', 'count')
+            ).reset_index()
+            st.success(f"✅ Ventas procesadas: {len(ventas_agg)} agentes")
+            
+            # 2. Procesar LLAMADAS
+            df_llamadas = pd.read_csv(llamadas_file)
+            
+            # Normalizar IDs de llamadas
+            df_llamadas['id_original'] = df_llamadas['Identificación'].astype(str).str.strip()
+            
+            # Crear mapeo de id_llamadas a id_asesor
+            mapeo = dict(zip(agentes['id_llamadas'].astype(str).str.strip(), agentes['id_asesor'].astype(str)))
+            
+            # Mapear los IDs
+            df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo)
+            
+            # Los que no tienen mapeo, mostrar advertencia
+            sin_mapeo = df_llamadas[df_llamadas['id_asesor'].isna()]['id_original'].unique()
+            if len(sin_mapeo) > 0:
+                st.warning(f"⚠️ {len(sin_mapeo)} IDs de llamadas sin mapeo: {list(sin_mapeo)[:5]}")
+                # Asignar el ID original a los que no tienen mapeo
+                df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['id_original'])
+            
+            # Usar el valor de Llamadas (ya viene el número)
+            llamadas_agg = df_llamadas.groupby('id_asesor')['Llamadas'].sum().reset_index()
+            llamadas_agg = llamadas_agg.rename(columns={'Llamadas': 'llamadas'})
+            st.success(f"✅ Llamadas procesadas: {len(llamadas_agg)} agentes")
+            
+            # 3. Procesar COTIZACIONES
+            if cotizaciones_file.name.endswith('.csv'):
+                df_cotizaciones = pd.read_csv(cotizaciones_file)
+            else:
+                df_cotizaciones = pd.read_excel(cotizaciones_file)
+            
+            df_cotizaciones = df_cotizaciones.rename(columns={'Vendedor': 'id_asesor'})
+            df_cotizaciones['id_asesor'] = df_cotizaciones['id_asesor'].astype(str).str.strip()
+            cotizaciones_agg = df_cotizaciones.groupby('id_asesor').size().reset_index(name='cantidad_cotizaciones')
+            st.success(f"✅ Cotizaciones procesadas: {len(cotizaciones_agg)} agentes")
+            
+            # 4. Construir reporte final
+            reporte = agentes.merge(ventas_agg, on='id_asesor', how='left')
+            reporte = reporte.merge(llamadas_agg, on='id_asesor', how='left')
+            reporte = reporte.merge(cotizaciones_agg, on='id_asesor', how='left')
+            reporte = reporte.merge(df_manual, on='id_asesor', how='left')
+            
+            # Rellenar nulos
+            for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia']:
+                if col in reporte.columns:
+                    reporte[col] = reporte[col].fillna(0)
+            
+            # Calcular metricas
+            reporte['conversion'] = (reporte['cierres'] / reporte['leads'].replace(0, 1)) * 100
+            reporte['conversion'] = reporte['conversion'].round(2)
+            reporte['ticket_promedio'] = (reporte['ventas'] / reporte['cierres'].replace(0, 1)).round(2)
+            
+            # Fechas
+            reporte['fecha'] = fecha_reporte
+            reporte['mes'] = fecha_reporte.strftime('%B')
+            reporte['dia'] = fecha_reporte.strftime('%A')
+            reporte['sem_mes'] = (fecha_reporte.day - 1) // 7 + 1
+            reporte['sem_año'] = fecha_reporte.isocalendar()[1]
+            reporte['año'] = fecha_reporte.year
+            reporte['fecha_creacion'] = datetime.datetime.now()
+            
+            # 5. Guardar en BigQuery
+            with st.spinner("Guardando en BigQuery..."):
+                # Guardar reporte
+                job = client.load_table_from_dataframe(
+                    reporte, TABLE_REPORTE,
+                    job_config=bigquery.LoadJobConfig(
+                        write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+                    )
                 )
-            )
-            job_manual.result()
-        
-        st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente en BigQuery")
-        
-        # 6. Mostrar resumen
-        st.subheader("📊 Resumen del dia")
-        resumen = reporte[['nombre', 'leads', 'cierres', 'ventas', 'conversion', 'llamadas', 'cantidad_cotizaciones']].copy()
-        resumen['ventas'] = resumen['ventas'].round(2)
-        st.dataframe(resumen, use_container_width=True)
-        
-        # Totales
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Ventas", f"${reporte['ventas'].sum():,.0f}")
-        col2.metric("Total Cierres", f"{reporte['cierres'].sum():,.0f}")
-        col3.metric("Total Leads", f"{reporte['leads'].sum():,.0f}")
-        col4.metric("Total Llamadas", f"{reporte['llamadas'].sum():,.0f}")
-        
-    except Exception as e:
-        st.error(f"Error al procesar: {e}")
-        st.exception(e)
+                job.result()
+                
+                # Guardar datos manuales
+                df_manual['fecha'] = fecha_reporte
+                df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
+                df_manual['timestamp'] = datetime.datetime.now()
+                
+                job_manual = client.load_table_from_dataframe(
+                    df_manual, TABLE_MANUAL,
+                    job_config=bigquery.LoadJobConfig(
+                        write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+                    )
+                )
+                job_manual.result()
+            
+            st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente en BigQuery")
+            
+            # 6. Mostrar resumen
+            st.subheader("📊 Resumen del dia")
+            resumen = reporte[['nombre', 'leads', 'cierres', 'ventas', 'conversion', 'llamadas', 'cantidad_cotizaciones']].copy()
+            resumen['ventas'] = resumen['ventas'].round(2)
+            st.dataframe(resumen, use_container_width=True)
+            
+            # Totales
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Total Ventas", f"${reporte['ventas'].sum():,.0f}")
+            col2.metric("Total Cierres", f"{reporte['cierres'].sum():,.0f}")
+            col3.metric("Total Leads", f"{reporte['leads'].sum():,.0f}")
+            col4.metric("Total Llamadas", f"{reporte['llamadas'].sum():,.0f}")
+            
+        except Exception as e:
+            st.error(f"Error al procesar: {e}")
+            st.exception(e)
 
 def descargar_reportes():
-st.subheader("📥 Descargar reportes historicos")
-
-client = init_bq_client()
-
-col1, col2 = st.columns(2)
-with col1:
-    fecha_inicio = st.date_input("Fecha inicio", datetime.date.today() - datetime.timedelta(days=30))
-with col2:
-    fecha_fin = st.date_input("Fecha fin", datetime.date.today())
-
-tipo = st.radio("Tipo de reporte", ["Diario por agente", "Consolidado por agente"])
-
-if st.button("🔍 Generar reporte", type="primary"):
-    try:
-        if tipo == "Diario por agente":
-            query = f"""
-            SELECT 
-                fecha,
-                nombre as agente,
-                supervisor,
-                leads,
-                cierres,
-                ROUND(conversion, 2) as conversion_pct,
-                nps,
-                ROUND(ventas, 2) as ventas,
-                ROUND(ticket_promedio, 2) as ticket_promedio,
-                llamadas,
-                cantidad_cotizaciones,
-                pra_90,
-                asistencia
-            FROM `{TABLE_REPORTE}`
-            WHERE fecha BETWEEN @fecha_inicio AND @fecha_fin
-            ORDER BY fecha DESC, nombre
-            """
-        else:
-            query = f"""
-            SELECT 
-                nombre as agente,
-                supervisor,
-                SUM(leads) as total_leads,
-                SUM(cierres) as total_cierres,
-                ROUND(AVG(conversion), 2) as conversion_promedio,
-                ROUND(AVG(nps), 2) as nps_promedio,
-                ROUND(SUM(ventas), 2) as total_ventas,
-                ROUND(AVG(ticket_promedio), 2) as ticket_promedio,
-                SUM(llamadas) as total_llamadas,
-                SUM(cantidad_cotizaciones) as total_cotizaciones,
-                ROUND(AVG(pra_90), 2) as pra_promedio,
-                ROUND(AVG(asistencia), 0) as asistencia_promedio
-            FROM `{TABLE_REPORTE}`
-            WHERE fecha BETWEEN @fecha_inicio AND @fecha_fin
-            GROUP BY nombre, supervisor
-            ORDER BY total_ventas DESC
-            """
-        
-        job_config = bigquery.QueryJobConfig(
-            query_parameters=[
-                bigquery.ScalarQueryParameter("fecha_inicio", "DATE", fecha_inicio),
-                bigquery.ScalarQueryParameter("fecha_fin", "DATE", fecha_fin),
-            ]
-        )
-        
-        df = client.query(query, job_config=job_config).to_dataframe()
-        
-        if df.empty:
-            st.warning("No hay datos en el rango seleccionado")
-        else:
-            st.success(f"✅ {len(df)} registros encontrados")
-            st.dataframe(df, use_container_width=True)
+    st.subheader("📥 Descargar reportes historicos")
+    
+    client = init_bq_client()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        fecha_inicio = st.date_input("Fecha inicio", datetime.date.today() - datetime.timedelta(days=30))
+    with col2:
+        fecha_fin = st.date_input("Fecha fin", datetime.date.today())
+    
+    tipo = st.radio("Tipo de reporte", ["Diario por agente", "Consolidado por agente"])
+    
+    if st.button("🔍 Generar reporte", type="primary"):
+        try:
+            if tipo == "Diario por agente":
+                query = f"""
+                SELECT 
+                    fecha,
+                    nombre as agente,
+                    supervisor,
+                    leads,
+                    cierres,
+                    ROUND(conversion, 2) as conversion_pct,
+                    nps,
+                    ROUND(ventas, 2) as ventas,
+                    ROUND(ticket_promedio, 2) as ticket_promedio,
+                    llamadas,
+                    cantidad_cotizaciones,
+                    pra_90,
+                    asistencia
+                FROM `{TABLE_REPORTE}`
+                WHERE fecha BETWEEN @fecha_inicio AND @fecha_fin
+                ORDER BY fecha DESC, nombre
+                """
+            else:
+                query = f"""
+                SELECT 
+                    nombre as agente,
+                    supervisor,
+                    SUM(leads) as total_leads,
+                    SUM(cierres) as total_cierres,
+                    ROUND(AVG(conversion), 2) as conversion_promedio,
+                    ROUND(AVG(nps), 2) as nps_promedio,
+                    ROUND(SUM(ventas), 2) as total_ventas,
+                    ROUND(AVG(ticket_promedio), 2) as ticket_promedio,
+                    SUM(llamadas) as total_llamadas,
+                    SUM(cantidad_cotizaciones) as total_cotizaciones,
+                    ROUND(AVG(pra_90), 2) as pra_promedio,
+                    ROUND(AVG(asistencia), 0) as asistencia_promedio
+                FROM `{TABLE_REPORTE}`
+                WHERE fecha BETWEEN @fecha_inicio AND @fecha_fin
+                GROUP BY nombre, supervisor
+                ORDER BY total_ventas DESC
+                """
             
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                "📥 Descargar CSV",
-                csv,
-                f"hopsa_{tipo.replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.csv",
-                "text/csv"
+            job_config = bigquery.QueryJobConfig(
+                query_parameters=[
+                    bigquery.ScalarQueryParameter("fecha_inicio", "DATE", fecha_inicio),
+                    bigquery.ScalarQueryParameter("fecha_fin", "DATE", fecha_fin),
+                ]
             )
             
-    except Exception as e:
-        st.error(f"Error: {e}")
+            df = client.query(query, job_config=job_config).to_dataframe()
+            
+            if df.empty:
+                st.warning("No hay datos en el rango seleccionado")
+            else:
+                st.success(f"✅ {len(df)} registros encontrados")
+                st.dataframe(df, use_container_width=True)
+                
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "📥 Descargar CSV",
+                    csv,
+                    f"hopsa_{tipo.replace(' ', '_')}_{fecha_inicio}_{fecha_fin}.csv",
+                    "text/csv"
+                )
+                
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 def run(usuario):
-st.title("🎯 HOPSA - Gestion de Ventas")
-st.caption(f"Usuario: {usuario}")
-
-opcion = st.sidebar.radio("Menu", ["Agentes", "Subir Informacion", "Reportes"])
-
-if opcion == "Agentes":
-    actualizar_agentes()
-elif opcion == "Subir Informacion":
-    subir_informacion()
-else:
-    descargar_reportes()
+    st.title("🎯 HOPSA - Gestion de Ventas")
+    st.caption(f"Usuario: {usuario}")
+    
+    opcion = st.sidebar.radio("Menu", ["Agentes", "Subir Informacion", "Reportes"])
+    
+    if opcion == "Agentes":
+        actualizar_agentes()
+    elif opcion == "Subir Informacion":
+        subir_informacion()
+    else:
+        descargar_reportes()

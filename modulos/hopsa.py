@@ -107,7 +107,7 @@ def actualizar_agentes():
             st.session_state.agentes_df = None
             st.rerun()
 
-def subir_informacion():
+    def subir_informacion():
     st.subheader("📂 Subir información del día")
     
     # Verificar que hay agentes cargados
@@ -123,17 +123,17 @@ def subir_informacion():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("**Ventas**")
+        st.markdown("**📊 Ventas**")
         ventas_file = st.file_uploader(
             "Ventas (Excel o CSV)", 
             type=['xlsx', 'xls', 'csv'],
             key="ventas_upload"
         )
         if ventas_file:
-            st.caption("Columnas necesarias: id_asesor, Venta, Factura")
+            st.caption("Columnas: id_asesor, Venta, Factura")
     
     with col2:
-        st.markdown("**Llamadas**")
+        st.markdown("**📞 Llamadas**")
         llamadas_file = st.file_uploader(
             "Llamadas (CSV)", 
             type=['csv'],
@@ -143,7 +143,7 @@ def subir_informacion():
             st.caption("Columna: id_asesor")
     
     with col3:
-        st.markdown("**Cotizaciones**")
+        st.markdown("**📝 Cotizaciones**")
         cotizaciones_file = st.file_uploader(
             "Cotizaciones (Excel o CSV)", 
             type=['xlsx', 'xls', 'csv'],
@@ -153,36 +153,96 @@ def subir_informacion():
             st.caption("Columna: Vendedor (id_asesor)")
     
     st.markdown("---")
-    st.markdown("### 2. Datos manuales")
+    st.markdown("### 2. Datos manuales del día")
+    st.info("💡 **Ayuda:**\n- **Leads:** Contactos nuevos gestionados\n- **NPS:** Encuesta de satisfacción (0-10)\n- **PRA 90%:** Calidad/Cumplimiento de meta\n- **Asistencia:** Si el agente trabajó el día completo")
     
     # Formulario para datos manuales
     df_asesores = st.session_state.agentes_df
     
+    # Opción para llenado rápido
+    modo_rapido = st.checkbox("⚡ Modo rápido - Mismo valor para todos los agentes")
+    
+    if modo_rapido:
+        col_a, col_b, col_c, col_d = st.columns(4)
+        with col_a:
+            leads_default = st.number_input("Leads (todos)", min_value=0, value=0)
+        with col_b:
+            nps_default = st.number_input("NPS (todos)", min_value=0, max_value=10, value=0)
+        with col_c:
+            pra_default = st.number_input("PRA 90% (todos)", min_value=0, max_value=100, value=90, 
+                                         help="Calidad/Cumplimiento de meta")
+        with col_d:
+            asistencia_default = st.selectbox("Asistencia (todos)", 
+                                             options=[100, 0], 
+                                             format_func=lambda x: "✅ Asistió (100%)" if x == 100 else "❌ No asistió (0%)",
+                                             help="100% = Trabajó completo, 0% = No trabajó")
+        
+        st.warning("⚠️ Esto aplicará el mismo valor a TODOS los agentes. Si necesitas valores diferentes, desactiva esta opción.")
+    
     with st.form("datos_manuales_form"):
         datos_manuales = []
         
-        for _, row in df_asesores.iterrows():
-            st.markdown(f"**{row['nombre']}** (ID: {row['id_asesor']})")
-            
-            col_a, col_b, col_c, col_d = st.columns(4)
-            with col_a:
-                leads = st.number_input("Leads", min_value=0, value=0, key=f"leads_{row['id_asesor']}")
-            with col_b:
-                nps = st.number_input("NPS (0-10)", min_value=0, max_value=10, value=0, key=f"nps_{row['id_asesor']}")
-            with col_c:
-                pra = st.number_input("PRA 90%", min_value=0.0, max_value=100.0, value=90.0, key=f"pra_{row['id_asesor']}")
-            with col_d:
-                asistencia = st.number_input("Asistencia %", min_value=0.0, max_value=100.0, value=100.0, key=f"asis_{row['id_asesor']}")
-            
-            datos_manuales.append({
-                "id_asesor": str(row['id_asesor']),
-                "leads": leads,
-                "nps": nps,
-                "pra_90": pra,
-                "asistencia": asistencia
-            })
-            
-            st.markdown("---")
+        for idx, (_, row) in enumerate(df_asesores.iterrows()):
+            with st.container():
+                st.markdown(f"**👤 {row['nombre']}** (ID: `{row['id_asesor']}`)")
+                
+                if modo_rapido:
+                    # Usar valores por defecto
+                    leads = leads_default
+                    nps = nps_default
+                    pra = pra_default
+                    asistencia = asistencia_default
+                    
+                    # Mostrar valores aplicados
+                    st.caption(f"📊 Leads: {leads} | ⭐ NPS: {nps} | 🎯 PRA: {pra}% | 📅 Asistencia: {'✅' if asistencia == 100 else '❌'}")
+                    
+                else:
+                    # Inputs individuales
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        leads = st.number_input(
+                            "Leads", 
+                            min_value=0, 
+                            value=0, 
+                            key=f"leads_{row['id_asesor']}",
+                            help="Contactos nuevos gestionados en el día"
+                        )
+                    with col2:
+                        nps = st.number_input(
+                            "NPS (0-10)", 
+                            min_value=0, 
+                            max_value=10, 
+                            value=0, 
+                            key=f"nps_{row['id_asesor']}",
+                            help="Encuesta de satisfacción"
+                        )
+                    with col3:
+                        pra = st.number_input(
+                            "PRA 90%", 
+                            min_value=0, 
+                            max_value=100, 
+                            value=90, 
+                            key=f"pra_{row['id_asesor']}",
+                            help="Calidad / Cumplimiento de meta (0-100%)"
+                        )
+                    with col4:
+                        asistencia = st.selectbox(
+                            "Asistencia",
+                            options=[100, 0],
+                            format_func=lambda x: "✅ Asistió (100%)" if x == 100 else "❌ No asistió (0%)",
+                            key=f"asis_{row['id_asesor']}",
+                            help="100% = Trabajó el día completo, 0% = No trabajó"
+                        )
+                
+                datos_manuales.append({
+                    "id_asesor": str(row['id_asesor']),
+                    "leads": leads,
+                    "nps": nps,
+                    "pra_90": pra,
+                    "asistencia": asistencia
+                })
+                
+                st.markdown("---")
         
         submit = st.form_submit_button("🚀 Procesar y guardar todo", type="primary")
     
@@ -201,6 +261,7 @@ def subir_informacion():
             else:
                 df_ventas = pd.read_excel(ventas_file)
             
+            # Asegurar que las columnas existen
             df_ventas['id_asesor'] = df_ventas['id_asesor'].astype(str)
             ventas_agg = df_ventas.groupby('id_asesor').agg(
                 ventas=('Venta', 'sum'),
@@ -273,89 +334,24 @@ def subir_informacion():
             
             # Mostrar resumen
             st.subheader("📊 Resumen del día")
-            resumen = reporte[['nombre', 'leads', 'cierres', 'ventas', 'conversion']].copy()
+            resumen = reporte[['nombre', 'leads', 'cierres', 'ventas', 'conversion', 'asistencia']].copy()
             resumen['ventas'] = resumen['ventas'].round(2)
+            resumen['conversion'] = resumen['conversion'].round(1)
+            # Mapear asistencia a texto
+            resumen['asistencia'] = resumen['asistencia'].map({100: '✅ Asistió', 0: '❌ No asistió'})
             st.dataframe(resumen, use_container_width=True)
+            
+            # Estadísticas rápidas
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Ventas", f"${reporte['ventas'].sum():,.0f}")
+            with col2:
+                st.metric("Total Cierres", f"{reporte['cierres'].sum():,.0f}")
+            with col3:
+                st.metric("Total Leads", f"{reporte['leads'].sum():,.0f}")
+            with col4:
+                st.metric("Conversión Promedio", f"{reporte['conversion'].mean():.1f}%")
             
         except Exception as e:
             st.error(f"Error al procesar: {e}")
             st.exception(e)
-
-def descargar_reportes():
-    st.subheader("📥 Descargar reportes históricos")
-    
-    client = init_bq_client()
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        fecha_inicio = st.date_input("Fecha inicio", datetime.date.today() - datetime.timedelta(days=30))
-    with col2:
-        fecha_fin = st.date_input("Fecha fin", datetime.date.today())
-    
-    if st.button("🔍 Generar reporte", type="primary"):
-        try:
-            query = f"""
-            SELECT 
-                fecha,
-                nombre as agente,
-                supervisor,
-                leads,
-                cierres,
-                ROUND(conversion, 2) as conversion,
-                nps,
-                ROUND(ventas, 2) as ventas,
-                ROUND(ticket_promedio, 2) as ticket_promedio,
-                llamadas,
-                cantidad_cotizaciones,
-                pra_90,
-                asistencia
-            FROM `{TABLE_REPORTE}`
-            WHERE fecha BETWEEN @fecha_inicio AND @fecha_fin
-            ORDER BY fecha DESC, nombre
-            """
-            
-            job_config = bigquery.QueryJobConfig(
-                query_parameters=[
-                    bigquery.ScalarQueryParameter("fecha_inicio", "DATE", fecha_inicio),
-                    bigquery.ScalarQueryParameter("fecha_fin", "DATE", fecha_fin),
-                ]
-            )
-            
-            df = client.query(query, job_config=job_config).to_dataframe()
-            
-            if df.empty:
-                st.warning("No hay datos en el rango seleccionado")
-            else:
-                st.success(f"✅ {len(df)} registros encontrados")
-                st.dataframe(df, use_container_width=True)
-                
-                # Descargar
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    "📥 Descargar CSV",
-                    csv,
-                    f"hopsa_report_{fecha_inicio}_{fecha_fin}.csv",
-                    "text/csv"
-                )
-                
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-def run(usuario):
-    st.title("🎯 HOPSA - Gestión de Ventas")
-    st.caption(f"Usuario: {usuario}")
-    
-    # Inicializar session state
-    init_session_state()
-    
-    opcion = st.sidebar.radio(
-        "Opciones",
-        ["1. Actualizar Agentes", "2. Subir Información", "3. Descargar Reportes"]
-    )
-    
-    if opcion == "1. Actualizar Agentes":
-        actualizar_agentes()
-    elif opcion == "2. Subir Información":
-        subir_informacion()
-    elif opcion == "3. Descargar Reportes":
-        descargar_reportes()

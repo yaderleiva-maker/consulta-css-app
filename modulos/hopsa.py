@@ -38,7 +38,7 @@ def actualizar_agentes():
     - `supervisor` (texto)
     """
     # 📌 **Solo 25 personas aprox**, puedes usar Excel directamente.
-    
+    """
     """)
     
     # Subir archivo

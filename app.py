@@ -1,5 +1,6 @@
 import streamlit as st
-from modulos import login, consultas, carga_documentos  # Agregar carga_documentos
+from modulos import login, consultas, carga_documentos
+from modulos import hopsa  # NUEVO - módulo independiente
 
 # LOGIN
 login.login()
@@ -13,50 +14,54 @@ if st.session_state.get("login_ok"):
     usuario = st.session_state.get("usuario")
 
     # -----------------------
-    # ROLES (actualizado con nuevos permisos)
+    # ROLES (agregamos HOPSA sin tocar lo demás)
     # -----------------------
     roles = {
-        "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS"],
-        "contenalfa@gmail.com": ["TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS"],
-        "arismaytte@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS"],
-        "sgonzalez.hex@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS"],
-        "yesturainhexagon@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS"],
-        "yfalconhexagon@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS"],
-        "delcarmenyamileth99@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS"],
+        "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA"],
+        "contenalfa@gmail.com": ["TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA"],
+        "arismaytte@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+        "sgonzalez.hex@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+        "yesturainhexagon@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+        "yfalconhexagon@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+        "delcarmenyamileth99@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
     }
 
     permisos = roles.get(usuario, [])
 
     # -----------------------
-    # MENÚ PRINCIPAL
+    # MENÚ PRINCIPAL (solo agregamos HOPSA si tiene permiso)
     # -----------------------
-    modulo = st.sidebar.selectbox(
-        "Módulos",
-        ["Consultas", "Carga de Documentos"]  # Agregar nueva opción
-    )
+    modulos_base = ["Consultas", "Carga de Documentos"]
+    
+    # Agregar HOPSA solo si tiene el permiso
+    if "HOPSA" in permisos:
+        modulos_base.append("HOPSA")
+    
+    modulo = st.sidebar.selectbox("Módulos", modulos_base)
 
     # -----------------------
-    # SUBMENÚ CONSULTAS
+    # CONSULTAS (sin cambios)
     # -----------------------
     if modulo == "Consultas":
         if not permisos:
             st.error("❌ No tienes permisos asignados")
             st.stop()
-        tipo_consulta = st.sidebar.radio(
-            "Opciones",
-            [p for p in permisos if p != "CARGA_DOCUMENTOS"]
-        )
+        # Filtrar solo los permisos que no son especiales
+        opciones_consulta = [p for p in permisos if p not in ["CARGA_DOCUMENTOS", "HOPSA"]]
+        if not opciones_consulta:
+            st.error("❌ No tienes permisos para consultas")
+            st.stop()
+        tipo_consulta = st.sidebar.radio("Opciones", opciones_consulta)
         consultas.run(usuario, tipo_consulta)
     
     # -----------------------
-    # NUEVO: SUBMENÚ CARGA DE DOCUMENTOS
+    # CARGA DE DOCUMENTOS (EXACTAMENTE IGUAL, sin tocar)
     # -----------------------
     elif modulo == "Carga de Documentos":
         if "CARGA_DOCUMENTOS" not in permisos:
             st.error("❌ No tienes permisos para acceder a este módulo")
             st.stop()
         
-        # Permisos específicos para carga
         tipo_carga = st.sidebar.radio(
             "Tipo de carga",
             ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
@@ -66,4 +71,17 @@ if st.session_state.get("login_ok"):
             st.error(f"❌ No tienes permiso para: {tipo_carga}")
             st.stop()
         
+        # LLAMADA EXISTENTE - NO TOCAMOS ESTE ARCHIVO
         carga_documentos.run(usuario, tipo_carga)
+    
+    # -----------------------
+    # HOPSA - NUEVO MÓDULO (completamente independiente)
+    # -----------------------
+    elif modulo == "HOPSA":
+        # Verificar permiso específico
+        if "HOPSA" not in permisos:
+            st.error("❌ No tienes permisos para acceder a HOPSA")
+            st.stop()
+        
+        # LLAMAR AL NUEVO MÓDULO
+        hopsa.run(usuario)

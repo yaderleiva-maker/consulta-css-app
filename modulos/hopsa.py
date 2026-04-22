@@ -20,9 +20,27 @@ def init_bq_client():
     return bigquery.Client(project=PROJECT_ID)
 
 def cargar_agentes():
-    """Carga agentes desde BigQuery"""
-    pass
+    try:
+        client = init_bq_client()
+        query = f"SELECT * FROM `{TABLE_ASESORES}`"
+        df = client.query(query).to_dataframe()
+        return df if not df.empty else None
+    except:
+        return None
+
+def actualizar_agentes():
+    st.subheader("Gestionar Agentes")
+    st.write("Funcion actualizar_agentes OK")
 
 def run(usuario):
     st.title("HOPSA - TEST")
-    st.write("Paso 4: Funciones basicas OK")
+    st.write("Paso 5: Funcion actualizar_agentes definida")
+    
+    opcion = st.sidebar.radio("Menu", ["Agentes", "Subir", "Reportes"])
+    
+    if opcion == "Agentes":
+        actualizar_agentes()
+    elif opcion == "Subir":
+        st.write("Subir informacion - pendiente")
+    else:
+        st.write("Reportes - pendiente")

@@ -107,6 +107,115 @@ def actualizar_agentes():
             st.session_state.agentes_df = None
             st.rerun()
 
+import streamlit as st
+import pandas as pd
+import datetime
+from google.cloud import bigquery
+from google.oauth2 import service_account
+import io
+
+# Configuración
+PROJECT_ID = "proyecto-css-panama"
+DATASET_HOPSA = "hopsa"
+TABLE_REPORTE = f"{PROJECT_ID}.{DATASET_HOPSA}.reporte_diario"
+TABLE_MANUAL = f"{PROJECT_ID}.{DATASET_HOPSA}.datos_manuales"
+
+@st.cache_resource
+def init_bq_client():
+    if 'gcp_service_account' in st.secrets:
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"]
+        )
+        return bigquery.Client(credentials=credentials, project=PROJECT_ID)
+    else:
+        return bigquery.Client(project=PROJECT_ID)
+
+# -------------------------------
+# SESSION STATE para agentes
+# -------------------------------
+def init_session_state():
+    if 'agentes_df' not in st.session_state:
+        st.session_state.agentes_df = None
+
+def actualizar_agentes():
+    st.subheader("👥 Cargar Agentes (HEXAGON)")
+    
+    st.markdown("""
+    **Archivo Excel o CSV:**
+    - `id_asesor` (texto o número)
+    - `nombre` (texto)
+    - `supervisor` (texto)
+    """
+    # 📌 **Solo 25 personas aprox**, puedes usar Excel directamente.
+    """
+    """)
+    
+    # Subir archivo
+    archivo = st.file_uploader(
+        "Seleccionar archivo", 
+        type=['xlsx', 'xls', 'csv'],
+        key="upload_agentes"
+    )
+    
+    if archivo:
+        try:
+            # Leer según extensión
+            if archivo.name.endswith('.csv'):
+                # Probar diferentes separadores
+                try:
+                    df = pd.read_csv(archivo, encoding='utf-8')
+                except:
+                    archivo.seek(0)
+                    df = pd.read_csv(archivo, encoding='latin1', sep=';')
+            else:
+                df = pd.read_excel(archivo)
+            
+            # Validar columnas
+            columnas_necesarias = ['id_asesor', 'nombre', 'supervisor']
+            columnas_existentes = [col.lower() for col in df.columns]
+            
+            # Buscar coincidencias sin importar mayúsculas
+            mapeo = {}
+            for col_needed in columnas_necesarias:
+                for col_exist in df.columns:
+                    if col_exist.lower() == col_needed.lower():
+                        mapeo[col_needed] = col_exist
+                        break
+            
+            if len(mapeo) != 3:
+                st.error(f"❌ Columnas requeridas: {columnas_necesarias}")
+                st.write("Columnas encontradas:", list(df.columns))
+                return
+            
+            # Renombrar columnas
+            df = df.rename(columns={mapeo['id_asesor']: 'id_asesor', 
+                                     mapeo['nombre']: 'nombre', 
+                                     mapeo['supervisor']: 'supervisor'})
+            
+            # Limpiar datos
+            df['id_asesor'] = df['id_asesor'].astype(str).str.strip()
+            df['nombre'] = df['nombre'].astype(str).str.strip()
+            df['supervisor'] = df['supervisor'].astype(str).str.strip()
+            
+            # Guardar en session state
+            st.session_state.agentes_df = df
+            
+            st.success(f"✅ {len(df)} agentes cargados correctamente")
+            st.dataframe(df, use_container_width=True)
+            
+        except Exception as e:
+            st.error(f"Error al leer archivo: {e}")
+            st.info("💡 Asegúrate de que el archivo no esté corrupto")
+    
+    # Mostrar agentes actuales
+    if st.session_state.agentes_df is not None:
+        st.subheader("📋 Agentes actualmente cargados")
+        st.dataframe(st.session_state.agentes_df, use_container_width=True)
+        
+        if st.button("🗑️ Limpiar agentes"):
+            st.session_state.agentes_df = None
+            st.rerun()
+
     def subir_informacion():
     st.subheader("📂 Subir información del día")
     

@@ -11,7 +11,7 @@ import io
 # -------------------------------
 PROJECT_ID = "proyecto-css-panama"
 DATASET_HOPSA = "hopsa"  # Usando tu dataset existente
-TABLE_ASESORES = f"{PROJECT_ID}.{DATASET_HOPSA}.hopsa_asesores"
+TABLE_ASESORES = f"{PROJECT_ID}.{DATASET_HOPSA}.asesores"
 TABLE_REPORTE = f"{PROJECT_ID}.{DATASET_HOPSA}.hopsa_reporte_diario"
 TABLE_MANUAL = f"{PROJECT_ID}.{DATASET_HOPSA}.hopsa_datos_manuales"
 

@@ -1,7 +1,10 @@
-# modulos/hopsa.py - VERSIÓN MÍNIMA DE PRUEBA
+# modulos/hopsa.py - PASO 2
 import streamlit as st
+import pandas as pd
+import datetime
 
 def run(usuario):
     st.title("🎯 HOPSA - PRUEBA")
     st.write(f"Usuario: {usuario}")
-    st.success("Si ves esto, el módulo se importó correctamente")
+    st.write("Pandas version:", pd.__version__)
+    st.success("Importaciones básicas OK")

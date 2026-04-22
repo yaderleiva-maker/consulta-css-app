@@ -76,6 +76,20 @@ def actualizar_agentes():
         except Exception as e:
             st.error(f"Error: {e}")
 
+def descargar_reportes():
+    st.subheader("📥 Descargar reportes")
+    st.info("Funcion descargar_reportes - version simple")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        fecha_inicio = st.date_input("Fecha inicio", datetime.date.today() - datetime.timedelta(days=30))
+    with col2:
+        fecha_fin = st.date_input("Fecha fin", datetime.date.today())
+    
+    if st.button("Generar reporte simple"):
+        st.write(f"Rango: {fecha_inicio} a {fecha_fin}")
+        st.success("Reporte generado (demo)")
+
 def run(usuario):
     st.title("🎯 HOPSA - Gestion de Ventas")
     st.caption(f"Usuario: {usuario}")
@@ -85,6 +99,6 @@ def run(usuario):
     if opcion == "Agentes":
         actualizar_agentes()
     elif opcion == "Subir Informacion":
-        st.info("En construccion - Subir informacion")
+        st.info("En construccion - Subir informacion (proximamente)")
     else:
-        st.info("En construccion - Reportes")
+        descargar_reportes()

@@ -165,13 +165,24 @@ def subir_informacion():
             client = init_bq_client()
             df_manual = pd.DataFrame(datos)
             
-            # 1. VENTAS
+                       # 1. VENTAS
             if ventas_file.name.endswith('.csv'):
                 df_ventas = pd.read_csv(ventas_file)
             else:
                 df_ventas = pd.read_excel(ventas_file)
             
-            df_ventas = df_ventas.rename(columns={'Vendedor': 'id_asesor'})
+            # Buscar columna de vendedor
+            col_ven = None
+            for col in df_ventas.columns:
+                if col.lower() in ['vendedor', 'creador']:
+                    col_ven = col
+                    break
+            
+            if col_ven is None:
+                st.error(f"No se encontró columna de vendedor. Columnas: {list(df_ventas.columns)}")
+                return
+            
+            df_ventas = df_ventas.rename(columns={col_ven: 'id_asesor'})
             df_ventas['id_asesor'] = df_ventas['id_asesor'].astype(str).str.strip().apply(limpiar)
             
             ventas_agg = df_ventas.groupby('id_asesor').agg(
@@ -179,17 +190,18 @@ def subir_informacion():
                 cierres=('Factura', 'count')
             ).reset_index()
             
-            # 2. LLAMADAS - CRUCE SIMPLE
+            # 2. LLAMADAS
             df_llamadas = pd.read_csv(llamadas_file)
             
-            # Crear mapeo: id_llamadas -> id_asesor
+            if 'Identificación' not in df_llamadas.columns:
+                st.error("El archivo de llamadas no tiene columna 'Identificación'")
+                return
+            
             mapeo = dict(zip(agentes['id_llamadas'].astype(str).apply(limpiar), 
                             agentes['id_asesor'].astype(str).apply(limpiar)))
             
             df_llamadas['id_asesor'] = df_llamadas['Identificación'].astype(str).apply(limpiar).map(mapeo)
             df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['Identificación'])
-            
-            # Excluir TOTALES
             df_llamadas = df_llamadas[df_llamadas['Identificación'] != 'TOTALES']
             
             llamadas_agg = df_llamadas.groupby('id_asesor')['Llamadas'].sum().reset_index()
@@ -200,7 +212,18 @@ def subir_informacion():
             else:
                 df_cotiz = pd.read_excel(cotizaciones_file)
             
-            df_cotiz = df_cotiz.rename(columns={'Vendedor': 'id_asesor'})
+            # Buscar columna de vendedor
+            col_cot = None
+            for col in df_cotiz.columns:
+                if col.lower() in ['vendedor', 'creador']:
+                    col_cot = col
+                    break
+            
+            if col_cot is None:
+                st.error(f"No se encontró columna de vendedor. Columnas: {list(df_cotiz.columns)}")
+                return
+            
+            df_cotiz = df_cotiz.rename(columns={col_cot: 'id_asesor'})
             df_cotiz['id_asesor'] = df_cotiz['id_asesor'].astype(str).str.strip().apply(limpiar)
             cotizaciones_agg = df_cotiz.groupby('id_asesor').size().reset_index(name='cantidad_cotizaciones')
             

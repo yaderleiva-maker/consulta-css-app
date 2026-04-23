@@ -207,7 +207,168 @@ def subir_informacion():
                 ventas=('Venta', 'sum'),
                 cierres=('Factura', 'count')
             ).reset_index()
+        def actualizar_ventas_periodo():
+    st.subheader("🔄 Actualizar ventas por período")
+    
+    agentes = cargar_agentes()
+    if agentes is None or agentes.empty:
+        st.warning("⚠️ Primero carga los agentes")
+        return
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        fecha_inicio = st.date_input("Fecha inicio", datetime.date.today() - datetime.timedelta(days=7))
+    with col2:
+        fecha_fin = st.date_input("Fecha fin", datetime.date.today())
+    
+    st.warning(f"⚠️ Esto REEMPLAZARÁ los datos de ventas para las fechas: {fecha_inicio} a {fecha_fin}")
+    st.info("📌 Los demás datos (llamadas, cotizaciones, leads, NPS) se conservan.")
+    
+    archivo_ventas = st.file_uploader("📊 Archivo de ventas (Excel o CSV)", type=['csv', 'xlsx'], key="ventas_periodo")
+    
+    if archivo_ventas and st.button("🚀 Actualizar ventas del período", type="primary"):
+        try:
+            client = init_bq_client()
             
+            # Leer archivo
+            if archivo_ventas.name.endswith('.csv'):
+                df_ventas = pd.read_csv(archivo_ventas)
+            else:
+                df_ventas = pd.read_excel(archivo_ventas)
+            
+            # Verificar columnas necesarias
+            if 'Fecha' not in df_ventas.columns:
+                st.error("❌ El archivo debe tener una columna 'Fecha'")
+                st.write("Columnas encontradas:", list(df_ventas.columns))
+                return
+            
+            # Buscar columna de vendedor
+            col_vendedor = None
+            for col in df_ventas.columns:
+                if col.lower() in ['vendedor', 'creador', 'id_asesor']:
+                    col_vendedor = col
+                    break
+            
+            if col_vendedor is None:
+                col_vendedor = df_ventas.columns[0]
+                st.warning(f"Usando '{col_vendedor}' como columna de vendedor")
+            
+            # Convertir fechas
+            df_ventas['Fecha'] = pd.to_datetime(df_ventas['Fecha']).dt.date
+            
+            # Filtrar por período
+            df_ventas_periodo = df_ventas[(df_ventas['Fecha'] >= fecha_inicio) & (df_ventas['Fecha'] <= fecha_fin)]
+            
+            if df_ventas_periodo.empty:
+                st.warning("No hay ventas en el período seleccionado")
+                return
+            
+            st.success(f"✅ {len(df_ventas_periodo)} ventas encontradas en el período")
+            
+            # Mostrar resumen por fecha
+            resumen_fechas = df_ventas_periodo.groupby('Fecha').size().reset_index(name='ventas')
+            st.dataframe(resumen_fechas, use_container_width=True)
+            
+            # Procesar cada fecha
+            fechas_procesadas = df_ventas_periodo['Fecha'].unique()
+            progreso = st.progress(0)
+            
+            for i, fecha in enumerate(fechas_procesadas):
+                st.info(f"📅 Procesando {fecha}...")
+                
+                # Filtrar ventas de esta fecha
+                df_fecha = df_ventas_periodo[df_ventas_periodo['Fecha'] == fecha]
+                
+                # Renombrar columna de vendedor
+                df_fecha = df_fecha.rename(columns={col_vendedor: 'id_asesor'})
+                df_fecha['id_asesor'] = df_fecha['id_asesor'].astype(str).str.strip().str.upper()
+                
+                # Agrupar ventas por agente
+                ventas_agg = df_fecha.groupby('id_asesor').agg(
+                    ventas=('Venta', 'sum'),
+                    cierres=('Factura', 'count')
+                ).reset_index()
+                
+                # Calcular devoluciones (ventas negativas)
+                df_devoluciones = df_fecha[df_fecha['Venta'] < 0].groupby('id_asesor')['Venta'].sum().reset_index()
+                df_devoluciones = df_devoluciones.rename(columns={'Venta': 'devoluciones'})
+                ventas_agg = ventas_agg.merge(df_devoluciones, on='id_asesor', how='left')
+                ventas_agg['devoluciones'] = ventas_agg['devoluciones'].fillna(0)
+                
+                # Obtener reporte existente para esta fecha
+                query_existente = f"""
+                SELECT * FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha}'
+                """
+                df_existente = client.query(query_existente).to_dataframe()
+                
+                if df_existente.empty:
+                    # No hay datos previos, crear solo con ventas
+                    nuevo_reporte = agentes.merge(ventas_agg, on='id_asesor', how='left')
+                    for col in ['llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia']:
+                        if col not in nuevo_reporte.columns:
+                            nuevo_reporte[col] = 0
+                else:
+                    # Actualizar solo ventas y cierres
+                    nuevo_reporte = df_existente.merge(ventas_agg, on='id_asesor', how='left', suffixes=('', '_new'))
+                    nuevo_reporte['ventas'] = nuevo_reporte['ventas_new'].fillna(nuevo_reporte['ventas'])
+                    nuevo_reporte['cierres'] = nuevo_reporte['cierres_new'].fillna(nuevo_reporte['cierres'])
+                    nuevo_reporte = nuevo_reporte.drop(columns=['ventas_new', 'cierres_new'])
+                    
+                    if 'devoluciones' in ventas_agg.columns:
+                        nuevo_reporte = nuevo_reporte.merge(df_devoluciones, on='id_asesor', how='left')
+                        nuevo_reporte['devoluciones'] = nuevo_reporte['devoluciones'].fillna(0)
+                    elif 'devoluciones' not in nuevo_reporte.columns:
+                        nuevo_reporte['devoluciones'] = 0
+                
+                # Rellenar nulos
+                for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia', 'devoluciones']:
+                    if col in nuevo_reporte.columns:
+                        nuevo_reporte[col] = nuevo_reporte[col].fillna(0)
+                
+                # Recalcular métricas
+                nuevo_reporte['conversion'] = nuevo_reporte.apply(
+                    lambda r: 0 if r['leads'] == 0 else (r['cierres'] / r['leads']) * 100, axis=1
+                ).round(2)
+                
+                nuevo_reporte['ticket_promedio'] = nuevo_reporte.apply(
+                    lambda r: 0 if r['cierres'] == 0 else r['ventas'] / r['cierres'], axis=1
+                ).round(2)
+                
+                # Asegurar que las fechas están correctas
+                nuevo_reporte['fecha'] = fecha
+                nuevo_reporte['mes'] = fecha.strftime('%B')
+                nuevo_reporte['dia'] = fecha.strftime('%A')
+                nuevo_reporte['sem_mes'] = (fecha.day - 1) // 7 + 1
+                nuevo_reporte['sem_año'] = fecha.isocalendar()[1]
+                nuevo_reporte['año'] = fecha.year
+                nuevo_reporte['fecha_creacion'] = datetime.datetime.now()
+                
+                # Guardar (reemplazar la fecha completa)
+                client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha}'").result()
+                client.load_table_from_dataframe(nuevo_reporte, TABLE_REPORTE).result()
+                
+                st.success(f"✅ {fecha} actualizado")
+                progreso.progress((i + 1) / len(fechas_procesadas))
+            
+            st.success(f"✅ Período {fecha_inicio} a {fecha_fin} actualizado correctamente")
+            
+            # Mostrar resumen final
+            st.subheader("📊 Nuevos totales del período")
+            query_totales = f"""
+            SELECT 
+                SUM(ventas) as total_ventas,
+                SUM(cierres) as total_cierres,
+                SUM(llamadas) as total_llamadas,
+                SUM(leads) as total_leads
+            FROM `{TABLE_REPORTE}`
+            WHERE fecha BETWEEN '{fecha_inicio}' AND '{fecha_fin}'
+            """
+            df_totales = client.query(query_totales).to_dataframe()
+            st.dataframe(df_totales, use_container_width=True)
+            
+        except Exception as e:
+            st.error(f"Error: {e}")
+            st.exception(e)    
             # 2. Procesar LLAMADAS (cruce por id_llamadas)
             df_llamadas = leer_csv_inteligente(llamadas_file)
             

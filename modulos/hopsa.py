@@ -178,6 +178,21 @@ def subir_informacion():
     else:
         st.info(f"📅 Cargando datos para HOY ({fecha_reporte})")
     
+    # Botón para borrar la fecha manualmente
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("🗑️ Borrar datos de esta fecha", type="secondary"):
+            try:
+                client = init_bq_client()
+                client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha_reporte}'").result()
+                client.query(f"DELETE FROM `{TABLE_MANUAL}` WHERE fecha = '{fecha_reporte}'").result()
+                st.success(f"✅ Datos del {fecha_reporte} eliminados")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error al borrar: {e}")
+    with col_btn2:
+        st.markdown("*Los datos se reemplazarán automáticamente al subir nuevos archivos*")
+    
     st.info(f"📋 {len(agentes)} agentes activos")
     
     st.markdown("---")
@@ -329,21 +344,19 @@ def subir_informacion():
             reporte['año'] = fecha_reporte.year
             reporte['fecha_creacion'] = datetime.datetime.now()
             
-            # 5. Guardar
+            # 5. Guardar (REEMPLAZAR, no sumar)
             with st.spinner("Guardando en BigQuery..."):
-                # Reemplazar reporte diario
+                # Eliminar datos existentes de esta fecha
                 client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha_reporte}'").result()
-                client.load_table_from_dataframe(reporte, TABLE_REPORTE).result()
-                
-                # Reemplazar datos manuales
-                df_manual['fecha'] = fecha_reporte
-                df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
-                df_manual['timestamp'] = datetime.datetime.now()
                 client.query(f"DELETE FROM `{TABLE_MANUAL}` WHERE fecha = '{fecha_reporte}'").result()
+                
+                # Insertar nuevos datos
+                client.load_table_from_dataframe(reporte, TABLE_REPORTE).result()
                 client.load_table_from_dataframe(df_manual, TABLE_MANUAL).result()
                 
-                # Guardar histórico de ventas
-                registros = guardar_historico_ventas(client, df_ventas, fecha_reporte, st.session_state.get('usuario', 'unknown'), "REEMPLAZAR")
+                # Guardar histórico de ventas (también reemplaza para esta fecha)
+                registros = guardar_historico_ventas(client, df_ventas, fecha_reporte, 
+                                                    st.session_state.get('usuario', 'unknown'), "REEMPLAZAR")
                 st.caption(f"📝 {registros} registros guardados en histórico de ventas")
             
             st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente")
@@ -385,7 +398,8 @@ def actualizar_ventas_periodo():
     with col2:
         fecha_fin = st.date_input("Fecha fin", datetime.date.today())
     
-    st.warning(f"⚠️ Esto REEMPLAZARÁ los datos de ventas para las fechas: {fecha_inicio} a {fecha_fin}")
+    st.warning(f"⚠️ Esto REEMPLAZARÁ SOLO las ventas para las fechas: {fecha_inicio} a {fecha_fin}")
+    st.info("📌 Los demás datos (llamadas, cotizaciones, leads, NPS, asistencia) se conservan.")
     
     archivo_ventas = st.file_uploader("📊 Archivo de ventas (Excel o CSV)", type=['csv', 'xlsx'], key="ventas_periodo")
     
@@ -452,41 +466,43 @@ def actualizar_ventas_periodo():
                 else:
                     ventas_agg['devoluciones'] = 0
                 
-                # Crear versión limpia de devoluciones para merges
-                df_devoluciones_clean = ventas_agg[['id_asesor', 'devoluciones']].copy()
-                
-                # Obtener reporte existente
+                # Obtener reporte existente (para conservar llamadas, leads, etc.)
                 query_existente = f"SELECT * FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha.strftime('%Y-%m-%d')}'"
                 df_existente = client.query(query_existente).to_dataframe()
                 
                 if df_existente.empty:
+                    # No hay datos previos, crear estructura básica
                     nuevo_reporte = agentes.merge(ventas_agg, on='id_asesor', how='left')
                     for col in ['llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia']:
                         if col not in nuevo_reporte.columns:
                             nuevo_reporte[col] = 0
-                    # Asegurar devoluciones
                     if 'devoluciones' not in nuevo_reporte.columns:
                         nuevo_reporte['devoluciones'] = 0
                 else:
-                    nuevo_reporte = df_existente.merge(ventas_agg, on='id_asesor', how='left', suffixes=('', '_new'))
-                    nuevo_reporte['ventas'] = nuevo_reporte['ventas_new'].fillna(nuevo_reporte['ventas'])
-                    nuevo_reporte['cierres'] = nuevo_reporte['cierres_new'].fillna(nuevo_reporte['cierres'])
-                    nuevo_reporte = nuevo_reporte.drop(columns=['ventas_new', 'cierres_new'])
-
-                # Asegurar que devoluciones existe
-                if 'devoluciones' not in nuevo_reporte.columns:
-                    nuevo_reporte['devoluciones'] = 0
-                else:
-                    nuevo_reporte['devoluciones'] = nuevo_reporte['devoluciones'].fillna(0)
+                    # Conservar todos los datos existentes, solo actualizar ventas
+                    nuevo_reporte = df_existente.copy()
+                    # Actualizar ventas y cierres
+                    for _, row in ventas_agg.iterrows():
+                        mask = nuevo_reporte['id_asesor'] == row['id_asesor']
+                        nuevo_reporte.loc[mask, 'ventas'] = row['ventas']
+                        nuevo_reporte.loc[mask, 'cierres'] = row['cierres']
+                        if 'devoluciones' in row:
+                            nuevo_reporte.loc[mask, 'devoluciones'] = row['devoluciones']
+                    
+                    # Asegurar que las columnas nuevas tengan valor 0 si no existen
+                    if 'devoluciones' not in nuevo_reporte.columns:
+                        nuevo_reporte['devoluciones'] = 0
+                    else:
+                        nuevo_reporte['devoluciones'] = nuevo_reporte['devoluciones'].fillna(0)
                 
-                # Rellenar nulos (sin devoluciones aquí, ya lo hicimos)
-                for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia']:
+                # Rellenar nulos en columnas numéricas
+                for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia', 'devoluciones']:
                     if col in nuevo_reporte.columns:
                         nuevo_reporte[col] = nuevo_reporte[col].fillna(0)
                 
-                # Calcular métricas
+                # Recalcular métricas
                 nuevo_reporte['conversion'] = nuevo_reporte.apply(
-                    lambda r: 0 if r['leads'] == 0 else (r['cierres'] / r['leads']) * 100, axis=1
+                    lambda r: 0 if r.get('leads', 0) == 0 else (r['cierres'] / r['leads']) * 100, axis=1
                 ).round(2)
                 
                 nuevo_reporte['ticket_promedio'] = nuevo_reporte.apply(
@@ -502,17 +518,11 @@ def actualizar_ventas_periodo():
                 nuevo_reporte['año'] = fecha.year
                 nuevo_reporte['fecha_creacion'] = datetime.datetime.now()
                 
-                                # Eliminar columnas temporales
-                cols_eliminar = [col for col in nuevo_reporte.columns if col.endswith('_new') or col.endswith('_clean')]
-                if cols_eliminar:
-                    nuevo_reporte = nuevo_reporte.drop(columns=cols_eliminar)
-                    st.caption(f"   🧹 Eliminadas: {cols_eliminar}")
-                
-                # Guardar reporte
+                # Guardar reporte (reemplazar la fecha completa)
                 client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha.strftime('%Y-%m-%d')}'").result()
                 client.load_table_from_dataframe(nuevo_reporte, TABLE_REPORTE).result()
                 
-                # Guardar histórico
+                # Guardar histórico de ventas (reemplaza para esta fecha)
                 registros = guardar_historico_ventas(client, df_fecha, fecha.date(), 
                                                     st.session_state.get('usuario', 'unknown'), "REEMPLAZAR")
                 st.caption(f"   📝 {registros} registros guardados en histórico")

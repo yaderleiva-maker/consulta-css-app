@@ -277,33 +277,81 @@ def subir_informacion():
                 cierres=('Factura', 'count')
             ).reset_index()
             
-            # 2. Procesar LLAMADAS (cruce por id_llamadas)
+                        # 2. Procesar LLAMADAS - Cruce por Identificación = id_llamadas
             df_llamadas = leer_csv_inteligente(llamadas_file)
             
-            # Buscar columna de identificación
-            col_id = 'Identificación' if 'Identificación' in df_llamadas.columns else 'Usuario'
-            df_llamadas['id_original'] = df_llamadas[col_id].astype(str).str.strip()
+            # Mostrar columnas para debug
+            st.write("Columnas en llamadas:", list(df_llamadas.columns))
             
-            # Mapeo exacto por id_llamadas
-            mapeo = dict(zip(
-                agentes['id_llamadas'].astype(str).str.strip(),
-                agentes['id_asesor'].astype(str)
-            ))
+            # PRIORIZAR la columna 'Identificación' (tiene los IDs como 'yaguilar')
+            col_id = None
+            for col in df_llamadas.columns:
+                if col.lower() in ['identificación', 'identificacion']:
+                    col_id = col
+                    break
             
-            df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo)
+            # Si no encuentra 'Identificación', usar 'Usuario' como fallback
+            if col_id is None:
+                col_id = 'Usuario'
+                st.warning(f"No se encontró 'Identificación', usando '{col_id}' como ID")
+            else:
+                st.success(f"✅ Usando columna '{col_id}' para cruce de IDs")
             
-            # Mostrar no mapeados
-            no_mapeados = df_llamadas[df_llamadas['id_asesor'].isna()]['id_original'].nunique()
+            # Extraer el ID de llamadas (de la columna correcta)
+            df_llamadas['id_llamadas_raw'] = df_llamadas[col_id].astype(str).str.strip()
+            
+            # Mostrar los primeros valores para debug
+            st.write(f"IDs de llamadas (desde columna '{col_id}'):", df_llamadas['id_llamadas_raw'].head(10).tolist())
+            
+            # Crear mapeo desde la tabla de agentes
+            # El mapeo es: id_llamadas (de agentes) -> id_asesor
+            mapeo_agentes = {}
+            for _, row in agentes.iterrows():
+                if pd.notna(row['id_llamadas']):
+                    id_llamada_agente = str(row['id_llamadas']).strip().lower()
+                    mapeo_agentes[id_llamada_agente] = str(row['id_asesor'])
+            
+            st.write("Mapeo disponible (id_llamadas -> id_asesor):", list(mapeo_agentes.items())[:10])
+            
+            # Aplicar mapeo (convertir a lowercase para comparación consistente)
+            df_llamadas['id_asesor'] = df_llamadas['id_llamadas_raw'].str.lower().map(mapeo_agentes)
+            
+            # Verificar mapeo
+            mapeados = df_llamadas['id_asesor'].notna().sum()
+            no_mapeados = df_llamadas['id_asesor'].isna().sum()
+            
+            st.info(f"📊 Mapeo de llamadas: {mapeados} mapeados, {no_mapeados} sin mapear")
+            
+            # Mostrar los que no se mapearon
             if no_mapeados > 0:
-                st.warning(f"⚠️ {no_mapeados} IDs de llamadas sin mapeo")
-                df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['id_original'])
+                sin_mapeo = df_llamadas[df_llamadas['id_asesor'].isna()]['id_llamadas_raw'].unique()
+                st.warning(f"⚠️ {len(sin_mapeo)} IDs de llamadas sin mapeo:")
+                st.write(list(sin_mapeo)[:15])
+                st.info("💡 Estos valores deben estar en la columna 'id_llamadas' de la tabla de agentes")
+                
+                # Para los que no tienen mapeo, usar el ID original
+                df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['id_llamadas_raw'])
             
+            # Excluir la fila de TOTALES si existe
+            df_llamadas = df_llamadas[df_llamadas['id_llamadas_raw'] != 'TOTALES']
+            df_llamadas = df_llamadas[df_llamadas['id_asesor'] != 'TOTALES']
+            
+            # Procesar llamadas (sumar la columna 'Llamadas')
             col_llamadas = 'Llamadas' if 'Llamadas' in df_llamadas.columns else None
             if col_llamadas:
+                # Convertir a numérico
+                df_llamadas[col_llamadas] = pd.to_numeric(df_llamadas[col_llamadas], errors='coerce').fillna(0)
                 llamadas_agg = df_llamadas.groupby('id_asesor')[col_llamadas].sum().reset_index()
                 llamadas_agg = llamadas_agg.rename(columns={col_llamadas: 'llamadas'})
             else:
                 llamadas_agg = df_llamadas.groupby('id_asesor').size().reset_index(name='llamadas')
+            
+            st.success(f"✅ Llamadas procesadas: {len(llamadas_agg)} agentes con datos")
+            
+            # Mostrar muestra
+            st.write("Muestra de llamadas procesadas:")
+            st.dataframe(llamadas_agg.head(15), use_container_width=True)# 2. Procesar LLAMADAS (cruce por id_llamadas)
+
             
             # 3. Procesar COTIZACIONES
             if cotizaciones_file.name.endswith('.csv'):

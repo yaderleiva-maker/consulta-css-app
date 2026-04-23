@@ -443,11 +443,17 @@ def actualizar_ventas_periodo():
                     cierres=('Factura', 'count')
                 ).reset_index()
                 
-                # Devoluciones
+                # Calcular devoluciones
                 df_devoluciones = df_fecha[df_fecha['Venta'] < 0].groupby('id_asesor')['Venta'].sum().reset_index()
-                df_devoluciones = df_devoluciones.rename(columns={'Venta': 'devoluciones'})
-                ventas_agg = ventas_agg.merge(df_devoluciones, on='id_asesor', how='left')
-                ventas_agg['devoluciones'] = ventas_agg['devoluciones'].fillna(0)
+                if not df_devoluciones.empty:
+                    df_devoluciones = df_devoluciones.rename(columns={'Venta': 'devoluciones'})
+                    ventas_agg = ventas_agg.merge(df_devoluciones, on='id_asesor', how='left')
+                    ventas_agg['devoluciones'] = ventas_agg['devoluciones'].fillna(0)
+                else:
+                    ventas_agg['devoluciones'] = 0
+                
+                # Crear versión limpia de devoluciones para merges
+                df_devoluciones_clean = ventas_agg[['id_asesor', 'devoluciones']].copy()
                 
                 # Obtener reporte existente
                 query_existente = f"SELECT * FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha.strftime('%Y-%m-%d')}'"
@@ -458,12 +464,16 @@ def actualizar_ventas_periodo():
                     for col in ['llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia']:
                         if col not in nuevo_reporte.columns:
                             nuevo_reporte[col] = 0
+                    # Asegurar devoluciones
+                    if 'devoluciones' not in nuevo_reporte.columns:
+                        nuevo_reporte['devoluciones'] = 0
                 else:
                     nuevo_reporte = df_existente.merge(ventas_agg, on='id_asesor', how='left', suffixes=('', '_new'))
                     nuevo_reporte['ventas'] = nuevo_reporte['ventas_new'].fillna(nuevo_reporte['ventas'])
                     nuevo_reporte['cierres'] = nuevo_reporte['cierres_new'].fillna(nuevo_reporte['cierres'])
                     nuevo_reporte = nuevo_reporte.drop(columns=['ventas_new', 'cierres_new'])
-                    nuevo_reporte = nuevo_reporte.merge(df_devoluciones, on='id_asesor', how='left')
+                    # Usar df_devoluciones_clean que sabemos que es seguro
+                    nuevo_reporte = nuevo_reporte.merge(df_devoluciones_clean, on='id_asesor', how='left')
                     nuevo_reporte['devoluciones'] = nuevo_reporte['devoluciones'].fillna(0)
                 
                 # Rellenar nulos
@@ -503,7 +513,7 @@ def actualizar_ventas_periodo():
             
             st.success(f"✅ Período {fecha_inicio} a {fecha_fin} actualizado correctamente")
             
-            # Mostrar resumen
+            # Mostrar resumen final
             st.subheader("📊 Nuevos totales del período")
             query_totales = f"""
             SELECT 

@@ -502,7 +502,13 @@ def actualizar_ventas_periodo():
                 nuevo_reporte['año'] = fecha.year
                 nuevo_reporte['fecha_creacion'] = datetime.datetime.now()
                 
-                # Guardar
+                                # Eliminar columnas temporales
+                cols_eliminar = [col for col in nuevo_reporte.columns if col.endswith('_new') or col.endswith('_clean')]
+                if cols_eliminar:
+                    nuevo_reporte = nuevo_reporte.drop(columns=cols_eliminar)
+                    st.caption(f"   🧹 Eliminadas: {cols_eliminar}")
+                
+                # Guardar reporte
                 client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha.strftime('%Y-%m-%d')}'").result()
                 client.load_table_from_dataframe(nuevo_reporte, TABLE_REPORTE).result()
                 
@@ -513,8 +519,6 @@ def actualizar_ventas_periodo():
                 
                 st.success(f"✅ {fecha.strftime('%Y-%m-%d')} actualizado")
                 progreso.progress((i + 1) / len(fechas_procesar))
-            
-            st.success(f"✅ Período {fecha_inicio} a {fecha_fin} actualizado correctamente")
             
             # Mostrar resumen final
             st.subheader("📊 Nuevos totales del período")

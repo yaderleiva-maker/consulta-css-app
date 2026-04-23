@@ -342,7 +342,7 @@ def subir_informacion():
                 client.query(f"DELETE FROM `{TABLE_MANUAL}` WHERE fecha = '{fecha_reporte}'").result()
                 client.load_table_from_dataframe(df_manual, TABLE_MANUAL).result()
                 
-                # Guardar histórico de ventas (REEMPLAZA para esta fecha)
+                # Guardar histórico de ventas
                 registros = guardar_historico_ventas(client, df_ventas, fecha_reporte, st.session_state.get('usuario', 'unknown'), "REEMPLAZAR")
                 st.caption(f"📝 {registros} registros guardados en histórico de ventas")
             
@@ -472,12 +472,15 @@ def actualizar_ventas_periodo():
                     nuevo_reporte['ventas'] = nuevo_reporte['ventas_new'].fillna(nuevo_reporte['ventas'])
                     nuevo_reporte['cierres'] = nuevo_reporte['cierres_new'].fillna(nuevo_reporte['cierres'])
                     nuevo_reporte = nuevo_reporte.drop(columns=['ventas_new', 'cierres_new'])
-                    # Usar df_devoluciones_clean que sabemos que es seguro
-                    nuevo_reporte = nuevo_reporte.merge(df_devoluciones_clean, on='id_asesor', how='left')
+
+                # Asegurar que devoluciones existe
+                if 'devoluciones' not in nuevo_reporte.columns:
+                    nuevo_reporte['devoluciones'] = 0
+                else:
                     nuevo_reporte['devoluciones'] = nuevo_reporte['devoluciones'].fillna(0)
                 
-                # Rellenar nulos
-                for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia', 'devoluciones']:
+                # Rellenar nulos (sin devoluciones aquí, ya lo hicimos)
+                for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia']:
                     if col in nuevo_reporte.columns:
                         nuevo_reporte[col] = nuevo_reporte[col].fillna(0)
                 

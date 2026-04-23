@@ -117,6 +117,13 @@ def subir_informacion():
         return
     
     fecha_reporte = st.date_input("Fecha del reporte", datetime.date.today())
+    
+    # Advertencia si la fecha es diferente a hoy
+    if fecha_reporte != datetime.date.today():
+        st.warning(f"⚠️ Estás cargando datos para {fecha_reporte} (no para hoy). Los datos existentes de esta fecha serán REEMPLAZADOS.")
+    else:
+        st.info(f"📅 Cargando datos para HOY ({fecha_reporte})")
+    
     st.info(f"📋 {len(agentes)} agentes activos")
     
     st.markdown("---")
@@ -207,7 +214,135 @@ def subir_informacion():
                 ventas=('Venta', 'sum'),
                 cierres=('Factura', 'count')
             ).reset_index()
-        def actualizar_ventas_periodo():
+            
+            # 2. Procesar LLAMADAS (cruce por id_llamadas)
+            df_llamadas = leer_csv_inteligente(llamadas_file)
+            
+            # Buscar columna de identificación
+            col_id = 'Identificación' if 'Identificación' in df_llamadas.columns else 'Usuario'
+            df_llamadas['id_original'] = df_llamadas[col_id].astype(str).str.strip()
+            
+            # Mapeo exacto por id_llamadas
+            mapeo = dict(zip(
+                agentes['id_llamadas'].astype(str).str.strip(),
+                agentes['id_asesor'].astype(str)
+            ))
+            
+            df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo)
+            
+            # Mostrar no mapeados
+            no_mapeados = df_llamadas[df_llamadas['id_asesor'].isna()]['id_original'].nunique()
+            if no_mapeados > 0:
+                st.warning(f"⚠️ {no_mapeados} IDs de llamadas sin mapeo")
+                df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['id_original'])
+            
+            col_llamadas = 'Llamadas' if 'Llamadas' in df_llamadas.columns else None
+            if col_llamadas:
+                llamadas_agg = df_llamadas.groupby('id_asesor')[col_llamadas].sum().reset_index()
+                llamadas_agg = llamadas_agg.rename(columns={col_llamadas: 'llamadas'})
+            else:
+                llamadas_agg = df_llamadas.groupby('id_asesor').size().reset_index(name='llamadas')
+            
+            # 3. Procesar COTIZACIONES
+            if cotizaciones_file.name.endswith('.csv'):
+                df_cotizaciones = leer_csv_inteligente(cotizaciones_file)
+            else:
+                df_cotizaciones = pd.read_excel(cotizaciones_file)
+            
+            col_cotizador = 'Vendedor' if 'Vendedor' in df_cotizaciones.columns else 'Creador'
+            df_cotizaciones = df_cotizaciones.rename(columns={col_cotizador: 'id_asesor'})
+            df_cotizaciones['id_asesor'] = df_cotizaciones['id_asesor'].astype(str).str.strip()
+            cotizaciones_agg = df_cotizaciones.groupby('id_asesor').size().reset_index(name='cantidad_cotizaciones')
+            
+            # 4. Construir reporte
+            reporte = agentes.merge(ventas_agg, on='id_asesor', how='left')
+            reporte = reporte.merge(llamadas_agg, on='id_asesor', how='left')
+            reporte = reporte.merge(cotizaciones_agg, on='id_asesor', how='left')
+            reporte = reporte.merge(df_manual, on='id_asesor', how='left')
+            
+            # Rellenar nulos
+            for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia']:
+                if col in reporte.columns:
+                    reporte[col] = reporte[col].fillna(0)
+            
+            # Calcular métricas (evitando división por cero)
+            reporte['conversion'] = reporte.apply(
+                lambda r: 0 if r['leads'] == 0 else (r['cierres'] / r['leads']) * 100,
+                axis=1
+            ).round(2)
+            
+            reporte['ticket_promedio'] = reporte.apply(
+                lambda r: 0 if r['cierres'] == 0 else r['ventas'] / r['cierres'],
+                axis=1
+            ).round(2)
+            
+            # Fechas
+            reporte['fecha'] = fecha_reporte
+            reporte['mes'] = fecha_reporte.strftime('%B')
+            reporte['dia'] = fecha_reporte.strftime('%A')
+            reporte['sem_mes'] = (fecha_reporte.day - 1) // 7 + 1
+            reporte['sem_año'] = fecha_reporte.isocalendar()[1]
+            reporte['año'] = fecha_reporte.year
+            reporte['fecha_creacion'] = datetime.datetime.now()
+            
+            # 5. Sobrescribir (eliminar existentes y guardar nuevos)
+            with st.spinner("Guardando en BigQuery..."):
+                # Eliminar registros de esta fecha
+                client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha_reporte}'").result()
+                
+                # Guardar nuevo reporte
+                job = client.load_table_from_dataframe(
+                    reporte, TABLE_REPORTE,
+                    job_config=bigquery.LoadJobConfig(
+                        write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+                    )
+                )
+                job.result()
+                
+                # Guardar datos manuales
+                df_manual['fecha'] = fecha_reporte
+                df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
+                df_manual['timestamp'] = datetime.datetime.now()
+                
+                client.query(f"DELETE FROM `{TABLE_MANUAL}` WHERE fecha = '{fecha_reporte}'").result()
+                
+                job_manual = client.load_table_from_dataframe(
+                    df_manual, TABLE_MANUAL,
+                    job_config=bigquery.LoadJobConfig(
+                        write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+                    )
+                )
+                job_manual.result()
+            
+            st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente")
+            
+            # Resumen - mostrando solo columnas que existen
+            st.subheader("📊 Resumen del dia")
+            
+            # Verificar qué columnas existen
+            columnas_resumen = ['nombre', 'leads', 'cierres', 'ventas', 'conversion']
+            if 'llamadas' in reporte.columns:
+                columnas_resumen.append('llamadas')
+            if 'cantidad_cotizaciones' in reporte.columns:
+                columnas_resumen.append('cantidad_cotizaciones')
+            
+            resumen = reporte[columnas_resumen].copy()
+            if 'ventas' in resumen.columns:
+                resumen['ventas'] = resumen['ventas'].round(2)
+            st.dataframe(resumen, use_container_width=True)
+            
+            # Totales (seguros)
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Total Ventas", f"${reporte['ventas'].sum():,.0f}" if 'ventas' in reporte.columns else "$0")
+            col2.metric("Total Cierres", f"{reporte['cierres'].sum():,.0f}" if 'cierres' in reporte.columns else "0")
+            col3.metric("Total Leads", f"{reporte['leads'].sum():,.0f}" if 'leads' in reporte.columns else "0")
+            col4.metric("Total Llamadas", f"{reporte['llamadas'].sum():,.0f}" if 'llamadas' in reporte.columns else "0")
+            
+        except Exception as e:
+            st.error(f"Error al procesar: {e}")
+            st.exception(e)
+
+def actualizar_ventas_periodo():
     st.subheader("🔄 Actualizar ventas por período")
     
     agentes = cargar_agentes()
@@ -368,132 +503,6 @@ def subir_informacion():
             
         except Exception as e:
             st.error(f"Error: {e}")
-            st.exception(e)    
-            # 2. Procesar LLAMADAS (cruce por id_llamadas)
-            df_llamadas = leer_csv_inteligente(llamadas_file)
-            
-            # Buscar columna de identificación
-            col_id = 'Identificación' if 'Identificación' in df_llamadas.columns else 'Usuario'
-            df_llamadas['id_original'] = df_llamadas[col_id].astype(str).str.strip()
-            
-            # Mapeo exacto por id_llamadas
-            mapeo = dict(zip(
-                agentes['id_llamadas'].astype(str).str.strip(),
-                agentes['id_asesor'].astype(str)
-            ))
-            
-            df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo)
-            
-            # Mostrar no mapeados
-            no_mapeados = df_llamadas[df_llamadas['id_asesor'].isna()]['id_original'].nunique()
-            if no_mapeados > 0:
-                st.warning(f"⚠️ {no_mapeados} IDs de llamadas sin mapeo")
-                df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['id_original'])
-            
-            col_llamadas = 'Llamadas' if 'Llamadas' in df_llamadas.columns else None
-            if col_llamadas:
-                llamadas_agg = df_llamadas.groupby('id_asesor')[col_llamadas].sum().reset_index()
-                llamadas_agg = llamadas_agg.rename(columns={col_llamadas: 'llamadas'})
-            else:
-                llamadas_agg = df_llamadas.groupby('id_asesor').size().reset_index(name='llamadas')
-            
-            # 3. Procesar COTIZACIONES
-            if cotizaciones_file.name.endswith('.csv'):
-                df_cotizaciones = leer_csv_inteligente(cotizaciones_file)
-            else:
-                df_cotizaciones = pd.read_excel(cotizaciones_file)
-            
-            col_cotizador = 'Vendedor' if 'Vendedor' in df_cotizaciones.columns else 'Creador'
-            df_cotizaciones = df_cotizaciones.rename(columns={col_cotizador: 'id_asesor'})
-            df_cotizaciones['id_asesor'] = df_cotizaciones['id_asesor'].astype(str).str.strip()
-            cotizaciones_agg = df_cotizaciones.groupby('id_asesor').size().reset_index(name='cantidad_cotizaciones')
-            
-            # 4. Construir reporte
-            reporte = agentes.merge(ventas_agg, on='id_asesor', how='left')
-            reporte = reporte.merge(llamadas_agg, on='id_asesor', how='left')
-            reporte = reporte.merge(cotizaciones_agg, on='id_asesor', how='left')
-            reporte = reporte.merge(df_manual, on='id_asesor', how='left')
-            
-            # Rellenar nulos
-            for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia']:
-                if col in reporte.columns:
-                    reporte[col] = reporte[col].fillna(0)
-            
-            # Calcular métricas (evitando división por cero)
-            reporte['conversion'] = reporte.apply(
-                lambda r: 0 if r['leads'] == 0 else (r['cierres'] / r['leads']) * 100,
-                axis=1
-            ).round(2)
-            
-            reporte['ticket_promedio'] = reporte.apply(
-                lambda r: 0 if r['cierres'] == 0 else r['ventas'] / r['cierres'],
-                axis=1
-            ).round(2)
-            
-            # Fechas
-            reporte['fecha'] = fecha_reporte
-            reporte['mes'] = fecha_reporte.strftime('%B')
-            reporte['dia'] = fecha_reporte.strftime('%A')
-            reporte['sem_mes'] = (fecha_reporte.day - 1) // 7 + 1
-            reporte['sem_año'] = fecha_reporte.isocalendar()[1]
-            reporte['año'] = fecha_reporte.year
-            reporte['fecha_creacion'] = datetime.datetime.now()
-            
-            # 5. Sobrescribir (eliminar existentes y guardar nuevos)
-            with st.spinner("Guardando en BigQuery..."):
-                # Eliminar registros de esta fecha
-                client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha_reporte}'").result()
-                
-                # Guardar nuevo reporte
-                job = client.load_table_from_dataframe(
-                    reporte, TABLE_REPORTE,
-                    job_config=bigquery.LoadJobConfig(
-                        write_disposition=bigquery.WriteDisposition.WRITE_APPEND
-                    )
-                )
-                job.result()
-                
-                # Guardar datos manuales
-                df_manual['fecha'] = fecha_reporte
-                df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
-                df_manual['timestamp'] = datetime.datetime.now()
-                
-                client.query(f"DELETE FROM `{TABLE_MANUAL}` WHERE fecha = '{fecha_reporte}'").result()
-                
-                job_manual = client.load_table_from_dataframe(
-                    df_manual, TABLE_MANUAL,
-                    job_config=bigquery.LoadJobConfig(
-                        write_disposition=bigquery.WriteDisposition.WRITE_APPEND
-                    )
-                )
-                job_manual.result()
-            
-            st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente")
-            
-            # Resumen - mostrando solo columnas que existen
-            st.subheader("📊 Resumen del dia")
-            
-            # Verificar qué columnas existen
-            columnas_resumen = ['nombre', 'leads', 'cierres', 'ventas', 'conversion']
-            if 'llamadas' in reporte.columns:
-                columnas_resumen.append('llamadas')
-            if 'cantidad_cotizaciones' in reporte.columns:
-                columnas_resumen.append('cantidad_cotizaciones')
-            
-            resumen = reporte[columnas_resumen].copy()
-            if 'ventas' in resumen.columns:
-                resumen['ventas'] = resumen['ventas'].round(2)
-            st.dataframe(resumen, use_container_width=True)
-            
-            # Totales (seguros)
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Total Ventas", f"${reporte['ventas'].sum():,.0f}" if 'ventas' in reporte.columns else "$0")
-            col2.metric("Total Cierres", f"{reporte['cierres'].sum():,.0f}" if 'cierres' in reporte.columns else "0")
-            col3.metric("Total Leads", f"{reporte['leads'].sum():,.0f}" if 'leads' in reporte.columns else "0")
-            col4.metric("Total Llamadas", f"{reporte['llamadas'].sum():,.0f}" if 'llamadas' in reporte.columns else "0")
-            
-        except Exception as e:
-            st.error(f"Error al procesar: {e}")
             st.exception(e)
 
 def descargar_reportes():
@@ -585,8 +594,8 @@ def run(usuario):
     if 'menu_hopsa' not in st.session_state:
         st.session_state.menu_hopsa = "Agentes"
     
-    opcion = st.sidebar.radio("Menu", ["Agentes", "Subir Informacion", "Reportes"],
-                              index=["Agentes", "Subir Informacion", "Reportes"].index(st.session_state.menu_hopsa))
+    opcion = st.sidebar.radio("Menu", ["Agentes", "Subir Informacion", "Actualizar Ventas", "Reportes"],
+                              index=["Agentes", "Subir Informacion", "Actualizar Ventas", "Reportes"].index(st.session_state.menu_hopsa))
     
     st.session_state.menu_hopsa = opcion
     
@@ -594,5 +603,7 @@ def run(usuario):
         actualizar_agentes()
     elif opcion == "Subir Informacion":
         subir_informacion()
+    elif opcion == "Actualizar Ventas":
+        actualizar_ventas_periodo()
     else:
         descargar_reportes()

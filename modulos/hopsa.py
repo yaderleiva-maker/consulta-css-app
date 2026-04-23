@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import datetime
+import re
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
@@ -10,6 +11,23 @@ DATASET_HOPSA = "hopsa"
 TABLE_ASESORES = f"{PROJECT_ID}.{DATASET_HOPSA}.asesores"
 TABLE_REPORTE = f"{PROJECT_ID}.{DATASET_HOPSA}.reporte_diario"
 TABLE_MANUAL = f"{PROJECT_ID}.{DATASET_HOPSA}.datos_manuales"
+
+def limpiar(texto):
+    """Elimina tildes, ñ y caracteres especiales para evitar errores en SQL"""
+    if pd.isna(texto):
+        return ""
+    texto = str(texto)
+    # Reemplazar vocales acentuadas y ñ
+    replacements = {
+        'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u',
+        'Á': 'A', 'É': 'E', 'Í': 'I', 'Ó': 'O', 'Ú': 'U',
+        'ñ': 'n', 'Ñ': 'N', 'ü': 'u', 'Ü': 'U'
+    }
+    for k, v in replacements.items():
+        texto = texto.replace(k, v)
+    # Eliminar cualquier otro carácter no ASCII
+    texto = re.sub(r'[^\x00-\x7F]+', '', texto)
+    return texto.strip()
 
 @st.cache_resource
 def init_bq_client():
@@ -64,6 +82,12 @@ def actualizar_agentes():
             if 'supervisor' not in df.columns:
                 df['supervisor'] = ''
             
+            # Limpiar textos
+            df['id_asesor'] = df['id_asesor'].astype(str).apply(limpiar)
+            df['nombre'] = df['nombre'].astype(str).apply(limpiar)
+            df['supervisor'] = df['supervisor'].astype(str).apply(limpiar)
+            df['id_llamadas'] = df['id_llamadas'].astype(str).apply(limpiar)
+            
             st.success(f"✅ {len(df)} agentes cargados")
             st.dataframe(df.head(), use_container_width=True)
             
@@ -86,7 +110,6 @@ def actualizar_agentes():
 def subir_informacion():
     st.subheader("📂 Subir informacion del dia")
     
-    # Cargar agentes
     agentes = cargar_agentes()
     if agentes is None or agentes.empty:
         st.warning("⚠️ Primero carga los agentes")
@@ -109,7 +132,6 @@ def subir_informacion():
     st.markdown("---")
     st.markdown("### Datos manuales")
     
-    # Datos manuales simplificados
     with st.form("datos_form"):
         datos = []
         for _, row in agentes.iterrows():
@@ -150,20 +172,25 @@ def subir_informacion():
                 df_ventas = pd.read_excel(ventas_file)
             
             df_ventas = df_ventas.rename(columns={'Vendedor': 'id_asesor'})
-            df_ventas['id_asesor'] = df_ventas['id_asesor'].astype(str).str.strip()
+            df_ventas['id_asesor'] = df_ventas['id_asesor'].astype(str).str.strip().apply(limpiar)
             
             ventas_agg = df_ventas.groupby('id_asesor').agg(
                 ventas=('Venta', 'sum'),
                 cierres=('Factura', 'count')
             ).reset_index()
             
-            # 2. LLAMADAS - SIMPLE Y DIRECTO
+            # 2. LLAMADAS - CRUCE SIMPLE
             df_llamadas = pd.read_csv(llamadas_file)
             
-            # Mapeo: Identificación -> id_asesor
-            mapeo = dict(zip(agentes['id_llamadas'].astype(str), agentes['id_asesor'].astype(str)))
-            df_llamadas['id_asesor'] = df_llamadas['Identificación'].astype(str).map(mapeo)
+            # Crear mapeo: id_llamadas -> id_asesor
+            mapeo = dict(zip(agentes['id_llamadas'].astype(str).apply(limpiar), 
+                            agentes['id_asesor'].astype(str).apply(limpiar)))
+            
+            df_llamadas['id_asesor'] = df_llamadas['Identificación'].astype(str).apply(limpiar).map(mapeo)
             df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['Identificación'])
+            
+            # Excluir TOTALES
+            df_llamadas = df_llamadas[df_llamadas['Identificación'] != 'TOTALES']
             
             llamadas_agg = df_llamadas.groupby('id_asesor')['Llamadas'].sum().reset_index()
             
@@ -174,7 +201,7 @@ def subir_informacion():
                 df_cotiz = pd.read_excel(cotizaciones_file)
             
             df_cotiz = df_cotiz.rename(columns={'Vendedor': 'id_asesor'})
-            df_cotiz['id_asesor'] = df_cotiz['id_asesor'].astype(str).str.strip()
+            df_cotiz['id_asesor'] = df_cotiz['id_asesor'].astype(str).str.strip().apply(limpiar)
             cotizaciones_agg = df_cotiz.groupby('id_asesor').size().reset_index(name='cantidad_cotizaciones')
             
             # 4. ARMAR REPORTE
@@ -199,19 +226,25 @@ def subir_informacion():
             
             # Fechas
             reporte['fecha'] = fecha_reporte
-            reporte['mes'] = fecha_reporte.strftime('%B')
-            reporte['dia'] = fecha_reporte.strftime('%A')
+            reporte['mes'] = fecha_reporte.strftime('%B').encode('ascii', 'ignore').decode()
+            reporte['dia'] = fecha_reporte.strftime('%A').encode('ascii', 'ignore').decode()
             reporte['sem_mes'] = (fecha_reporte.day - 1) // 7 + 1
             reporte['sem_año'] = fecha_reporte.isocalendar()[1]
             reporte['año'] = fecha_reporte.year
             reporte['fecha_creacion'] = datetime.datetime.now()
             
-            # Manuales con fecha
-            df_manual['fecha'] = fecha_reporte
-            df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
-            df_manual['timestamp'] = datetime.datetime.now()
+            # Limpiar columnas de texto en reporte
+            reporte['nombre'] = reporte['nombre'].apply(limpiar)
+            reporte['supervisor'] = reporte['supervisor'].apply(limpiar)
+            reporte['id_asesor'] = reporte['id_asesor'].apply(limpiar)
             
-            # 5. GUARDAR (DELETE + INSERT simple)
+            # Manuales
+            df_manual['fecha'] = fecha_reporte
+            df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown').apply(limpiar) if hasattr(st.session_state.get('usuario', 'unknown'), 'apply') else limpiar(st.session_state.get('usuario', 'unknown'))
+            df_manual['timestamp'] = datetime.datetime.now()
+            df_manual['id_asesor'] = df_manual['id_asesor'].apply(limpiar)
+            
+            # 5. GUARDAR (DELETE + INSERT)
             with st.spinner("Guardando..."):
                 # Eliminar datos existentes de esta fecha
                 client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha_reporte}'").result()
@@ -237,6 +270,7 @@ def subir_informacion():
             
         except Exception as e:
             st.error(f"Error: {e}")
+            st.exception(e)
 
 def descargar_reportes():
     st.subheader("📥 Descargar reportes")
@@ -249,24 +283,27 @@ def descargar_reportes():
         fecha_fin = st.date_input("Hasta", datetime.date.today())
     
     if st.button("Generar"):
-        query = f"""
-        SELECT fecha, nombre as agente, supervisor, leads, cierres, 
-               ROUND(conversion,2) as conversion, ROUND(ventas,2) as ventas,
-               llamadas, cantidad_cotizaciones, asistencia
-        FROM `{TABLE_REPORTE}`
-        WHERE fecha BETWEEN '{fecha_inicio}' AND '{fecha_fin}'
-        ORDER BY fecha DESC, nombre
-        """
-        df = client.query(query).to_dataframe()
-        if df.empty:
-            st.warning("No hay datos")
-        else:
-            st.dataframe(df)
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Descargar CSV", csv, f"reporte_{fecha_inicio}_{fecha_fin}.csv")
+        try:
+            query = f"""
+            SELECT fecha, nombre as agente, supervisor, leads, cierres, 
+                   ROUND(conversion,2) as conversion, ROUND(ventas,2) as ventas,
+                   llamadas, cantidad_cotizaciones, asistencia
+            FROM `{TABLE_REPORTE}`
+            WHERE fecha BETWEEN '{fecha_inicio}' AND '{fecha_fin}'
+            ORDER BY fecha DESC, nombre
+            """
+            df = client.query(query).to_dataframe()
+            if df.empty:
+                st.warning("No hay datos")
+            else:
+                st.dataframe(df, use_container_width=True)
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button("📥 Descargar CSV", csv, f"reporte_{fecha_inicio}_{fecha_fin}.csv")
+        except Exception as e:
+            st.error(f"Error: {e}")
 
 def run(usuario):
-    st.title("🎯 HOPSA")
+    st.title("🎯 HOPSA - Gestion de Ventas")
     st.caption(f"Usuario: {usuario}")
     
     opcion = st.sidebar.radio("Menu", ["Agentes", "Subir Informacion", "Reportes"])

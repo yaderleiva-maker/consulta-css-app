@@ -393,11 +393,21 @@ def actualizar_ventas_periodo():
         try:
             client = init_bq_client()
             
+            # Leer archivo
             if archivo_ventas.name.endswith('.csv'):
                 df_ventas = pd.read_csv(archivo_ventas)
             else:
                 df_ventas = pd.read_excel(archivo_ventas)
             
+            # Verificar que existe columna Fecha
+            if 'Fecha' not in df_ventas.columns:
+                st.error("❌ El archivo debe tener una columna 'Fecha'")
+                return
+            
+            # Asegurar formato de fecha
+            df_ventas['Fecha'] = pd.to_datetime(df_ventas['Fecha']).dt.date
+            
+            # Buscar columna de vendedor
             col_vendedor = None
             for col in df_ventas.columns:
                 if col.lower() in ['vendedor', 'creador', 'id_asesor']:
@@ -408,20 +418,12 @@ def actualizar_ventas_periodo():
                 col_vendedor = df_ventas.columns[0]
                 st.warning(f"Usando '{col_vendedor}' como columna de vendedor")
             
+            # Fechas a procesar
             fechas_procesar = pd.date_range(fecha_inicio, fecha_fin).tolist()
             progreso = st.progress(0)
             
-                       for i, fecha in enumerate(fechas_procesar):
+            for i, fecha in enumerate(fechas_procesar):
                 st.info(f"📅 Procesando {fecha.strftime('%Y-%m-%d')}...")
-                
-                # Verificar que existe columna Fecha
-                if 'Fecha' not in df_ventas.columns:
-                    st.error("❌ El archivo debe tener una columna 'Fecha'")
-                    return
-                
-                # Asegurar formato de fecha
-                if not pd.api.types.is_datetime64_any_dtype(df_ventas['Fecha']):
-                    df_ventas['Fecha'] = pd.to_datetime(df_ventas['Fecha']).dt.date
                 
                 # Filtrar ventas de esta fecha específica
                 df_fecha = df_ventas[df_ventas['Fecha'] == fecha.date()].copy()
@@ -441,14 +443,13 @@ def actualizar_ventas_periodo():
                     cierres=('Factura', 'count')
                 ).reset_index()
                 
-                # Resto del código igual...
-                
                 # Devoluciones
                 df_devoluciones = df_fecha[df_fecha['Venta'] < 0].groupby('id_asesor')['Venta'].sum().reset_index()
                 df_devoluciones = df_devoluciones.rename(columns={'Venta': 'devoluciones'})
                 ventas_agg = ventas_agg.merge(df_devoluciones, on='id_asesor', how='left')
                 ventas_agg['devoluciones'] = ventas_agg['devoluciones'].fillna(0)
                 
+                # Obtener reporte existente
                 query_existente = f"SELECT * FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha.strftime('%Y-%m-%d')}'"
                 df_existente = client.query(query_existente).to_dataframe()
                 
@@ -465,10 +466,12 @@ def actualizar_ventas_periodo():
                     nuevo_reporte = nuevo_reporte.merge(df_devoluciones, on='id_asesor', how='left')
                     nuevo_reporte['devoluciones'] = nuevo_reporte['devoluciones'].fillna(0)
                 
+                # Rellenar nulos
                 for col in ['ventas', 'cierres', 'llamadas', 'cantidad_cotizaciones', 'leads', 'nps', 'pra_90', 'asistencia', 'devoluciones']:
                     if col in nuevo_reporte.columns:
                         nuevo_reporte[col] = nuevo_reporte[col].fillna(0)
                 
+                # Calcular métricas
                 nuevo_reporte['conversion'] = nuevo_reporte.apply(
                     lambda r: 0 if r['leads'] == 0 else (r['cierres'] / r['leads']) * 100, axis=1
                 ).round(2)
@@ -477,6 +480,7 @@ def actualizar_ventas_periodo():
                     lambda r: 0 if r['cierres'] == 0 else r['ventas'] / r['cierres'], axis=1
                 ).round(2)
                 
+                # Fechas
                 nuevo_reporte['fecha'] = fecha.date()
                 nuevo_reporte['mes'] = fecha.strftime('%B')
                 nuevo_reporte['dia'] = fecha.strftime('%A')
@@ -489,8 +493,9 @@ def actualizar_ventas_periodo():
                 client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha.strftime('%Y-%m-%d')}'").result()
                 client.load_table_from_dataframe(nuevo_reporte, TABLE_REPORTE).result()
                 
-                # Guardar histórico de ventas (REEMPLAZA para esta fecha)
-                registros = guardar_historico_ventas(client, df_fecha, fecha.date(), st.session_state.get('usuario', 'unknown'), "REEMPLAZAR")
+                # Guardar histórico
+                registros = guardar_historico_ventas(client, df_fecha, fecha.date(), 
+                                                    st.session_state.get('usuario', 'unknown'), "REEMPLAZAR")
                 st.caption(f"   📝 {registros} registros guardados en histórico")
                 
                 st.success(f"✅ {fecha.strftime('%Y-%m-%d')} actualizado")
@@ -498,6 +503,7 @@ def actualizar_ventas_periodo():
             
             st.success(f"✅ Período {fecha_inicio} a {fecha_fin} actualizado correctamente")
             
+            # Mostrar resumen
             st.subheader("📊 Nuevos totales del período")
             query_totales = f"""
             SELECT 

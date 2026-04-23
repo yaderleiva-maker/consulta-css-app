@@ -642,6 +642,31 @@ def run(usuario):
     
     st.session_state.menu_hopsa = opcion
     
+    # Botón de borrado en el sidebar
+    with st.sidebar.expander("🗑️ Herramientas de limpieza"):
+        fecha_borrar = st.date_input("Fecha a eliminar", datetime.date.today(), key="fecha_borrar")
+        
+        # Checkbox de confirmación
+        confirmar = st.checkbox("⚠️ Confirmo que quiero eliminar estos datos (reporte, manuales y histórico)")
+        
+        if st.button("Eliminar datos de esta fecha", type="secondary"):
+            if not confirmar:
+                st.sidebar.warning("Marca la casilla de confirmación primero")
+            else:
+                try:
+                    client = init_bq_client()
+                    # Eliminar de reporte_diario
+                    client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha_borrar}'").result()
+                    # Eliminar de datos_manuales
+                    client.query(f"DELETE FROM `{TABLE_MANUAL}` WHERE fecha = '{fecha_borrar}'").result()
+                    # Eliminar de hechos_ventas (histórico)
+                    client.query(f"DELETE FROM `{TABLE_HISTORICO_VENTAS}` WHERE periodo_actualizado = '{fecha_borrar}'").result()
+                    
+                    st.sidebar.success(f"✅ Datos del {fecha_borrar} eliminados (reporte, manuales e histórico)")
+                    st.rerun()
+                except Exception as e:
+                    st.sidebar.error(f"Error al borrar: {e}")
+    
     if opcion == "Agentes":
         actualizar_agentes()
     elif opcion == "Subir Informacion":

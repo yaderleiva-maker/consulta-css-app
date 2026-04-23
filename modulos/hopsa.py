@@ -51,6 +51,49 @@ def leer_csv_inteligente(archivo):
         archivo.seek(0)
         return pd.read_csv(archivo, sep=sep, encoding='latin1')
 
+def guardar_historico_ventas(client, df_ventas, fecha_periodo, usuario):
+    """Guarda todas las ventas individuales en tabla histórica"""
+    
+    df_historico = df_ventas.copy()
+    
+    # Buscar columna de vendedor
+    col_vendedor = None
+    for col in df_historico.columns:
+        if col.lower() in ['vendedor', 'creador', 'id_asesor']:
+            col_vendedor = col
+            break
+    
+    if col_vendedor is None:
+        col_vendedor = df_historico.columns[0]
+    
+    # Renombrar y limpiar
+    df_historico = df_historico.rename(columns={col_vendedor: 'id_asesor'})
+    df_historico['id_asesor'] = df_historico['id_asesor'].astype(str).str.strip().str.upper()
+    
+    # Agregar metadatos
+    df_historico['fecha_carga'] = datetime.datetime.now()
+    df_historico['usuario_carga'] = usuario
+    df_historico['periodo_actualizado'] = fecha_periodo
+    
+    # Generar ID único
+    df_historico['id_venta'] = df_historico['Factura'].astype(str) + '_' + df_historico['fecha_carga'].astype(str)
+    
+    # Seleccionar columnas que existen
+    columnas_destino = ['id_venta', 'id_asesor', 'periodo_actualizado', 'Factura', 'Venta', 'Costo', 'Margen', 'Descuento', 'fecha_carga', 'usuario_carga']
+    columnas_origen = [col for col in columnas_destino if col in df_historico.columns]
+    
+    # Guardar en BigQuery (APPEND)
+    job = client.load_table_from_dataframe(
+        df_historico[columnas_origen], 
+        f"{PROJECT_ID}.{DATASET_HOPSA}.hechos_ventas",
+        job_config=bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND
+        )
+    )
+    job.result()
+    
+    return len(df_historico)
+
 def actualizar_agentes():
     st.subheader("👥 Gestionar Agentes")
     
@@ -313,6 +356,10 @@ def subir_informacion():
                     )
                 )
                 job_manual.result()
+                
+                # Guardar histórico de ventas
+                registros_historicos = guardar_historico_ventas(client, df_ventas, fecha_reporte, st.session_state.get('usuario', 'unknown'))
+                st.caption(f"📝 {registros_historicos} registros guardados en histórico de ventas")
             
             st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente")
             
@@ -357,7 +404,7 @@ def actualizar_ventas_periodo():
         fecha_fin = st.date_input("Fecha fin", datetime.date.today())
     
     st.warning(f"⚠️ Esto REEMPLAZARÁ los datos de ventas para las fechas: {fecha_inicio} a {fecha_fin}")
-    st.info("📌 Los demás datos (llamadas, cotizaciones, leads, NPS) se conservan.")
+    st.info("📌 El archivo de ventas NO necesita columna 'Fecha'. Se usará la fecha del período seleccionado.")
     
     archivo_ventas = st.file_uploader("📊 Archivo de ventas (Excel o CSV)", type=['csv', 'xlsx'], key="ventas_periodo")
     
@@ -371,12 +418,6 @@ def actualizar_ventas_periodo():
             else:
                 df_ventas = pd.read_excel(archivo_ventas)
             
-            # Verificar columnas necesarias
-            if 'Fecha' not in df_ventas.columns:
-                st.error("❌ El archivo debe tener una columna 'Fecha'")
-                st.write("Columnas encontradas:", list(df_ventas.columns))
-                return
-            
             # Buscar columna de vendedor
             col_vendedor = None
             for col in df_ventas.columns:
@@ -388,31 +429,15 @@ def actualizar_ventas_periodo():
                 col_vendedor = df_ventas.columns[0]
                 st.warning(f"Usando '{col_vendedor}' como columna de vendedor")
             
-            # Convertir fechas
-            df_ventas['Fecha'] = pd.to_datetime(df_ventas['Fecha']).dt.date
-            
-            # Filtrar por período
-            df_ventas_periodo = df_ventas[(df_ventas['Fecha'] >= fecha_inicio) & (df_ventas['Fecha'] <= fecha_fin)]
-            
-            if df_ventas_periodo.empty:
-                st.warning("No hay ventas en el período seleccionado")
-                return
-            
-            st.success(f"✅ {len(df_ventas_periodo)} ventas encontradas en el período")
-            
-            # Mostrar resumen por fecha
-            resumen_fechas = df_ventas_periodo.groupby('Fecha').size().reset_index(name='ventas')
-            st.dataframe(resumen_fechas, use_container_width=True)
-            
-            # Procesar cada fecha
-            fechas_procesadas = df_ventas_periodo['Fecha'].unique()
+            # Procesar cada fecha del período
+            fechas_procesar = pd.date_range(fecha_inicio, fecha_fin).tolist()
             progreso = st.progress(0)
             
-            for i, fecha in enumerate(fechas_procesadas):
-                st.info(f"📅 Procesando {fecha}...")
+            for i, fecha in enumerate(fechas_procesar):
+                st.info(f"📅 Procesando {fecha.strftime('%Y-%m-%d')}...")
                 
-                # Filtrar ventas de esta fecha
-                df_fecha = df_ventas_periodo[df_ventas_periodo['Fecha'] == fecha]
+                # Usar TODAS las ventas del archivo para cada fecha
+                df_fecha = df_ventas.copy()
                 
                 # Renombrar columna de vendedor
                 df_fecha = df_fecha.rename(columns={col_vendedor: 'id_asesor'})
@@ -432,7 +457,7 @@ def actualizar_ventas_periodo():
                 
                 # Obtener reporte existente para esta fecha
                 query_existente = f"""
-                SELECT * FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha}'
+                SELECT * FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha.strftime('%Y-%m-%d')}'
                 """
                 df_existente = client.query(query_existente).to_dataframe()
                 
@@ -470,7 +495,7 @@ def actualizar_ventas_periodo():
                 ).round(2)
                 
                 # Asegurar que las fechas están correctas
-                nuevo_reporte['fecha'] = fecha
+                nuevo_reporte['fecha'] = fecha.date()
                 nuevo_reporte['mes'] = fecha.strftime('%B')
                 nuevo_reporte['dia'] = fecha.strftime('%A')
                 nuevo_reporte['sem_mes'] = (fecha.day - 1) // 7 + 1
@@ -479,11 +504,15 @@ def actualizar_ventas_periodo():
                 nuevo_reporte['fecha_creacion'] = datetime.datetime.now()
                 
                 # Guardar (reemplazar la fecha completa)
-                client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha}'").result()
+                client.query(f"DELETE FROM `{TABLE_REPORTE}` WHERE fecha = '{fecha.strftime('%Y-%m-%d')}'").result()
                 client.load_table_from_dataframe(nuevo_reporte, TABLE_REPORTE).result()
                 
-                st.success(f"✅ {fecha} actualizado")
-                progreso.progress((i + 1) / len(fechas_procesadas))
+                # Guardar histórico de ventas
+                registros_historicos = guardar_historico_ventas(client, df_fecha, fecha.date(), st.session_state.get('usuario', 'unknown'))
+                st.caption(f"   📝 {registros_historicos} registros guardados en histórico")
+                
+                st.success(f"✅ {fecha.strftime('%Y-%m-%d')} actualizado")
+                progreso.progress((i + 1) / len(fechas_procesar))
             
             st.success(f"✅ Período {fecha_inicio} a {fecha_fin} actualizado correctamente")
             

@@ -1,10 +1,11 @@
 import streamlit as st
 import pandas as pd
 import datetime
-import io
+import unicodedata
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
+# Configuración
 PROJECT_ID = "proyecto-css-panama"
 DATASET_HOPSA = "hopsa"
 TABLE_ASESORES = f"{PROJECT_ID}.{DATASET_HOPSA}.asesores"
@@ -20,6 +21,15 @@ def init_bq_client():
         return bigquery.Client(credentials=credentials, project=PROJECT_ID)
     return bigquery.Client(project=PROJECT_ID)
 
+def normalizar_texto(texto):
+    """Normaliza texto para comparación (mayúsculas, sin tildes)"""
+    if pd.isna(texto):
+        return ""
+    texto = str(texto).strip().upper()
+    texto = ''.join(c for c in unicodedata.normalize('NFD', texto) 
+                   if unicodedata.category(c) != 'Mn')
+    return texto
+
 def cargar_agentes():
     try:
         client = init_bq_client()
@@ -29,34 +39,86 @@ def cargar_agentes():
     except:
         return None
 
-def detectar_separador(archivo):
-    """Detecta el separador de un archivo CSV"""
+def leer_csv_inteligente(archivo):
+    """Lee CSV detectando separador y encoding"""
     contenido = archivo.getvalue().decode('utf-8')
     primera_linea = contenido.split('\n')[0]
-    
-    if ';' in primera_linea:
-        return ';'
-    elif '\t' in primera_linea:
-        return '\t'
-    else:
-        return ','
-
-def leer_csv_inteligente(archivo):
-    """Lee CSV detectando automáticamente el separador y encoding"""
+    sep = ';' if ';' in primera_linea else ',' if ',' in primera_linea else '\t'
+    archivo.seek(0)
     try:
-        # Probar con utf-8
-        separador = detectar_separador(archivo)
-        archivo.seek(0)
-        return pd.read_csv(archivo, sep=separador, encoding='utf-8')
+        return pd.read_csv(archivo, sep=sep, encoding='utf-8')
     except:
-        try:
-            # Probar con latin1
-            archivo.seek(0)
-            return pd.read_csv(archivo, sep=separador, encoding='latin1')
-        except:
-            # Probar sin encoding específico
-            archivo.seek(0)
-            return pd.read_csv(archivo, sep=separador)
+        archivo.seek(0)
+        return pd.read_csv(archivo, sep=sep, encoding='latin1')
+
+def guardar_con_merge(client, df_reporte, df_manual, fecha_reporte, usuario):
+    """Guarda usando MERGE con INSERT ROW (moderno y elegante)"""
+    
+    temp_reporte = f"{PROJECT_ID}.{DATASET_HOPSA}.temp_reporte_{fecha_reporte.strftime('%Y%m%d')}"
+    temp_manual = f"{PROJECT_ID}.{DATASET_HOPSA}.temp_manual_{fecha_reporte.strftime('%Y%m%d')}"
+    
+    # Subir a tablas temporales
+    client.load_table_from_dataframe(
+        df_reporte, temp_reporte,
+        job_config=bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE")
+    ).result()
+    
+    client.load_table_from_dataframe(
+        df_manual, temp_manual,
+        job_config=bigquery.LoadJobConfig(write_disposition="WRITE_TRUNCATE")
+    ).result()
+    
+    # MERGE para reporte_diario (con INSERT ROW)
+    merge_reporte = f"""
+    MERGE `{TABLE_REPORTE}` T
+    USING `{temp_reporte}` S
+    ON T.id_asesor = S.id_asesor AND T.fecha = S.fecha
+    WHEN MATCHED THEN UPDATE SET
+        nombre = S.nombre,
+        supervisor = S.supervisor,
+        ventas = S.ventas,
+        cierres = S.cierres,
+        llamadas = S.llamadas,
+        cantidad_cotizaciones = S.cantidad_cotizaciones,
+        leads = S.leads,
+        nps = S.nps,
+        pra_90 = S.pra_90,
+        asistencia = S.asistencia,
+        conversion = S.conversion,
+        ticket_promedio = S.ticket_promedio,
+        mes = S.mes,
+        dia = S.dia,
+        sem_mes = S.sem_mes,
+        sem_año = S.sem_año,
+        año = S.año,
+        fecha_creacion = S.fecha_creacion
+    WHEN NOT MATCHED THEN
+        INSERT ROW
+    """
+    client.query(merge_reporte).result()
+    
+    # MERGE para datos_manuales
+    merge_manual = f"""
+    MERGE `{TABLE_MANUAL}` T
+    USING `{temp_manual}` S
+    ON T.id_asesor = S.id_asesor AND T.fecha = S.fecha
+    WHEN MATCHED THEN UPDATE SET
+        leads = S.leads,
+        nps = S.nps,
+        pra_90 = S.pra_90,
+        asistencia = S.asistencia,
+        actualizado_por = S.actualizado_por,
+        timestamp = S.timestamp
+    WHEN NOT MATCHED THEN
+        INSERT ROW
+    """
+    client.query(merge_manual).result()
+    
+    # Limpiar tablas temporales
+    client.delete_table(temp_reporte, not_found_ok=True)
+    client.delete_table(temp_manual, not_found_ok=True)
+    
+    return True
 
 def actualizar_agentes():
     st.subheader("👥 Gestionar Agentes")
@@ -69,10 +131,10 @@ def actualizar_agentes():
     st.markdown("---")
     st.markdown("""
     **Formato requerido:**
-    - `id_asesor` - ID del sistema de ventas
+    - `id_asesor` - ID del sistema de ventas (ej: heyanez)
     - `nombre` - Nombre completo
     - `supervisor` - Supervisor
-    - `id_llamadas` (opcional) - ID alternativo para cruce con llamadas
+    - `id_llamadas` - ID que aparece en el reporte de llamadas (ej: hyañez)
     """)
     
     archivo = st.file_uploader("Subir archivo", type=['csv', 'xlsx'], key="upload_agentes")
@@ -115,7 +177,6 @@ def actualizar_agentes():
 def subir_informacion():
     st.subheader("📂 Subir informacion del dia")
     
-    # Verificar agentes
     agentes = cargar_agentes()
     if agentes is None or agentes.empty:
         st.warning("⚠️ Primero carga los agentes")
@@ -132,27 +193,15 @@ def subir_informacion():
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown("**📊 Ventas**")
-        ventas_file = st.file_uploader("Ventas (Excel o CSV)", type=['csv', 'xlsx'], key="ventas")
-        if ventas_file:
-            st.caption("Columnas: Vendedor, Venta, Factura")
-    
+        ventas_file = st.file_uploader("📊 Ventas", type=['csv', 'xlsx'], key="ventas")
     with col2:
-        st.markdown("**📞 Llamadas**")
-        llamadas_file = st.file_uploader("Llamadas (CSV)", type=['csv'], key="llamadas")
-        if llamadas_file:
-            st.caption("Columnas: Identificación o Usuario, más columna de llamadas")
-    
+        llamadas_file = st.file_uploader("📞 Llamadas", type=['csv'], key="llamadas")
     with col3:
-        st.markdown("**📝 Cotizaciones**")
-        cotizaciones_file = st.file_uploader("Cotizaciones (Excel o CSV)", type=['csv', 'xlsx'], key="cotizaciones")
-        if cotizaciones_file:
-            st.caption("Columnas: Vendedor, Cotizacion")
+        cotizaciones_file = st.file_uploader("📝 Cotizaciones", type=['csv', 'xlsx'], key="cotizaciones")
     
     st.markdown("---")
     st.markdown("### Datos manuales")
     
-    # Modo rapido
     modo_rapido = st.checkbox("⚡ Modo rapido - mismo valor para todos")
     
     if modo_rapido:
@@ -169,10 +218,9 @@ def subir_informacion():
     
     with st.form("datos_manuales_form"):
         datos_manuales = []
-        
         for _, row in agentes.iterrows():
             with st.container():
-                st.markdown(f"**👤 {row['nombre']}** (ID ventas: `{row['id_asesor']}`, ID llamadas: `{row.get('id_llamadas', row['id_asesor'])}`)")
+                st.markdown(f"**👤 {row['nombre']}**")
                 
                 if modo_rapido:
                     leads = leads_default
@@ -202,7 +250,7 @@ def subir_informacion():
                 })
                 st.markdown("---")
         
-        submit = st.form_submit_button("🚀 Procesar y guardar todo", type="primary")
+        submit = st.form_submit_button("🚀 Procesar y guardar", type="primary")
     
     if submit:
         if not all([ventas_file, llamadas_file, cotizaciones_file]):
@@ -219,68 +267,43 @@ def subir_informacion():
             else:
                 df_ventas = pd.read_excel(ventas_file)
             
-            df_ventas = df_ventas.rename(columns={'Vendedor': 'id_asesor'})
+            # Buscar columna de vendedor
+            col_vendedor = 'Vendedor' if 'Vendedor' in df_ventas.columns else df_ventas.columns[0]
+            df_ventas = df_ventas.rename(columns={col_vendedor: 'id_asesor'})
             df_ventas['id_asesor'] = df_ventas['id_asesor'].astype(str).str.strip()
             
             ventas_agg = df_ventas.groupby('id_asesor').agg(
                 ventas=('Venta', 'sum'),
                 cierres=('Factura', 'count')
             ).reset_index()
-            st.success(f"✅ Ventas procesadas: {len(ventas_agg)} agentes")
             
-            # 2. Procesar LLAMADAS - CON LECTURA INTELIGENTE
-            st.info("Leyendo archivo de llamadas...")
-            
-            # Leer con detección automática
+            # 2. Procesar LLAMADAS (cruce por id_llamadas)
             df_llamadas = leer_csv_inteligente(llamadas_file)
             
-            # Mostrar columnas para debug
-            st.write("Columnas en llamadas:", list(df_llamadas.columns))
-            
-            # Buscar columna de ID (puede ser 'Identificación' o 'Usuario')
-            col_id = None
-            for col in df_llamadas.columns:
-                col_lower = col.lower()
-                if col_lower in ['identificación', 'identificacion', 'usuario', 'id', 'vendedor']:
-                    col_id = col
-                    break
-            
-            if col_id is None:
-                # Si no encuentra, usar la primera columna
-                col_id = df_llamadas.columns[0]
-                st.warning(f"No se encontró columna de ID, usando: {col_id}")
-            
-            # Buscar columna de llamadas
-            col_llamadas = None
-            for col in df_llamadas.columns:
-                col_lower = col.lower()
-                if col_lower in ['llamadas', 'llamadas_totales', 'total_llamadas', 'cantidad', 'llam']:
-                    col_llamadas = col
-                    break
-            
-            # Normalizar IDs
+            # Buscar columna de identificación
+            col_id = 'Identificación' if 'Identificación' in df_llamadas.columns else 'Usuario'
             df_llamadas['id_original'] = df_llamadas[col_id].astype(str).str.strip()
             
-            # Crear mapeo de id_llamadas a id_asesor
-            mapeo = dict(zip(agentes['id_llamadas'].astype(str).str.strip(), agentes['id_asesor'].astype(str)))
+            # Mapeo exacto por id_llamadas
+            mapeo = dict(zip(
+                agentes['id_llamadas'].astype(str).str.strip(),
+                agentes['id_asesor'].astype(str)
+            ))
             
-            # Mapear los IDs
             df_llamadas['id_asesor'] = df_llamadas['id_original'].map(mapeo)
             
-            # Los que no tienen mapeo
-            sin_mapeo = df_llamadas[df_llamadas['id_asesor'].isna()]['id_original'].unique()
-            if len(sin_mapeo) > 0:
-                st.warning(f"⚠️ {len(sin_mapeo)} IDs sin mapeo: {list(sin_mapeo)[:5]}")
+            # Mostrar no mapeados
+            no_mapeados = df_llamadas[df_llamadas['id_asesor'].isna()]['id_original'].nunique()
+            if no_mapeados > 0:
+                st.warning(f"⚠️ {no_mapeados} IDs de llamadas sin mapeo")
                 df_llamadas['id_asesor'] = df_llamadas['id_asesor'].fillna(df_llamadas['id_original'])
             
-            # Agrupar llamadas
+            col_llamadas = 'Llamadas' if 'Llamadas' in df_llamadas.columns else None
             if col_llamadas:
                 llamadas_agg = df_llamadas.groupby('id_asesor')[col_llamadas].sum().reset_index()
                 llamadas_agg = llamadas_agg.rename(columns={col_llamadas: 'llamadas'})
             else:
                 llamadas_agg = df_llamadas.groupby('id_asesor').size().reset_index(name='llamadas')
-            
-            st.success(f"✅ Llamadas procesadas: {len(llamadas_agg)} agentes")
             
             # 3. Procesar COTIZACIONES
             if cotizaciones_file.name.endswith('.csv'):
@@ -288,12 +311,12 @@ def subir_informacion():
             else:
                 df_cotizaciones = pd.read_excel(cotizaciones_file)
             
-            df_cotizaciones = df_cotizaciones.rename(columns={'Vendedor': 'id_asesor'})
+            col_cotizador = 'Vendedor' if 'Vendedor' in df_cotizaciones.columns else 'Creador'
+            df_cotizaciones = df_cotizaciones.rename(columns={col_cotizador: 'id_asesor'})
             df_cotizaciones['id_asesor'] = df_cotizaciones['id_asesor'].astype(str).str.strip()
             cotizaciones_agg = df_cotizaciones.groupby('id_asesor').size().reset_index(name='cantidad_cotizaciones')
-            st.success(f"✅ Cotizaciones procesadas: {len(cotizaciones_agg)} agentes")
             
-            # 4. Construir reporte final
+            # 4. Construir reporte
             reporte = agentes.merge(ventas_agg, on='id_asesor', how='left')
             reporte = reporte.merge(llamadas_agg, on='id_asesor', how='left')
             reporte = reporte.merge(cotizaciones_agg, on='id_asesor', how='left')
@@ -304,10 +327,16 @@ def subir_informacion():
                 if col in reporte.columns:
                     reporte[col] = reporte[col].fillna(0)
             
-            # Calcular metricas
-            reporte['conversion'] = (reporte['cierres'] / reporte['leads'].replace(0, 1)) * 100
-            reporte['conversion'] = reporte['conversion'].round(2)
-            reporte['ticket_promedio'] = (reporte['ventas'] / reporte['cierres'].replace(0, 1)).round(2)
+            # Calcular métricas (evitando división por cero)
+            reporte['conversion'] = reporte.apply(
+                lambda r: 0 if r['leads'] == 0 else (r['cierres'] / r['leads']) * 100,
+                axis=1
+            ).round(2)
+            
+            reporte['ticket_promedio'] = reporte.apply(
+                lambda r: 0 if r['cierres'] == 0 else r['ventas'] / r['cierres'],
+                axis=1
+            ).round(2)
             
             # Fechas
             reporte['fecha'] = fecha_reporte
@@ -318,33 +347,20 @@ def subir_informacion():
             reporte['año'] = fecha_reporte.year
             reporte['fecha_creacion'] = datetime.datetime.now()
             
-            # 5. Guardar en BigQuery
-            with st.spinner("Guardando en BigQuery..."):
-                job = client.load_table_from_dataframe(
-                    reporte, TABLE_REPORTE,
-                    job_config=bigquery.LoadJobConfig(
-                        write_disposition=bigquery.WriteDisposition.WRITE_APPEND
-                    )
-                )
-                job.result()
-                
-                df_manual['fecha'] = fecha_reporte
-                df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
-                df_manual['timestamp'] = datetime.datetime.now()
-                
-                job_manual = client.load_table_from_dataframe(
-                    df_manual, TABLE_MANUAL,
-                    job_config=bigquery.LoadJobConfig(
-                        write_disposition=bigquery.WriteDisposition.WRITE_APPEND
-                    )
-                )
-                job_manual.result()
+            # Preparar datos manuales
+            df_manual['fecha'] = fecha_reporte
+            df_manual['actualizado_por'] = st.session_state.get('usuario', 'unknown')
+            df_manual['timestamp'] = datetime.datetime.now()
             
-            st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente en BigQuery")
+            # 5. Guardar usando MERGE
+            with st.spinner("Guardando con MERGE..."):
+                guardar_con_merge(client, reporte, df_manual, fecha_reporte, st.session_state.get('usuario', 'unknown'))
             
-            # 6. Mostrar resumen
+            st.success(f"✅ Reporte del {fecha_reporte} guardado exitosamente")
+            
+            # Resumen
             st.subheader("📊 Resumen del dia")
-            resumen = reporte[['nombre', 'leads', 'cierres', 'ventas', 'conversion', 'llamadas', 'cantidad_cotizaciones']].copy()
+            resumen = reporte[['nombre', 'leads', 'cierres', 'ventas', 'conversion', 'llamadas']].copy()
             resumen['ventas'] = resumen['ventas'].round(2)
             st.dataframe(resumen, use_container_width=True)
             

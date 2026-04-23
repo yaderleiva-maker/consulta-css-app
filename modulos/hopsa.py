@@ -411,17 +411,37 @@ def actualizar_ventas_periodo():
             fechas_procesar = pd.date_range(fecha_inicio, fecha_fin).tolist()
             progreso = st.progress(0)
             
-            for i, fecha in enumerate(fechas_procesar):
+                       for i, fecha in enumerate(fechas_procesar):
                 st.info(f"📅 Procesando {fecha.strftime('%Y-%m-%d')}...")
                 
-                df_fecha = df_ventas.copy()
+                # Verificar que existe columna Fecha
+                if 'Fecha' not in df_ventas.columns:
+                    st.error("❌ El archivo debe tener una columna 'Fecha'")
+                    return
+                
+                # Asegurar formato de fecha
+                if not pd.api.types.is_datetime64_any_dtype(df_ventas['Fecha']):
+                    df_ventas['Fecha'] = pd.to_datetime(df_ventas['Fecha']).dt.date
+                
+                # Filtrar ventas de esta fecha específica
+                df_fecha = df_ventas[df_ventas['Fecha'] == fecha.date()].copy()
+                
+                if df_fecha.empty:
+                    st.info(f"   ℹ️ No hay ventas para {fecha.strftime('%Y-%m-%d')}, saltando...")
+                    progreso.progress((i + 1) / len(fechas_procesar))
+                    continue
+                
+                # Renombrar columna de vendedor
                 df_fecha = df_fecha.rename(columns={col_vendedor: 'id_asesor'})
                 df_fecha['id_asesor'] = df_fecha['id_asesor'].astype(str).str.strip().str.upper()
                 
+                # Agrupar ventas por agente
                 ventas_agg = df_fecha.groupby('id_asesor').agg(
                     ventas=('Venta', 'sum'),
                     cierres=('Factura', 'count')
                 ).reset_index()
+                
+                # Resto del código igual...
                 
                 # Devoluciones
                 df_devoluciones = df_fecha[df_fecha['Venta'] < 0].groupby('id_asesor')['Venta'].sum().reset_index()

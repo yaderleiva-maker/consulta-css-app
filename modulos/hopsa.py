@@ -631,7 +631,7 @@ def descargar_reportes():
             st.error(f"Error: {e}")
 
 def run(usuario):
-    st.image("assets/logo2.jpeg", width=150)
+    st.image("assets/logo2.png", width=150)
     st.markdown("---")
     st.title("HOPSA - Gestion de Ventas")
     st.caption(f"Usuario: {usuario}")

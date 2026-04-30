@@ -31,17 +31,18 @@ if st.session_state.get("login_ok"):
     permisos = roles.get(usuario, [])
 
     # ========== SIDEBAR CON LOGO Y MENÚ ==========
+    with st.sidebar:
+        st.image("assets/NEXO.jpeg", width=150)
+        st.markdown("---")
 
           # MENÚ PRINCIPAL
+
         modulos_base = ["Consultas", "Carga de Documentos"]
         
         # Agregar HOPSA solo si tiene el permiso
         if "HOPSA" in permisos:
             modulos_base.append("HOPSA")
 
-    with st.sidebar:
-        st.image("assets/NEXO.jpeg", width=150)
-        st.markdown("---")
         modulo = st.selectbox("Módulos", modulos_base)
 
     # =============================================

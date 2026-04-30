@@ -32,8 +32,7 @@ if st.session_state.get("login_ok"):
 
     # ========== SIDEBAR CON LOGO Y MENÚ ==========
     with st.sidebar:
-        st.image("assets/NEXO.jpeg", width=150)
-        st.markdown("---")
+
 
           # MENÚ PRINCIPAL
 
@@ -44,6 +43,9 @@ if st.session_state.get("login_ok"):
             modulos_base.append("HOPSA")
 
         modulo = st.selectbox("Módulos", modulos_base)
+        st.markdown("---")
+        st.image("assets/NEXO.jpeg", width=150)
+
 
     # =============================================
 

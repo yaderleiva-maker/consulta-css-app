@@ -631,9 +631,10 @@ def descargar_reportes():
             st.error(f"Error: {e}")
 
 def run(usuario):
-    
+        
+    st.title("HOPSA - Gestion de Ventas")
     st.markdown("---")
-    st.title("HOPSA - Gestion de Ventas") & st.image("assets/logo2.png", width=300)
+    st.image("assets/logo2.png", width=300)
     st.caption(f"Usuario: {usuario}")
     
     if 'menu_hopsa' not in st.session_state:

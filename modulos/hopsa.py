@@ -634,7 +634,7 @@ def run(usuario):
         
     st.title("HOPSA - Gestion de Ventas")
     st.markdown("---")
-    st.image("assets/logo2.png", width=300)
+    st.image("assets/logo2.png", width=150)
     st.caption(f"Usuario: {usuario}")
     
     if 'menu_hopsa' not in st.session_state:

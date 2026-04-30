@@ -64,6 +64,10 @@ if st.session_state.get("login_ok"):
             st.stop()
         
         tipo_carga = st.sidebar.radio(
+            with st.sidebar:
+            st.image("assets/NEXO.jpeg", width=150)
+            st.markdown("---")
+            modulo = st.sidebar.selectbox("Módulos", ...)
             "Tipo de carga",
             ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
         )

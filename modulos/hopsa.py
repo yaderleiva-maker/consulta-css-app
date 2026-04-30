@@ -632,7 +632,7 @@ def descargar_reportes():
 
 def run(usuario):
     st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=80)
-    st.title("🎯 HOPSA - Gestion de Ventas")
+    st.title("HOPSA - Gestion de Ventas")
     st.caption(f"Usuario: {usuario}")
     
     if 'menu_hopsa' not in st.session_state:

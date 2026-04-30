@@ -38,11 +38,12 @@ if st.session_state.get("login_ok"):
         # Agregar HOPSA solo si tiene el permiso
         if "HOPSA" in permisos:
             modulos_base.append("HOPSA")
-        
-        modulo = st.selectbox("Módulos", modulos_base)
+
     with st.sidebar:
         st.image("assets/NEXO.jpeg", width=150)
         st.markdown("---")
+        modulo = st.selectbox("Módulos", modulos_base)
+
     # =============================================
 
     # -----------------------

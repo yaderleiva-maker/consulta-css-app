@@ -33,22 +33,17 @@ if st.session_state.get("login_ok"):
     # ========== SIDEBAR CON LOGO Y MENÚ ==========
     with st.sidebar:
           #MENÚ PRINCIPAL
+        
+        st.image("assets/NEXO.jpeg", width=150)
+        st.markdown("---")
         modulos_base = ["Consultas", "Carga de Documentos"]
          # Agregar HOPSA solo si tiene el permiso
         if "HOPSA" in permisos:
             modulos_base.append("HOPSA")
 
         modulo = st.selectbox("Módulos", modulos_base)
-
-        if modulo == "Carga de Documentos":
-            if "CARGA_DOCUMENTOS" in permisos:
-                tipo_carga = st.radio(
-                    "Tipo de carga",
-                    ["CSS","TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
-                )
                 
-        st.markdown("---")
-        st.image("assets/NEXO.jpeg", width=150)
+
         st.caption("NEXO CRM | by DolaAI")
 
     # =============================================

@@ -1,6 +1,7 @@
 import streamlit as st
 from modulos import login, consultas, carga_documentos
 from modulos import hopsa
+
 # LOGIN
 login.login()
 
@@ -29,16 +30,20 @@ if st.session_state.get("login_ok"):
 
     permisos = roles.get(usuario, [])
 
-    # -----------------------
-    # MENÚ PRINCIPAL (solo agregamos HOPSA si tiene permiso)
-    # -----------------------
-    modulos_base = ["Consultas", "Carga de Documentos"]
-    
-    # Agregar HOPSA solo si tiene el permiso
-    if "HOPSA" in permisos:
-        modulos_base.append("HOPSA")
-    
-    modulo = st.sidebar.selectbox("Módulos", modulos_base)
+    # ========== SIDEBAR CON LOGO Y MENÚ ==========
+    with st.sidebar:
+        st.image("assets/NEXO.jpeg", width=150)
+        st.markdown("---")
+        
+        # MENÚ PRINCIPAL
+        modulos_base = ["Consultas", "Carga de Documentos"]
+        
+        # Agregar HOPSA solo si tiene el permiso
+        if "HOPSA" in permisos:
+            modulos_base.append("HOPSA")
+        
+        modulo = st.selectbox("Módulos", modulos_base)
+    # =============================================
 
     # -----------------------
     # CONSULTAS (sin cambios)
@@ -64,10 +69,6 @@ if st.session_state.get("login_ok"):
             st.stop()
         
         tipo_carga = st.sidebar.radio(
-            with st.sidebar:
-            st.image("assets/NEXO.jpeg", width=150)
-            st.markdown("---")
-            modulo = st.sidebar.selectbox("Módulos", ...)
             "Tipo de carga",
             ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
         )

@@ -631,7 +631,8 @@ def descargar_reportes():
             st.error(f"Error: {e}")
 
 def run(usuario):
-    st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png", width=80)
+    st.image("assets/logo2.jpeg", width=150)
+    st.markdown("---")
     st.title("HOPSA - Gestion de Ventas")
     st.caption(f"Usuario: {usuario}")
     

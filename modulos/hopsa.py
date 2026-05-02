@@ -218,7 +218,7 @@ def subir_informacion():
                 st.markdown(f"**👤 {row['nombre']}**")
                 
                 if modo_rapido:
-                    col_a, col_b, col_c, col_d = st.columns(4)
+                    col_a, col_b, col_c, col_d, col_e = st.columns(4)
                     with col_a:
                         leads_default = st.number_input("Leads", min_value=0, value=0, key="leads_default")
                     with col_b:
@@ -229,10 +229,14 @@ def subir_informacion():
                         asistencia_default = st.selectbox("Asistencia", [100, 0], 
                                                          format_func=lambda x: "✅" if x == 100 else "❌",
                                                          key="asis_default")
+                    with col_e:
+                        observacion_default = st.text_input("observación", value="", key="obs_default", placeholder = "vacaciones, permiso, incapacidad, ausencia, libre, feriado, otros")
+                                                            
                     leads = leads_default
                     nps = nps_default
                     pra = pra_default
                     asistencia = asistencia_default
+                    observacion = observacion_default
                     st.caption(f"📊 Leads: {leads} | ⭐ NPS: {nps} | 🎯 PRA: {pra}% | 📅 Asistencia: {'✅' if asistencia == 100 else '❌'}")
                 else:
                     col1, col2, col3, col4 = st.columns(4)
@@ -246,6 +250,9 @@ def subir_informacion():
                         asistencia = st.selectbox("Asistencia", [100, 0], 
                                                  format_func=lambda x: "✅" if x == 100 else "❌",
                                                  key=f"asis_{row['id_asesor']}")
+                    with col5:
+                        observacion = st.text_input("Observación", value="", key=f"obs_{row['id_asesor']}",
+                                                    placeholder="vacaciones, permiso, incapacidad, ausencia, libre, feriado, otros")
                 
                 datos_manuales.append({
                     "id_asesor": str(row['id_asesor']),
@@ -253,6 +260,7 @@ def subir_informacion():
                     "nps": nps,
                     "pra_90": pra,
                     "asistencia": asistencia
+                    "observacion": observacion
                 })
                 st.markdown("---")
         

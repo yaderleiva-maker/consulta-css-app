@@ -144,7 +144,7 @@ def actualizar_agentes():
             st.success(f"✅ {len(df)} agentes cargados")
             st.dataframe(df.head(), use_container_width=True)
             
-            if st.button("💾 Guardar en BigQuery"):
+            if st.button("💾 Guardar Informe"):
                 client = init_bq_client()
                 df['fecha_actualizacion'] = datetime.datetime.now()
                 

@@ -239,7 +239,7 @@ def subir_informacion():
                     observacion = observacion_default
                     st.caption(f"📊 Leads: {leads} | ⭐ NPS: {nps} | 🎯 PRA: {pra}% | 📅 Asistencia: {'✅' if asistencia == 100 else '❌'}")
                 else:
-                    col1, col2, col3, col4 = st.columns(4)
+                    col1, col2, col3, col4, col5 = st.columns(5)
                     with col1:
                         leads = st.number_input("Leads", min_value=0, value=0, key=f"leads_{row['id_asesor']}")
                     with col2:
@@ -259,7 +259,7 @@ def subir_informacion():
                     "leads": leads,
                     "nps": nps,
                     "pra_90": pra,
-                    "asistencia": asistencia
+                    "asistencia": asistencia,
                     "observacion": observacion
                 })
                 st.markdown("---")

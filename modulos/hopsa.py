@@ -348,8 +348,8 @@ def subir_informacion():
             reporte['mes'] = fecha_reporte.strftime('%B')
             reporte['dia'] = fecha_reporte.strftime('%A')
             reporte['sem_mes'] = (fecha_reporte.day - 1) // 7 + 1
-            reporte['sem_año'] = fecha_reporte.isocalendar()[1]
-            reporte['año'] = fecha_reporte.year
+            reporte['sem_year'] = fecha_reporte.isocalendar()[1]
+            reporte['year'] = fecha_reporte.year
             reporte['fecha_creacion'] = datetime.datetime.now()
             
             # 5. Guardar (REEMPLAZAR, no sumar)
@@ -522,8 +522,8 @@ def actualizar_ventas_periodo():
                 nuevo_reporte['mes'] = fecha.strftime('%B')
                 nuevo_reporte['dia'] = fecha.strftime('%A')
                 nuevo_reporte['sem_mes'] = (fecha.day - 1) // 7 + 1
-                nuevo_reporte['sem_año'] = fecha.isocalendar()[1]
-                nuevo_reporte['año'] = fecha.year
+                nuevo_reporte['sem_year'] = fecha.isocalendar()[1]
+                nuevo_reporte['year'] = fecha.year
                 nuevo_reporte['fecha_creacion'] = datetime.datetime.now()
                 
                 # Guardar reporte (reemplazar la fecha completa)

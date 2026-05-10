@@ -1,7 +1,7 @@
 import streamlit as st
 from modulos import login, consultas, carga_documentos
 from modulos import hopsa
-
+from modulos import inventario
 
 # LOGIN
 login.login()

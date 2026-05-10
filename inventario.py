@@ -1,15 +1,19 @@
 import streamlit as st
 
 def run(usuario):
-    st.title("📦 NEXO STOCK")
-    st.write(f"Usuario logueado: {usuario}")
-    st.success("✅ Módulo de inventario funcionando correctamente")
+    st.title("📦 NEXO STOCK - PRUEBA")
+    st.write(f"Usuario: {usuario}")
+    st.success("✅ Si ves esto, el import funciona correctamente")
     
-    # Prueba de conexión a secrets
+    # Verificar dependencias
     try:
-        if "BIGQUERY_CREDENTIALS" in st.secrets:
-            st.info("🔐 Secrets de BigQuery encontrados")
-        else:
-            st.warning("⚠️ No se encontraron secrets de BigQuery")
-    except:
-        st.error("❌ No se pueden leer secrets")
+        import google.cloud.bigquery
+        st.info("✅ google-cloud-bigquery está instalado")
+    except ImportError as e:
+        st.error(f"❌ google-cloud-bigquery NO está instalado: {e}")
+    
+    try:
+        import pandas as pd
+        st.info("✅ pandas está instalado")
+    except ImportError as e:
+        st.error(f"❌ pandas NO está instalado: {e}")

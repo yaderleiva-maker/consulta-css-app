@@ -15,10 +15,10 @@ if st.session_state.get("login_ok"):
     usuario = st.session_state.get("usuario")
 
     # -----------------------
-    # ROLES (agregamos HOPSA sin tocar lo demás)
+    # ROLES
     # -----------------------
     roles = {
-        "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA","INVENTARIO"],
+        "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA", "INVENTARIO"],
         "contenalfa@gmail.com": ["TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA"],
         "arismaytte@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
         "sgonzalez.hex@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
@@ -33,34 +33,28 @@ if st.session_state.get("login_ok"):
 
     # ========== SIDEBAR CON LOGO Y MENÚ ==========
     with st.sidebar:
-          #MENÚ PRINCIPAL
-        
         st.image("assets/NEXO.jpeg", width=150)
         st.markdown("---")
         modulos_base = ["Consultas", "Carga de Documentos"]
-         # Agregar HOPSA solo si tiene el permiso
+        
         if "HOPSA" in permisos:
             modulos_base.append("HOPSA")
-
         if "INVENTARIO" in permisos:
             modulos_base.append("INVENTARIO")
 
         modulo = st.selectbox("Módulos", modulos_base)
-                
-
         st.caption("NEXO CRM | by DolaAI")
 
     # =============================================
 
     # -----------------------
-    # CONSULTAS (sin cambios)
+    # CONSULTAS
     # -----------------------
     if modulo == "Consultas":
         if not permisos:
             st.error("❌ No tienes permisos asignados")
             st.stop()
-        # Filtrar solo los permisos que no son especiales
-        opciones_consulta = [p for p in permisos if p not in ["CARGA_DOCUMENTOS", "HOPSA"]]
+        opciones_consulta = [p for p in permisos if p not in ["CARGA_DOCUMENTOS", "HOPSA", "INVENTARIO"]]
         if not opciones_consulta:
             st.error("❌ No tienes permisos para consultas")
             st.stop()
@@ -68,7 +62,7 @@ if st.session_state.get("login_ok"):
         consultas.run(usuario, tipo_consulta)
     
     # -----------------------
-    # CARGA DE DOCUMENTOS (EXACTAMENTE IGUAL, sin tocar)
+    # CARGA DE DOCUMENTOS
     # -----------------------
     elif modulo == "Carga de Documentos":
         if "CARGA_DOCUMENTOS" not in permisos:
@@ -79,30 +73,27 @@ if st.session_state.get("login_ok"):
             "Tipo de carga",
             ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
         )
-
-    elif modulo == "INVENTARIO":
-
-        if "INVENTARIO" not in permisos:
-            st.error("❌ No tienes permisos para acceder a INVENTARIO")
-            st.stop()
-
-    inventario.run(usuario)
         
         if tipo_carga not in permisos:
             st.error(f"❌ No tienes permiso para: {tipo_carga}")
             st.stop()
         
-        # LLAMADA EXISTENTE - NO TOCAMOS ESTE ARCHIVO
         carga_documentos.run(usuario, tipo_carga)
     
     # -----------------------
-    # HOPSA - NUEVO MÓDULO (completamente independiente)
+    # INVENTARIO (NEXO_STOCK)
+    # -----------------------
+    elif modulo == "INVENTARIO":
+        if "INVENTARIO" not in permisos:
+            st.error("❌ No tienes permisos para acceder a INVENTARIO")
+            st.stop()
+        inventario.run(usuario)
+    
+    # -----------------------
+    # HOPSA
     # -----------------------
     elif modulo == "HOPSA":
-        # Verificar permiso específico
         if "HOPSA" not in permisos:
             st.error("❌ No tienes permisos para acceder a HOPSA")
             st.stop()
-        
-        # LLAMAR AL NUEVO MÓDULO
         hopsa.run(usuario)

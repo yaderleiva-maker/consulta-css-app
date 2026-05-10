@@ -3,70 +3,132 @@ import pandas as pd
 import uuid
 from datetime import datetime
 from google.cloud import bigquery
+from google.oauth2 import service_account
 
+# =========================================
+# CONFIGURACIÓN
+# =========================================
+PROJECT_ID = "proyecto-css-panama"
+DATASET = "inventario"
+
+# =========================================
 # CLIENTE BIGQUERY
-client = bigquery.Client()
+# =========================================
+def get_bq_client():
+    try:
 
-# ==========================
+        # STREAMLIT CLOUD
+        if "BIGQUERY_CREDENTIALS" in st.secrets:
+
+            creds = service_account.Credentials.from_service_account_info(
+                st.secrets["BIGQUERY_CREDENTIALS"]
+            )
+
+            client = bigquery.Client(
+                credentials=creds,
+                project=PROJECT_ID
+            )
+
+        # LOCAL
+        else:
+            client = bigquery.Client(project=PROJECT_ID)
+
+        return client
+
+    except Exception as e:
+        st.error(f"❌ Error conectando con BigQuery: {e}")
+        return None
+
+
+# =========================================
 # FUNCIÓN PRINCIPAL
-# ==========================
+# =========================================
 def run(usuario):
 
-    st.title("📦 Inventario - Carga de Productos")
+    st.title("📦 NEXO STOCK")
+    st.subheader("Carga Masiva de Productos")
 
-    # ==========================
+    st.markdown("---")
+
+    # =========================================
+    # CLIENTE BIGQUERY
+    # =========================================
+    client = get_bq_client()
+
+    if client is None:
+        return
+
+    # =========================================
     # CARGAR EMPRESAS
-    # ==========================
-    query_empresas = """
-    SELECT
-        id_empresa,
-        nombre_empresa
-    FROM `inventario.empresas`
-    WHERE estado = 'ACTIVO'
-    ORDER BY nombre_empresa
-    """
+    # =========================================
+    try:
 
-    empresas_df = client.query(query_empresas).to_dataframe()
+        query_empresas = f"""
+        SELECT
+            id_empresa,
+            nombre_empresa
+        FROM `{PROJECT_ID}.{DATASET}.empresas`
+        WHERE estado = 'ACTIVO'
+        ORDER BY nombre_empresa
+        """
 
+        empresas_df = client.query(query_empresas).to_dataframe()
+
+    except Exception as e:
+        st.error(f"❌ Error cargando empresas: {e}")
+        return
+
+    # =========================================
+    # VALIDAR EMPRESAS
+    # =========================================
     if empresas_df.empty:
         st.warning("⚠️ No existen empresas activas.")
         return
 
-    # SELECT EMPRESA
+    # =========================================
+    # SELECTBOX EMPRESA
+    # =========================================
     empresa_nombre = st.selectbox(
         "Seleccione la empresa",
         empresas_df["nombre_empresa"]
     )
 
-    # OBTENER ID_EMPRESA
     id_empresa = empresas_df.loc[
         empresas_df["nombre_empresa"] == empresa_nombre,
         "id_empresa"
     ].values[0]
 
-    st.success(f"Empresa seleccionada: {empresa_nombre}")
+    st.success(f"📌 Empresa seleccionada: {empresa_nombre}")
 
-    # ==========================
-    # SUBIR EXCEL
-    # ==========================
+    st.markdown("---")
+
+    # =========================================
+    # SUBIR ARCHIVO
+    # =========================================
     archivo = st.file_uploader(
-        "Suba el archivo Excel",
-        type=["xlsx"]
+        "Suba archivo Excel",
+        type=["xlsx", "xls"]
     )
 
+    # =========================================
+    # SI HAY ARCHIVO
+    # =========================================
     if archivo is not None:
 
         try:
 
+            # =========================================
+            # LEER EXCEL
+            # =========================================
             df = pd.read_excel(archivo)
 
             st.subheader("📄 Vista previa")
 
-            st.dataframe(df.head())
+            st.dataframe(df.head(10))
 
-            # ==========================
+            # =========================================
             # VALIDAR COLUMNAS
-            # ==========================
+            # =========================================
             columnas_requeridas = [
                 "codigo_barra",
                 "nombre_producto"
@@ -81,48 +143,105 @@ def run(usuario):
                 st.error(f"❌ Faltan columnas: {faltantes}")
                 return
 
-            # ==========================
+            # =========================================
             # LIMPIEZA
-            # ==========================
-            df["codigo_barra"] = df["codigo_barra"].astype(str).str.strip()
-            df["nombre_producto"] = df["nombre_producto"].astype(str).str.strip()
+            # =========================================
+            df["codigo_barra"] = (
+                df["codigo_barra"]
+                .astype(str)
+                .str.strip()
+            )
 
-            # OPCIONALES
+            df["nombre_producto"] = (
+                df["nombre_producto"]
+                .astype(str)
+                .str.strip()
+            )
+
+            # =========================================
+            # COLUMNAS OPCIONALES
+            # =========================================
             if "clasificacion" not in df.columns:
                 df["clasificacion"] = "GENERAL"
 
             if "tipo_control" not in df.columns:
                 df["tipo_control"] = "CANTIDAD"
 
-            # ==========================
-            # CAMPOS DEL SISTEMA
-            # ==========================
-            now = datetime.now()
+            # =========================================
+            # ELIMINAR DUPLICADOS DEL EXCEL
+            # =========================================
+            df = df.drop_duplicates(
+                subset=["codigo_barra"]
+            )
 
-            df["id_producto"] = [
-                str(uuid.uuid4()) for _ in range(len(df))
-            ]
-
-            df["id_empresa"] = id_empresa
-            df["estado_producto"] = "ACTIVO"
-            df["fuente_producto"] = "CLIENTE"
-            df["fecha_creacion"] = now
-            df["fecha_actualizacion"] = now
-
-            # ==========================
+            # =========================================
             # BOTÓN CARGAR
-            # ==========================
-            if st.button("📥 Insertar Productos"):
+            # =========================================
+            if st.button("🚀 Cargar Productos"):
 
-                tabla = "inventario.productos"
+                now = datetime.now()
 
-                job = client.load_table_from_dataframe(df, tabla)
+                productos = []
+
+                progress_bar = st.progress(0)
+
+                status = st.empty()
+
+                for idx, row in df.iterrows():
+
+                    producto = {
+                        "id_producto": str(uuid.uuid4()),
+                        "id_empresa": id_empresa,
+                        "codigo_barra": row["codigo_barra"],
+                        "nombre_producto": row["nombre_producto"],
+                        "clasificacion": row["clasificacion"],
+                        "tipo_control": row["tipo_control"],
+                        "estado_producto": "ACTIVO",
+                        "fuente_producto": "CLIENTE",
+                        "fecha_creacion": now,
+                        "fecha_actualizacion": now
+                    }
+
+                    productos.append(producto)
+
+                    # =========================================
+                    # PROGRESO
+                    # =========================================
+                    porcentaje = (idx + 1) / len(df)
+
+                    progress_bar.progress(porcentaje)
+
+                    status.text(
+                        f"Procesando {idx + 1}/{len(df)}"
+                    )
+
+                # =========================================
+                # DATAFRAME FINAL
+                # =========================================
+                df_final = pd.DataFrame(productos)
+
+                # =========================================
+                # INSERTAR BIGQUERY
+                # =========================================
+                tabla_destino = (
+                    f"{PROJECT_ID}.{DATASET}.productos"
+                )
+
+                job = client.load_table_from_dataframe(
+                    df_final,
+                    tabla_destino
+                )
 
                 job.result()
 
+                # =========================================
+                # FINAL
+                # =========================================
                 st.success(
-                    f"✅ Se cargaron {len(df)} productos correctamente."
+                    f"✅ {len(df_final)} productos cargados correctamente."
                 )
 
+                st.balloons()
+
         except Exception as e:
-            st.error(f"❌ Error: {e}")
+            st.error(f"❌ Error procesando archivo: {e}")

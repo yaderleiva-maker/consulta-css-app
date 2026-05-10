@@ -31,7 +31,7 @@ if st.session_state.get("login_ok"):
 
     permisos = roles.get(usuario, [])
 
-    # ========== SIDEBAR CON LOGO Y MENÚ ==========
+    # ========== SIDEBAR ==========
     with st.sidebar:
         st.image("assets/NEXO.jpeg", width=150)
         st.markdown("---")
@@ -46,10 +46,8 @@ if st.session_state.get("login_ok"):
         st.caption("NEXO CRM | by DolaAI")
 
     # =============================================
-
-    # -----------------------
     # CONSULTAS
-    # -----------------------
+    # =============================================
     if modulo == "Consultas":
         if not permisos:
             st.error("❌ No tienes permisos asignados")
@@ -61,9 +59,9 @@ if st.session_state.get("login_ok"):
         tipo_consulta = st.sidebar.radio("Opciones", opciones_consulta)
         consultas.run(usuario, tipo_consulta)
     
-    # -----------------------
+    # =============================================
     # CARGA DE DOCUMENTOS
-    # -----------------------
+    # =============================================
     elif modulo == "Carga de Documentos":
         if "CARGA_DOCUMENTOS" not in permisos:
             st.error("❌ No tienes permisos para acceder a este módulo")
@@ -80,18 +78,18 @@ if st.session_state.get("login_ok"):
         
         carga_documentos.run(usuario, tipo_carga)
     
-    # -----------------------
-    # INVENTARIO (NEXO_STOCK)
-    # -----------------------
+    # =============================================
+    # INVENTARIO
+    # =============================================
     elif modulo == "INVENTARIO":
         if "INVENTARIO" not in permisos:
             st.error("❌ No tienes permisos para acceder a INVENTARIO")
             st.stop()
         inventario.run(usuario)
     
-    # -----------------------
+    # =============================================
     # HOPSA
-    # -----------------------
+    # =============================================
     elif modulo == "HOPSA":
         if "HOPSA" not in permisos:
             st.error("❌ No tienes permisos para acceder a HOPSA")

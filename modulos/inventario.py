@@ -60,7 +60,7 @@ def run(usuario):
             id_empresa,
             nombre_empresa
         FROM `{PROJECT_ID}.{DATASET}.empresas`
-        WHERE estado = 'ACTIVO'
+        WHERE estado = 'Activo'
         ORDER BY nombre_empresa
         """
         
@@ -182,7 +182,7 @@ def run(usuario):
                         "nombre_producto": row["nombre_producto"],
                         "clasificacion": row["clasificacion"],
                         "tipo_control": row["tipo_control"],
-                        "estado_producto": "ACTIVO",
+                        "estado_producto": "Activo",
                         "fuente_producto": "CLIENTE",
                         "fecha_creacion": now,
                         "fecha_actualizacion": now

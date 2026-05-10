@@ -1,6 +1,7 @@
 import streamlit as st
 from modulos import login, consultas, carga_documentos
 from modulos import hopsa
+from modulos import inventario
 
 # LOGIN
 login.login()
@@ -17,7 +18,7 @@ if st.session_state.get("login_ok"):
     # ROLES (agregamos HOPSA sin tocar lo demás)
     # -----------------------
     roles = {
-        "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA"],
+        "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA","INVENTARIO"],
         "contenalfa@gmail.com": ["TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA"],
         "arismaytte@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
         "sgonzalez.hex@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
@@ -40,6 +41,9 @@ if st.session_state.get("login_ok"):
          # Agregar HOPSA solo si tiene el permiso
         if "HOPSA" in permisos:
             modulos_base.append("HOPSA")
+
+        if "INVENTARIO" in permisos:
+            modulos_base.append("INVENTARIO")
 
         modulo = st.selectbox("Módulos", modulos_base)
                 
@@ -75,6 +79,14 @@ if st.session_state.get("login_ok"):
             "Tipo de carga",
             ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
         )
+
+    elif modulo == "INVENTARIO":
+
+        if "INVENTARIO" not in permisos:
+            st.error("❌ No tienes permisos para acceder a INVENTARIO")
+            st.stop()
+
+    inventario.run(usuario)
         
         if tipo_carga not in permisos:
             st.error(f"❌ No tienes permiso para: {tipo_carga}")

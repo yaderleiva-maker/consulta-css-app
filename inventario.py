@@ -5,6 +5,11 @@ from datetime import datetime
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
+import sys
+import traceback
+
+# Al inicio del archivo, después de los imports
+st.write("🔍 Depuración: inventario.py cargado correctamente")
 # =========================================
 # CONFIGURACIÓN
 # =========================================
@@ -43,12 +48,15 @@ def get_bq_client():
 # =========================================
 # FUNCIÓN PRINCIPAL
 # =========================================
+
+
 def run(usuario):
-
-    st.title("📦 NEXO STOCK")
-    st.subheader("Carga Masiva de Productos")
-
-    st.markdown("---")
+try:
+    st.write("🔍 Depuración: Entrando a run()")
+        # todo tu código
+except Exception as e:
+    st.error(f"Error detallado: {str(e)}")
+    st.code(traceback.format_exc())
 
     # =========================================
     # CLIENTE BIGQUERY

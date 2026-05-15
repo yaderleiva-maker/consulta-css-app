@@ -163,6 +163,9 @@ def run(usuario):
             df = df.drop_duplicates(
                 subset=["codigo_barra"]
             )
+
+            # REINICIAR ÍNDICES
+            df = df.reset_index(drop=True)
             
             # =========================================
             # BOTÓN CARGAR

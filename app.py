@@ -2,6 +2,7 @@ import streamlit as st
 from modulos import login, consultas, carga_documentos
 from modulos import hopsa
 from modulos import inventario
+from modulos import control_almuerzos  # ← NUEVO
 
 # LOGIN
 login.login()
@@ -18,7 +19,7 @@ if st.session_state.get("login_ok"):
     # ROLES
     # -----------------------
     roles = {
-        "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA", "INVENTARIO"],
+        "yaderleiva@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA", "INVENTARIO", "CONTROL_ALMUERZOS"],
         "contenalfa@gmail.com": ["TELÉFONOS NUEVOS", "CORREOS NUEVOS", "CARGA_DOCUMENTOS", "HOPSA"],
         "arismaytte@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
         "sgonzalez.hex@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
@@ -41,6 +42,8 @@ if st.session_state.get("login_ok"):
             modulos_base.append("HOPSA")
         if "INVENTARIO" in permisos:
             modulos_base.append("INVENTARIO")
+        if "CONTROL_ALMUERZOS" in permisos:
+            modulos_base.append("Control de Almuerzos")  # ← NUEVO
 
         modulo = st.selectbox("Módulos", modulos_base)
         st.caption("NEXO CRM | by DolaAI")
@@ -52,7 +55,7 @@ if st.session_state.get("login_ok"):
         if not permisos:
             st.error("❌ No tienes permisos asignados")
             st.stop()
-        opciones_consulta = [p for p in permisos if p not in ["CARGA_DOCUMENTOS", "HOPSA", "INVENTARIO"]]
+        opciones_consulta = [p for p in permisos if p not in ["CARGA_DOCUMENTOS", "HOPSA", "INVENTARIO", "CONTROL_ALMUERZOS"]]
         if not opciones_consulta:
             st.error("❌ No tienes permisos para consultas")
             st.stop()
@@ -95,3 +98,12 @@ if st.session_state.get("login_ok"):
             st.error("❌ No tienes permisos para acceder a HOPSA")
             st.stop()
         hopsa.run(usuario)
+    
+    # =============================================
+    # CONTROL DE ALMUERZOS
+    # =============================================
+    elif modulo == "Control de Almuerzos":
+        if "CONTROL_ALMUERZOS" not in permisos:
+            st.error("❌ No tienes permisos para acceder a Control de Almuerzos")
+            st.stop()
+        control_almuerzos.run(usuario, "Control de Almuerzos")

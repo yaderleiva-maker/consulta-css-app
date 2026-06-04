@@ -1,5 +1,5 @@
 import streamlit as st
-from modulos import login, consultas, carga_documentos  # Agregar carga_documentos
+from modulos import login, consultas, carga_documentos, control_almuerzos  # Agregar carga_documentos
 
 # LOGIN
 login.login()

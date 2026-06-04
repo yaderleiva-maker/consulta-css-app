@@ -32,7 +32,7 @@ if st.session_state.get("login_ok"):
     # -----------------------
     modulo = st.sidebar.selectbox(
         "Módulos",
-        ["Consultas", "Carga de Documentos"]  # Agregar nueva opción
+        ["Consultas", "Carga de Documentos", "Control de Almuerzos"]  # Agregar nueva opción
     )
 
     # -----------------------
@@ -67,3 +67,13 @@ if st.session_state.get("login_ok"):
             st.stop()
         
         carga_documentos.run(usuario, tipo_carga)
+
+    # -----------------------
+    # NUEVO: CONTROL DE ALMUERZOS
+    # -----------------------
+    elif modulo == "Control de Almuerzos":
+        if "CONTROL_ALMUERZOS" not in permisos:
+            st.error("❌ No tienes permisos para acceder a este módulo")
+            st.stop()
+        
+        control_almuerzos.run(usuario, "Control de Almuerzos")

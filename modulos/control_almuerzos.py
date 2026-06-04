@@ -193,6 +193,8 @@ def run(usuario, tipo_carga):
     
     # ========== INTERFAZ (sin sidebar, usando área principal) ==========
     
+    # ========== INTERFAZ (sin sidebar, usando área principal) ==========
+    
     uploaded_file = st.file_uploader("📁 Sube el archivo Excel/CSV", type=['xlsx', 'csv'])
     
     if uploaded_file is not None:
@@ -206,18 +208,29 @@ def run(usuario, tipo_carga):
             validar_columnas(df)
             
             st.markdown("### 📅 Fecha del Reporte")
+            st.caption("⚠️ **Importante:** Esta es la fecha a la que corresponde el reporte (no la fecha de hoy)")
+            
             fecha_reporte = st.date_input(
                 "Selecciona la fecha del reporte",
-                value=datetime.now(),
-                help="Selecciona la fecha a la que corresponde este reporte"
+                value=None,
+                help="Ejemplo: Si el reporte es de los almuerzos del 3 de junio, selecciona 2026-06-03"
             )
-            st.info(f"📅 Fecha seleccionada: {fecha_reporte.strftime('%d/%m/%Y')}")
+            
+            if fecha_reporte is None:
+                st.warning("⚠️ **Debes seleccionar una fecha antes de continuar**")
+                st.stop()
+            
+            st.info(f"📅 Fecha del reporte seleccionada: **{fecha_reporte.strftime('%d/%m/%Y')}**")
+            st.caption(f"🕒 Fecha de carga actual: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            st.markdown("---")
             
             df_hx = filtrar_agentes_hx(df)
             
             if df_hx.empty:
                 st.error("❌ No se encontraron agentes HX válidos en el archivo")
                 st.stop()
+            
+            # ... resto del código igual ...
             
             records = []
             for _, row in df_hx.iterrows():

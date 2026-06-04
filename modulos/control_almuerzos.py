@@ -5,6 +5,13 @@ from google.oauth2.service_account import Credentials
 from google.cloud import bigquery
 from datetime import datetime
 
+def run(usuario, tipo_carga):
+    """Módulo de control de almuerzos HX"""
+    
+    st.title("🍽️ HOPSA - Control de Almuerzos HX")
+    st.caption(f"Usuario: {usuario} | Módulo: {tipo_carga}")
+    st.markdown("---")
+
 # ========== CONFIGURACIÓN ==========
 st.set_page_config(page_title="HOPSA - Control de Almuerzos", layout="wide")
 

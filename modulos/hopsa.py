@@ -6,7 +6,7 @@ from datetime import datetime
 # ========== CONFIGURACIÓN ==========
 PROJECT_ID = "proyecto-css-panama"
 DATASET_ID = "hopsa"
-TABLE_ID = "almuerzos_hx"  # Tabla de histórico (append-only)
+TABLE_ID = "almuerzos_hx"
 COLUMNAS_REQUERIDAS = ['Agente', 'ALMUERZO']
 
 def get_bigquery_client():
@@ -84,7 +84,6 @@ def filtrar_agentes_hx(df):
     df_hx_filtrado = df_hx[termina_con_hx].copy()
     df_hx_filtrado['Agente'] = df_hx_filtrado['Agente_Normalizado']
     
-    # Mostrar excluidos
     excluidos = df_hx[~termina_con_hx]
     if len(excluidos) > 0:
         with st.expander(f"ℹ️ {len(excluidos)} registros ignorados (no terminan con HX)"):
@@ -114,7 +113,6 @@ def guardar_en_bigquery(records, fecha_reporte, nombre_archivo):
             "fecha_carga": fecha_carga.isoformat()
         })
     
-    # Insertar siempre (append)
     errors = client.insert_rows_json(table_ref, rows_to_insert)
     if errors:
         st.error(f"Error en BigQuery: {errors}")
@@ -123,13 +121,15 @@ def guardar_en_bigquery(records, fecha_reporte, nombre_archivo):
         st.success(f"✅ {len(rows_to_insert)} registros guardados (versión {fecha_carga.strftime('%H:%M:%S')})")
         return True
 
-def mostrar_carga_archivos(usuario):
-    """Función de carga de archivos (append-only)"""
-    st.markdown("### 📁 Cargar Reporte de Almuerzos")
+# ========== FUNCIÓN PRINCIPAL ==========
+def run(usuario, tipo_carga):
+    st.title("🍽️ Control de Almuerzos HX")
     st.caption(f"Usuario: {usuario}")
-    st.info("💡 **Nota:** Si cometiste un error, solo sube el archivo corregido. El sistema guardará una nueva versión y el dashboard mostrará siempre la última.")
+    st.markdown("---")
     
-    uploaded_file = st.file_uploader("Sube el archivo Excel/CSV", type=['xlsx', 'csv'])
+    st.info("💡 **Nota importante:** Si cometiste un error al cargar un reporte, solo sube el archivo corregido. El sistema guardará una nueva versión y el dashboard mostrará siempre la última.")
+    
+    uploaded_file = st.file_uploader("📁 Sube el archivo Excel/CSV", type=['xlsx', 'csv'])
     
     if uploaded_file is not None:
         try:
@@ -142,7 +142,7 @@ def mostrar_carga_archivos(usuario):
             validar_columnas(df)
             
             st.markdown("### 📅 Fecha del Reporte")
-            st.caption("⚠️ **Importante:** Esta es la fecha a la que corresponde el reporte")
+            st.caption("⚠️ **Importante:** Esta es la fecha a la que corresponde el reporte (no la fecha de carga)")
             
             fecha_reporte = st.date_input(
                 "Selecciona la fecha del reporte",
@@ -197,7 +197,7 @@ def mostrar_carga_archivos(usuario):
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("💾 Guardar nueva versión", type="primary"):
-                    with st.spinner("Guardando..."):
+                    with st.spinner("Guardando en BigQuery..."):
                         fecha_str = fecha_reporte.strftime("%Y-%m-%d")
                         if guardar_en_bigquery(records, fecha_str, uploaded_file.name):
                             st.balloons()
@@ -209,9 +209,19 @@ def mostrar_carga_archivos(usuario):
                     st.info("No se guardó nada aún")
         
         except Exception as e:
-            st.error(f"Error: {e}")
-
-# ========== FUNCIÓN PRINCIPAL ==========
-def run(usuario, tipo_carga):
-    st.title("🍽️ Control de Almuerzos HX")
-    mostrar_carga_archivos(usuario)
+            st.error(f"Error al procesar el archivo: {e}")
+    
+    else:
+        st.info("👈 Sube un archivo Excel o CSV para comenzar")
+        
+        with st.expander("📖 Ver formato esperado"):
+            st.markdown("""
+            El archivo debe contener las siguientes columnas:
+            - **Agente** - Nombre del agente (debe terminar con HX)
+            - **ALMUERZO** - Tiempo de almuerzo en formato HH:MM:SS
+            
+            **Ejemplo:**
+            Agente | ALMUERZO
+            ELBA ORTEGA HX | 00:46:24
+            VERONICA ALVENDAS HX| 00:52:41
+            """)

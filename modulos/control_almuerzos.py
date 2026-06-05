@@ -13,9 +13,21 @@ def get_bigquery_client():
     return bigquery.Client.from_service_account_info(st.secrets["gcp_service_account"])
 
 def parse_time_to_seconds(time_str):
+    """Convierte formato HH:MM:SS a segundos (int)"""
     try:
+        # Si es NaN, vacío o None
         if pd.isna(time_str) or time_str == "" or time_str == "00:00:00":
             return 0
+        
+        # Si es un objeto timedelta (diferencia de tiempo)
+        if hasattr(time_str, 'total_seconds'):
+            return int(time_str.total_seconds())
+        
+        # Si es un objeto time
+        if hasattr(time_str, 'hour'):
+            return int(time_str.hour * 3600 + time_str.minute * 60 + time_str.second)
+        
+        # Si es string
         parts = str(time_str).split(':')
         if len(parts) == 3:
             hours = int(parts[0])
@@ -23,10 +35,12 @@ def parse_time_to_seconds(time_str):
             seconds = int(parts[2])
             return hours * 3600 + minutes * 60 + seconds
         return 0
-    except:
+    except Exception as e:
+        print(f"Error parseando {time_str}: {e}")
         return 0
 
 def evaluate_lunch_advanced(lunch_str):
+    """Evalúa el almuerzo y devuelve métricas detalladas"""
     segundos = parse_time_to_seconds(lunch_str)
     minutos = segundos / 60
     limite_segundos = 30 * 60
@@ -35,20 +49,20 @@ def evaluate_lunch_advanced(lunch_str):
         return {
             "almuerzo_original": "00:00:00",
             "almuerzo_segundos": 0,
-            "almuerzo_minutos": 0,
+            "almuerzo_minutos": 0.0,
             "exceso_segundos": 0,
-            "exceso_minutos": 0,
+            "exceso_minutos": 0.0,
             "estado": "SIN_ALMUERZO",
             "icono": "❌",
             "display": "❌ Sin almuerzo"
         }
     elif segundos <= limite_segundos:
         return {
-            "almuerzo_original": lunch_str,
+            "almuerzo_original": str(lunch_str),
             "almuerzo_segundos": segundos,
             "almuerzo_minutos": round(minutos, 1),
             "exceso_segundos": 0,
-            "exceso_minutos": 0,
+            "exceso_minutos": 0.0,
             "estado": "OK",
             "icono": "🟢",
             "display": f"🟢 {int(minutos)} min (OK)"
@@ -57,7 +71,7 @@ def evaluate_lunch_advanced(lunch_str):
         exceso_segundos = segundos - limite_segundos
         exceso_minutos = exceso_segundos / 60
         return {
-            "almuerzo_original": lunch_str,
+            "almuerzo_original": str(lunch_str),
             "almuerzo_segundos": segundos,
             "almuerzo_minutos": round(minutos, 1),
             "exceso_segundos": exceso_segundos,
@@ -68,6 +82,7 @@ def evaluate_lunch_advanced(lunch_str):
         }
 
 def validar_columnas(df):
+    """Valida que el archivo tenga las columnas requeridas"""
     faltantes = [c for c in COLUMNAS_REQUERIDAS if c not in df.columns]
     if faltantes:
         st.error(f"❌ El archivo no contiene las columnas requeridas: {', '.join(faltantes)}")
@@ -75,15 +90,18 @@ def validar_columnas(df):
     return True
 
 def normalizar_nombre_agente(nombre):
+    """Normaliza el nombre del agente (mayúsculas, sin espacios dobles)"""
     return " ".join(str(nombre).upper().strip().split())
 
 def filtrar_agentes_hx(df):
+    """Filtra solo agentes que terminan con HX"""
     df_hx = df.copy()
     df_hx['Agente_Normalizado'] = df_hx['Agente'].apply(normalizar_nombre_agente)
     termina_con_hx = df_hx['Agente_Normalizado'].str.endswith("HX", na=False)
     df_hx_filtrado = df_hx[termina_con_hx].copy()
     df_hx_filtrado['Agente'] = df_hx_filtrado['Agente_Normalizado']
     
+    # Mostrar excluidos
     excluidos = df_hx[~termina_con_hx]
     if len(excluidos) > 0:
         with st.expander(f"ℹ️ {len(excluidos)} registros ignorados (no terminan con HX)"):
@@ -92,7 +110,7 @@ def filtrar_agentes_hx(df):
     return df_hx_filtrado
 
 def guardar_en_bigquery(records, fecha_reporte, nombre_archivo):
-    """Siempre inserta nuevos registros (append-only)"""
+    """Siempre inserta nuevos registros (append-only) con tipos correctos"""
     client = get_bigquery_client()
     table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
     
@@ -100,19 +118,22 @@ def guardar_en_bigquery(records, fecha_reporte, nombre_archivo):
     fecha_carga = datetime.now()
     
     for record in records:
-        rows_to_insert.append({
-            "fecha_reporte": fecha_reporte,
-            "agente": record['Agente'],
-            "almuerzo_original": record['almuerzo_original'],
-            "almuerzo_segundos": record['almuerzo_segundos'],
-            "almuerzo_minutos": record['almuerzo_minutos'],
-            "exceso_segundos": record['exceso_segundos'],
-            "exceso_minutos": record['exceso_minutos'],
-            "estado": record['estado'],
-            "nombre_archivo": nombre_archivo,
-            "fecha_carga": fecha_carga.isoformat()
-        })
+        # Asegurar que todos los valores sean del tipo correcto para JSON
+        row = {
+            "fecha_reporte": fecha_reporte,  # string YYYY-MM-DD
+            "agente": str(record['Agente']),
+            "almuerzo_original": str(record['almuerzo_original']),
+            "almuerzo_segundos": int(record['almuerzo_segundos']),
+            "almuerzo_minutos": float(record['almuerzo_minutos']),
+            "exceso_segundos": int(record['exceso_segundos']),
+            "exceso_minutos": float(record['exceso_minutos']),
+            "estado": str(record['estado']),
+            "nombre_archivo": str(nombre_archivo),
+            "fecha_carga": fecha_carga.isoformat()  # string ISO 8601
+        }
+        rows_to_insert.append(row)
     
+    # Insertar siempre (append)
     errors = client.insert_rows_json(table_ref, rows_to_insert)
     if errors:
         st.error(f"Error en BigQuery: {errors}")
@@ -133,6 +154,7 @@ def run(usuario, tipo_carga):
     
     if uploaded_file is not None:
         try:
+            # Leer archivo
             if uploaded_file.name.endswith('.xlsx'):
                 df = pd.read_excel(uploaded_file)
             else:
@@ -141,6 +163,7 @@ def run(usuario, tipo_carga):
             st.success(f"✅ Archivo cargado: {len(df)} filas | {uploaded_file.name}")
             validar_columnas(df)
             
+            # Fecha del reporte
             st.markdown("### 📅 Fecha del Reporte")
             st.caption("⚠️ **Importante:** Esta es la fecha a la que corresponde el reporte (no la fecha de carga)")
             
@@ -156,12 +179,14 @@ def run(usuario, tipo_carga):
             
             st.info(f"📅 Fecha del reporte seleccionada: **{fecha_reporte.strftime('%d/%m/%Y')}**")
             
+            # Filtrar agentes HX
             df_hx = filtrar_agentes_hx(df)
             
             if df_hx.empty:
                 st.error("❌ No se encontraron agentes HX válidos en el archivo")
                 st.stop()
             
+            # Procesar registros
             records = []
             for _, row in df_hx.iterrows():
                 lunch_data = evaluate_lunch_advanced(row.get('ALMUERZO', '00:00:00'))
@@ -178,7 +203,15 @@ def run(usuario, tipo_carga):
             
             # Previsualización
             st.markdown("### 📊 Previsualización")
-            preview_data = [{"Agente": r['Agente'], "Almuerzo": r['almuerzo_original'], "Estado": r['display'], "Exceso (min)": r['exceso_minutos']} for r in records]
+            preview_data = []
+            for r in records:
+                preview_data.append({
+                    "Agente": r['Agente'],
+                    "Almuerzo": r['almuerzo_original'],
+                    "Estado": r['display'],
+                    "Exceso (min)": r['exceso_minutos']
+                })
+            
             df_preview = pd.DataFrame(preview_data)
             
             total = len(df_preview)
@@ -194,6 +227,7 @@ def run(usuario, tipo_carga):
             
             st.dataframe(df_preview, use_container_width=True)
             
+            # Botones
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("💾 Guardar nueva versión", type="primary"):
@@ -219,7 +253,7 @@ def run(usuario, tipo_carga):
             El archivo debe contener las siguientes columnas:
             - **Agente** - Nombre del agente (debe terminar con HX)
             - **ALMUERZO** - Tiempo de almuerzo en formato HH:MM:SS
-            
+
             **Ejemplo:**
             Agente | ALMUERZO
             ELBA ORTEGA HX | 00:46:24

@@ -16,7 +16,7 @@ def run(usuario, tipo_carga):
     SERVICE_ACCOUNT_INFO = st.secrets["gcp_service_account"]
     PROJECT_ID = SERVICE_ACCOUNT_INFO["project_id"]
     SHEET_NAME = "HOPSA_Almuerzos_Hoy"
-    DATASET_ID = "reportes"
+    DATASET_ID = "HOPSA"
     TABLE_ID = "almuerzos_hx"
     
     COLUMNAS_REQUERIDAS = ['Agente', 'ALMUERZO']

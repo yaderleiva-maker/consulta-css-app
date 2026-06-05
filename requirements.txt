@@ -8,3 +8,4 @@ PyJWT
 openpyxl
 xlrd
 gspread==6.1.2
+plotly==5.24.1

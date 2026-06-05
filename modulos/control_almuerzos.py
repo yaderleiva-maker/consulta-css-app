@@ -1,25 +1,16 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from google.oauth2.service_account import Credentials
 from google.cloud import bigquery
 from datetime import datetime
-import plotly.express as px
 
 # ========== CONFIGURACIÓN ==========
 PROJECT_ID = "proyecto-css-panama"
 DATASET_ID = "hopsa"
 TABLE_ID = "almuerzos_hx"
-SHEET_NAME = "Control_Almuerzos_HX"
 COLUMNAS_REQUERIDAS = ['Agente', 'ALMUERZO']
 
 def get_bigquery_client():
     return bigquery.Client.from_service_account_info(st.secrets["gcp_service_account"])
-
-def get_google_sheets_client():
-    scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-    return gspread.authorize(creds)
 
 def parse_time_to_seconds(time_str):
     try:
@@ -92,22 +83,16 @@ def filtrar_agentes_hx(df):
     termina_con_hx = df_hx['Agente_Normalizado'].str.endswith("HX", na=False)
     df_hx_filtrado = df_hx[termina_con_hx].copy()
     df_hx_filtrado['Agente'] = df_hx_filtrado['Agente_Normalizado']
+    
+    excluidos = df_hx[~termina_con_hx]
+    if len(excluidos) > 0:
+        with st.expander(f"ℹ️ {len(excluidos)} registros ignorados (no terminan con HX)"):
+            st.dataframe(excluidos[['Agente']].head(10))
+    
     return df_hx_filtrado
 
-def verificar_fecha_existente(fecha_reporte):
-    client = get_bigquery_client()
-    query = f"""
-    SELECT COUNT(*) as total
-    FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}`
-    WHERE fecha_reporte = @fecha
-    """
-    job_config = bigquery.QueryJobConfig(
-        query_parameters=[bigquery.ScalarQueryParameter("fecha", "DATE", fecha_reporte)]
-    )
-    result = client.query(query, job_config=job_config).to_dataframe()
-    return result['total'].iloc[0] > 0
-
-def guardar_en_bigquery(records, fecha_reporte, nombre_archivo, modo_actualizar=False):
+def guardar_en_bigquery(records, fecha_reporte, nombre_archivo):
+    """Siempre inserta nuevos registros (append-only)"""
     client = get_bigquery_client()
     table_ref = f"{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}"
     
@@ -128,31 +113,23 @@ def guardar_en_bigquery(records, fecha_reporte, nombre_archivo, modo_actualizar=
             "fecha_carga": fecha_carga.isoformat()
         })
     
-    if modo_actualizar:
-        delete_query = f"""
-        DELETE FROM `{table_ref}`
-        WHERE fecha_reporte = @fecha
-        """
-        job_config = bigquery.QueryJobConfig(
-            query_parameters=[bigquery.ScalarQueryParameter("fecha", "DATE", fecha_reporte)]
-        )
-        client.query(delete_query, job_config=job_config).result()
-        st.info(f"🗑️ Registros anteriores eliminados para {fecha_reporte}")
-    
     errors = client.insert_rows_json(table_ref, rows_to_insert)
     if errors:
         st.error(f"Error en BigQuery: {errors}")
         return False
     else:
-        st.success(f"✅ {len(rows_to_insert)} registros guardados")
+        st.success(f"✅ {len(rows_to_insert)} registros guardados (versión {fecha_carga.strftime('%H:%M:%S')})")
         return True
 
-def mostrar_carga_archivos(usuario):
-    """Función original de carga de archivos"""
-    st.markdown("### 📁 Cargar Reporte de Almuerzos")
+# ========== FUNCIÓN PRINCIPAL ==========
+def run(usuario, tipo_carga):
+    st.title("🍽️ Control de Almuerzos HX")
     st.caption(f"Usuario: {usuario}")
+    st.markdown("---")
     
-    uploaded_file = st.file_uploader("Sube el archivo Excel/CSV", type=['xlsx', 'csv'])
+    st.info("💡 **Nota importante:** Si cometiste un error al cargar un reporte, solo sube el archivo corregido. El sistema guardará una nueva versión y el dashboard mostrará siempre la última.")
+    
+    uploaded_file = st.file_uploader("📁 Sube el archivo Excel/CSV", type=['xlsx', 'csv'])
     
     if uploaded_file is not None:
         try:
@@ -165,7 +142,7 @@ def mostrar_carga_archivos(usuario):
             validar_columnas(df)
             
             st.markdown("### 📅 Fecha del Reporte")
-            st.caption("⚠️ **Importante:** Esta es la fecha a la que corresponde el reporte")
+            st.caption("⚠️ **Importante:** Esta es la fecha a la que corresponde el reporte (no la fecha de carga)")
             
             fecha_reporte = st.date_input(
                 "Selecciona la fecha del reporte",
@@ -217,92 +194,34 @@ def mostrar_carga_archivos(usuario):
             
             st.dataframe(df_preview, use_container_width=True)
             
-            fecha_str = fecha_reporte.strftime("%Y-%m-%d")
-            existe = verificar_fecha_existente(fecha_str)
-            
             col1, col2 = st.columns(2)
             with col1:
-                if existe:
-                    if st.button("🔄 Actualizar información existente", type="primary"):
-                        with st.spinner("Actualizando..."):
-                            if guardar_en_bigquery(records, fecha_str, uploaded_file.name, modo_actualizar=True):
-                                st.balloons()
-                                st.success("✅ ¡Datos actualizados correctamente!")
-                else:
-                    if st.button("💾 Guardar en BigQuery", type="primary"):
-                        with st.spinner("Guardando..."):
-                            if guardar_en_bigquery(records, fecha_str, uploaded_file.name, modo_actualizar=False):
-                                st.balloons()
-                                st.success("✅ ¡Datos guardados correctamente!")
+                if st.button("💾 Guardar nueva versión", type="primary"):
+                    with st.spinner("Guardando en BigQuery..."):
+                        fecha_str = fecha_reporte.strftime("%Y-%m-%d")
+                        if guardar_en_bigquery(records, fecha_str, uploaded_file.name):
+                            st.balloons()
+                            st.success("✅ ¡Datos guardados correctamente!")
+                            st.info("📌 Si cometiste un error, puedes subir el archivo corregido y se guardará como una nueva versión")
             
             with col2:
                 if st.button("📋 Solo previsualizar"):
                     st.info("No se guardó nada aún")
         
         except Exception as e:
-            st.error(f"Error: {e}")
-
-def admin_almuerzos(usuario):
-    """Módulo de administración para eliminar días"""
-    st.markdown("### 🛠️ Administración de Datos")
-    st.caption(f"Usuario: {usuario}")
+            st.error(f"Error al procesar el archivo: {e}")
     
-    client = get_bigquery_client()
-    
-    query_fechas = f"""
-    SELECT DISTINCT fecha_reporte, COUNT(*) as registros
-    FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}`
-    GROUP BY fecha_reporte
-    ORDER BY fecha_reporte DESC
-    """
-    
-    try:
-        df_fechas = client.query(query_fechas).to_dataframe()
+    else:
+        st.info("👈 Sube un archivo Excel o CSV para comenzar")
         
-        if df_fechas.empty:
-            st.info("📭 No hay datos cargados aún")
-            return
-        
-        st.dataframe(df_fechas, use_container_width=True)
-        
-        st.markdown("---")
-        st.markdown("### 🗑️ Eliminar datos de una fecha")
-        
-        fecha_eliminar = st.date_input("Selecciona la fecha a eliminar")
-        
-        # Verificar si la fecha existe
-        fecha_str = fecha_eliminar.strftime("%Y-%m-%d")
-        existe = verificar_fecha_existente(fecha_str)
-        
-        if existe:
-            st.warning(f"⚠️ Se eliminarán TODOS los registros del {fecha_str}")
+        with st.expander("📖 Ver formato esperado"):
+            st.markdown("""
+            El archivo debe contener las siguientes columnas:
+            - **Agente** - Nombre del agente (debe terminar con HX)
+            - **ALMUERZO** - Tiempo de almuerzo en formato HH:MM:SS
             
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("🗑️ Eliminar fecha", type="secondary"):
-                    with st.spinner("Eliminando..."):
-                        delete_query = f"""
-                        DELETE FROM `{PROJECT_ID}.{DATASET_ID}.{TABLE_ID}`
-                        WHERE fecha_reporte = '{fecha_str}'
-                        """
-                        client.query(delete_query).result()
-                        st.success(f"✅ Datos del {fecha_str} eliminados")
-                        st.balloons()
-                        st.rerun()
-        else:
-            st.info(f"📭 No hay datos para la fecha {fecha_str}")
-        
-    except Exception as e:
-        st.error(f"Error: {e}")
-
-# ========== FUNCIÓN PRINCIPAL ==========
-def run(usuario, tipo_carga):
-    st.title("🍽️ Control de Almuerzos HX")
-    
-    tab1, tab2 = st.tabs(["📤 Cargar Reporte", "🛠️ Administración"])
-    
-    with tab1:
-        mostrar_carga_archivos(usuario)
-    
-    with tab2:
-        admin_almuerzos(usuario)
+            **Ejemplo:**
+            Agente | ALMUERZO
+            ELBA ORTEGA HX | 00:46:24
+            VERONICA ALVENDAS HX| 00:52:41
+            """)

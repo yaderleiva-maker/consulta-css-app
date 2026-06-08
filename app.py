@@ -26,7 +26,7 @@ if st.session_state.get("login_ok"):
         "yesturainhexagon@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
         "yfalconhexagon@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
         "delcarmenyamileth99@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-        "mariachacon@hopsa.com": ["HOPSA"],
+        "mariachacon@hopsa.com": ["HOPSA", "CONTROL_ALMUERZOS"],
         "gabrielamorales@hopsa.com": ["HOPSA", "CONTROL_ALMUERZOS"],
     }
 

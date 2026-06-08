@@ -27,7 +27,7 @@ if st.session_state.get("login_ok"):
         "yfalconhexagon@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
         "delcarmenyamileth99@gmail.com": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
         "mariachacon@hopsa.com": ["HOPSA"],
-        "gabrielamorales@hopsa.com": ["HOPSA"],
+        "gabrielamorales@hopsa.com": ["HOPSA", "CONTROL_ALMUERZOS"],
     }
 
     permisos = roles.get(usuario, [])

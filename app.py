@@ -2,7 +2,7 @@ import streamlit as st
 from modulos import login, consultas, carga_documentos
 from modulos import hopsa
 from modulos import inventario
-from modulos import control_almuerzos  # ← NUEVO
+from modulos.hexagon_panama.hopsa import control_almuerzos  # ← NUEVO
 
 # LOGIN
 login.login()

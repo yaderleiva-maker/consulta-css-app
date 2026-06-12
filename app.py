@@ -1,9 +1,9 @@
 import streamlit as st
-from modulos import login, carga_documentos
+from modulos import login
 from modulos.hexagon_panama.consultas import consultas
 from modulos.hexagon_panama.hopsa import hopsa
 from modulos.hexagon_panama.hopsa import control_almuerzos
-from modulos.crm import cargar_documentos
+from modulos.crm import carga_documentos
 from modulos import inventario
 
 

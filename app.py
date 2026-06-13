@@ -6,6 +6,8 @@ from modulos.hexagon_panama.hopsa import hopsa
 from modulos.hexagon_panama.hopsa import control_almuerzos
 from modulos.crm import carga_documentos
 from modulos.inventarios import inventario
+from modulos.inventarios import inventario
+from modulos.farmazone import carga_reportes.py
 
 # =====================
 # CONFIGURACIÓN

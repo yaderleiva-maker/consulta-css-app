@@ -76,7 +76,13 @@ MODULOS = {
     "💊 Farmazone": {
         "icono": "💊",
         "tipo": "categoria",
-        "modulos": {}
+        "modulos": {
+                    "📋 Cargar  documentos": {
+                        "tipo": "modulo",
+                        "funcion": lambda: carga_reportes.run(usuario),
+                        "permiso": "CARGA_REPORTES"
+                    }
+        }
     },
     "📦 Inventarios": {
         "icono": "📦",

@@ -129,16 +129,14 @@ def ejecutar_consultas():
 def mostrar_menu(modulos_dict, nivel=0):
     """Muestra menú jerárquico recursivo"""
     for nombre, contenido in modulos_dict.items():
-        # Verificar permisos en el nivel actual
+        # Verificar permisos
         tiene_permiso = True
         if "permiso" in contenido:
-            tiene_permiso = ROLES.get(usuario, {}).get(contenido["permiso"], False)
+            permiso = contenido["permiso"]
+            tiene_permiso = ROLES.get(usuario, {}).get(permiso, False)
         
         if not tiene_permiso:
             continue
-        
-        # Calcular indentación visual
-        indent = "  " * nivel
         
         # Si es categoría con submódulos
         if contenido.get("tipo") == "categoria" and contenido.get("modulos"):
@@ -147,7 +145,8 @@ def mostrar_menu(modulos_dict, nivel=0):
         
         # Si es módulo hoja (tiene función)
         elif contenido.get("tipo") == "modulo" and "funcion" in contenido:
-            if st.button(f"{indent}{contenido.get('icono', '•')} {nombre}", key=f"btn_{nombre}_{nivel}"):
+            if st.button(f"{'  ' * nivel}{contenido.get('icono', '•')} {nombre}", 
+                        key=f"btn_{nombre}_{nivel}"):
                 st.session_state["modulo_activo"] = contenido["funcion"]
 
 def tipo_carga_seleccionada():

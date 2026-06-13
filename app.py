@@ -30,28 +30,35 @@ usuario = st.session_state.get("usuario")
 MODULOS = {
     "🤝 NEXO CRM": {
         "icono": "🤝",
+        "tipo": "categoria",
         "modulos": {
             "📁 Carga de Documentos": {
-                "funcion": lambda: carga_documentos.run(usuario, tipo_carga_seleccionada()),
+                "tipo": "modulo",
+                "funcion": lambda: carga_documentos.run(usuario, "CSS"),
                 "permiso": "CARGA_DOCUMENTOS"
             }
         }
     },
     "🏢 Hexagon Panamá": {
         "icono": "🏢",
+        "tipo": "categoria",
         "modulos": {
             "📊 Consultas": {
+                "tipo": "modulo",
                 "funcion": lambda: ejecutar_consultas(),
                 "permiso": "CONSULTAS"
             },
             "🏥 HOPSA": {
+                "tipo": "categoria",
                 "icono": "🏥",
-                "submodulos": {
+                "modulos": {
                     "📋 Gestión HOPSA": {
+                        "tipo": "modulo",
                         "funcion": lambda: hopsa.run(usuario),
                         "permiso": "HOPSA"
                     },
                     "🍽️ Control de Almuerzos": {
+                        "tipo": "modulo",
                         "funcion": lambda: control_almuerzos.run(usuario, "Control de Almuerzos"),
                         "permiso": "CONTROL_ALMUERZOS"
                     }
@@ -61,16 +68,20 @@ MODULOS = {
     },
     "🏢 Hexagon Colombia": {
         "icono": "🏢",
+        "tipo": "categoria",
         "modulos": {}
     },
     "💊 Farmazone": {
         "icono": "💊",
+        "tipo": "categoria",
         "modulos": {}
     },
     "📦 Inventarios": {
         "icono": "📦",
+        "tipo": "categoria",
         "modulos": {
             "📊 Inventario": {
+                "tipo": "modulo",
                 "funcion": lambda: inventario.run(usuario),
                 "permiso": "INVENTARIO"
             }
@@ -94,41 +105,6 @@ ROLES = {
     # ... más usuarios
 }
 
-# Helper para mostrar submódulos en sidebar
-def mostrar_submenu(nombre_modulo, contenido, nivel=0):
-    """Muestra menú jerárquico en sidebar"""
-    indent = "  " * nivel
-    
-    # Si tiene submodulos, mostrar expander
-    if "submodulos" in contenido:
-        with st.expander(f"{indent}{contenido.get('icono', '📁')} {nombre_modulo}"):
-            for subnombre, subcontenido in contenido["submodulos"].items():
-                permiso = subcontenido.get("permiso")
-                if not permiso or ROLES.get(usuario, {}).get(permiso, False):
-                    if st.button(f"   {subcontenido.get('icono', '•')} {subnombre}", key=f"{nombre_modulo}_{subnombre}"):
-                        st.session_state["modulo_activo"] = subcontenido["funcion"]
-    
-    # Si tiene módulos directos
-    elif "modulos" in contenido:
-        with st.expander(f"{indent}{contenido.get('icono', '📁')} {nombre_modulo}"):
-            for modnombre, modcontenido in contenido["modulos"].items():
-                permiso = modcontenido.get("permiso")
-                if not permiso or ROLES.get(usuario, {}).get(permiso, False):
-                    if st.button(f"   {modcontenido.get('icono', '•')} {modnombre}", key=f"{nombre_modulo}_{modnombre}"):
-                        st.session_state["modulo_activo"] = modcontenido["funcion"]
-    
-    # Si es un módulo hoja
-    else:
-        permiso = contenido.get("permiso")
-        if not permiso or ROLES.get(usuario, {}).get(permiso, False):
-            if st.button(f"{indent}{contenido.get('icono', '•')} {nombre_modulo}", key=nombre_modulo):
-                st.session_state["modulo_activo"] = contenido["funcion"]
-
-def tipo_carga_seleccionada():
-    """Helper para obtener el tipo de carga seleccionado en el sidebar"""
-    # Esta función se puede expandir según necesidad
-    return "CSS"  # o leer de session_state
-
 def ejecutar_consultas():
     """Maneja el submenú de consultas"""
     with st.sidebar:
@@ -141,16 +117,47 @@ def ejecutar_consultas():
         )
     consultas.run(usuario, tipo)
 
+def mostrar_menu(modulos_dict, nivel=0):
+    """Muestra menú jerárquico recursivo"""
+    for nombre, contenido in modulos_dict.items():
+        # Verificar permisos en el nivel actual
+        tiene_permiso = True
+        if "permiso" in contenido:
+            tiene_permiso = ROLES.get(usuario, {}).get(contenido["permiso"], False)
+        
+        if not tiene_permiso:
+            continue
+        
+        # Calcular indentación visual
+        indent = "  " * nivel
+        
+        # Si es categoría con submódulos
+        if contenido.get("tipo") == "categoria" and contenido.get("modulos"):
+            with st.expander(f"{contenido.get('icono', '📁')} {nombre}"):
+                mostrar_menu(contenido["modulos"], nivel + 1)
+        
+        # Si es módulo hoja (tiene función)
+        elif contenido.get("tipo") == "modulo" and "funcion" in contenido:
+            if st.button(f"{indent}{contenido.get('icono', '•')} {nombre}", key=f"btn_{nombre}_{nivel}"):
+                st.session_state["modulo_activo"] = contenido["funcion"]
+
+def tipo_carga_seleccionada():
+    """Helper para obtener el tipo de carga seleccionado en el sidebar"""
+    # Esto se puede mejorar según necesidad
+    return "CSS"
+
 # =====================
 # SIDEBAR
 # =====================
 with st.sidebar:
-    st.image("assets/NEXO.jpeg", width=150)
+    # Logo (sin duplicación)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.image("assets/NEXO.jpeg", width=120)
     st.markdown("---")
     
-    # Menú jerárquico
-    for nombre_modulo, contenido in MODULOS.items():
-        mostrar_submenu(nombre_modulo, contenido)
+    # Mostrar menú jerárquico
+    mostrar_menu(MODULOS)
     
     st.markdown("---")
     st.caption(f"👤 {usuario}")
@@ -165,9 +172,18 @@ with st.sidebar:
 # CONTENIDO PRINCIPAL
 # =====================
 if "modulo_activo" in st.session_state:
+    # Limpiar después de ejecutar para evitar duplicados? No, mantener
     st.session_state["modulo_activo"]()
 else:
     # Pantalla de bienvenida
     st.title("🤝 NEXO CRM")
     st.markdown("---")
-    st.info("Selecciona un módulo del menú lateral para comenzar")
+    
+    # Tarjetas de bienvenida
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.info("📊 **Consultas**\n\nConsulta bases de datos CSS")
+    with col2:
+        st.info("📁 **Carga de Documentos**\n\nCarga masiva de clientes")
+    with col3:
+        st.info("🏥 **HOPSA**\n\nGestión de HOPSA y control de almuerzos")

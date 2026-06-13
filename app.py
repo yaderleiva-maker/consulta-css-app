@@ -105,6 +105,7 @@ ROLES = {
         "HOPSA": True,
         "CONTROL_ALMUERZOS": True,
         "INVENTARIO": True
+        "CARGA_REPORTES": True
     },
     "mariachacon@hopsa.com": {
         "HOPSA": True,

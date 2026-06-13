@@ -8,212 +8,166 @@ from modulos.crm import carga_documentos
 from modulos.inventarios import inventario
 
 # =====================
-# CONFIGURACIÓN DE PÁGINA
+# CONFIGURACIÓN
 # =====================
-st.set_page_config(
-    page_title="NEXO CRM",
-    page_icon="🤝",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="NEXO CRM", page_icon="🤝", layout="wide")
 
 # =====================
-# FUNCIONES AUXILIARES (definidas ANTES de usarse)
-# =====================
-
-def ejecutar_consultas(usuario, consultas_permitidas):
-    """Ejecuta el módulo de consultas con submenú"""
-    if not consultas_permitidas:
-        st.error("❌ No tienes permisos para consultas")
-        return
-    
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("### 🔍 Consultas disponibles")
-        tipo_consulta = st.radio(
-            "Selecciona una consulta",
-            consultas_permitidas,
-            key="consulta_select"
-        )
-    
-    consultas.run(usuario, tipo_consulta)
-
-def ejecutar_carga_documentos(usuario, cargas_permitidas):
-    """Ejecuta el módulo de carga de documentos con submenú"""
-    if not cargas_permitidas:
-        st.error("❌ No tienes permisos para cargar documentos")
-        return
-    
-    # Mapeo de nombres amigables
-    nombre_cargas = {
-        "CSS": "📊 CSS",
-        "TELÉFONOS NUEVOS": "📞 TELÉFONOS NUEVOS",
-        "CORREOS NUEVOS": "📧 CORREOS NUEVOS"
-    }
-    
-    opciones_carga = [nombre_cargas.get(c, c) for c in cargas_permitidas]
-    
-    with st.sidebar:
-        st.markdown("---")
-        st.markdown("### 📤 Tipo de carga")
-        seleccion_carga = st.radio(
-            "Selecciona una opción",
-            opciones_carga,
-            key="carga_select"
-        )
-        
-        # Mapear de vuelta al valor original
-        tipo_carga = next(
-            (k for k, v in nombre_cargas.items() if v == seleccion_carga),
-            seleccion_carga
-        )
-    
-    carga_documentos.run(usuario, tipo_carga)
-
-def cerrar_sesion():
-    """Cierra la sesión del usuario"""
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.rerun()
-
-# =====================
-# LOGIN (un solo lugar)
+# LOGIN
 # =====================
 login.login()
 
-# Solo mostrar logout si está logueado
-if st.session_state.get("login_ok"):
-    with st.sidebar:
-        if st.button("🚪 Cerrar sesión", use_container_width=True):
-            cerrar_sesion()
+if not st.session_state.get("login_ok"):
+    st.stop()
+
+usuario = st.session_state.get("usuario")
 
 # =====================
-# SESIÓN INICIADA
+# CONFIGURACIÓN DE ROLES Y MÓDULOS
 # =====================
-if st.session_state.get("login_ok"):
-    usuario = st.session_state.get("usuario")
-    
-    # =====================
-    # CONFIGURACIÓN DE ROLES (separada)
-    # =====================
-    ROLES = {
-        "yaderleiva@gmail.com": {
-            "modulos": ["consultas", "carga_documentos", "hopsa", "inventario", "control_almuerzos"],
-            "consultas": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-            "cargas": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
-        },
-        "contenalfa@gmail.com": {
-            "modulos": ["consultas", "carga_documentos", "hopsa"],
-            "consultas": ["TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-            "cargas": ["TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
-        },
-        "arismaytte@gmail.com": {
-            "modulos": ["consultas"],
-            "consultas": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-            "cargas": []
-        },
-        "sgonzalez.hex@gmail.com": {
-            "modulos": ["consultas"],
-            "consultas": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-            "cargas": []
-        },
-        "yesturainhexagon@gmail.com": {
-            "modulos": ["consultas"],
-            "consultas": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-            "cargas": []
-        },
-        "yfalconhexagon@gmail.com": {
-            "modulos": ["consultas"],
-            "consultas": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-            "cargas": []
-        },
-        "delcarmenyamileth99@gmail.com": {
-            "modulos": ["consultas"],
-            "consultas": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-            "cargas": []
-        },
-        "mariachacon@hopsa.com": {
-            "modulos": ["hopsa", "control_almuerzos"],
-            "consultas": [],
-            "cargas": []
-        },
-        "gabrielamorales@hopsa.com": {
-            "modulos": ["hopsa", "control_almuerzos"],
-            "consultas": [],
-            "cargas": []
-        },
-    }
-    
-    # Rol por defecto
-    rol_usuario = ROLES.get(usuario, {
-        "modulos": ["consultas"],
-        "consultas": [],
-        "cargas": []
-    })
-    
-    modulos_permitidos = rol_usuario.get("modulos", [])
-    consultas_permitidas = rol_usuario.get("consultas", [])
-    cargas_permitidas = rol_usuario.get("cargas", [])
-    
-    # =====================
-    # MAPEO DE MÓDULOS
-    # =====================
-    MODULOS = {
-        "consultas": {
-            "nombre": "📊 Consultas",
-            "icono": "🔍",
-            "funcion": lambda: ejecutar_consultas(usuario, consultas_permitidas)
-        },
-        "carga_documentos": {
-            "nombre": "📁 Carga de Documentos",
-            "icono": "📤",
-            "funcion": lambda: ejecutar_carga_documentos(usuario, cargas_permitidas)
-        },
-        "hopsa": {
-            "nombre": "🏥 HOPSA",
-            "icono": "🏥",
-            "funcion": lambda: hopsa.run(usuario)
-        },
-        "inventario": {
-            "nombre": "📦 Inventario",
-            "icono": "📦",
-            "funcion": lambda: inventario.run(usuario)
-        },
-        "control_almuerzos": {
-            "nombre": "🍽️ Control de Almuerzos",
-            "icono": "🍽️",
-            "funcion": lambda: control_almuerzos.run(usuario, "Control de Almuerzos")
+
+# Estructura jerárquica de módulos
+MODULOS = {
+    "🤝 NEXO CRM": {
+        "icono": "🤝",
+        "modulos": {
+            "📁 Carga de Documentos": {
+                "funcion": lambda: carga_documentos.run(usuario, tipo_carga_seleccionada()),
+                "permiso": "CARGA_DOCUMENTOS"
+            }
+        }
+    },
+    "🏢 Hexagon Panamá": {
+        "icono": "🏢",
+        "modulos": {
+            "📊 Consultas": {
+                "funcion": lambda: ejecutar_consultas(),
+                "permiso": "CONSULTAS"
+            },
+            "🏥 HOPSA": {
+                "icono": "🏥",
+                "submodulos": {
+                    "📋 Gestión HOPSA": {
+                        "funcion": lambda: hopsa.run(usuario),
+                        "permiso": "HOPSA"
+                    },
+                    "🍽️ Control de Almuerzos": {
+                        "funcion": lambda: control_almuerzos.run(usuario, "Control de Almuerzos"),
+                        "permiso": "CONTROL_ALMUERZOS"
+                    }
+                }
+            }
+        }
+    },
+    "🏢 Hexagon Colombia": {
+        "icono": "🏢",
+        "modulos": {}
+    },
+    "💊 Farmazone": {
+        "icono": "💊",
+        "modulos": {}
+    },
+    "📦 Inventarios": {
+        "icono": "📦",
+        "modulos": {
+            "📊 Inventario": {
+                "funcion": lambda: inventario.run(usuario),
+                "permiso": "INVENTARIO"
+            }
         }
     }
+}
+
+# Permisos por usuario
+ROLES = {
+    "yaderleiva@gmail.com": {
+        "CONSULTAS": True,
+        "CARGA_DOCUMENTOS": True,
+        "HOPSA": True,
+        "CONTROL_ALMUERZOS": True,
+        "INVENTARIO": True
+    },
+    "mariachacon@hopsa.com": {
+        "HOPSA": True,
+        "CONTROL_ALMUERZOS": True
+    },
+    # ... más usuarios
+}
+
+# Helper para mostrar submódulos en sidebar
+def mostrar_submenu(nombre_modulo, contenido, nivel=0):
+    """Muestra menú jerárquico en sidebar"""
+    indent = "  " * nivel
     
-    # Filtrar módulos permitidos
-    modulos_activos = {k: MODULOS[k] for k in modulos_permitidos if k in MODULOS}
+    # Si tiene submodulos, mostrar expander
+    if "submodulos" in contenido:
+        with st.expander(f"{indent}{contenido.get('icono', '📁')} {nombre_modulo}"):
+            for subnombre, subcontenido in contenido["submodulos"].items():
+                permiso = subcontenido.get("permiso")
+                if not permiso or ROLES.get(usuario, {}).get(permiso, False):
+                    if st.button(f"   {subcontenido.get('icono', '•')} {subnombre}", key=f"{nombre_modulo}_{subnombre}"):
+                        st.session_state["modulo_activo"] = subcontenido["funcion"]
     
-    # =====================
-    # SIDEBAR
-    # =====================
+    # Si tiene módulos directos
+    elif "modulos" in contenido:
+        with st.expander(f"{indent}{contenido.get('icono', '📁')} {nombre_modulo}"):
+            for modnombre, modcontenido in contenido["modulos"].items():
+                permiso = modcontenido.get("permiso")
+                if not permiso or ROLES.get(usuario, {}).get(permiso, False):
+                    if st.button(f"   {modcontenido.get('icono', '•')} {modnombre}", key=f"{nombre_modulo}_{modnombre}"):
+                        st.session_state["modulo_activo"] = modcontenido["funcion"]
+    
+    # Si es un módulo hoja
+    else:
+        permiso = contenido.get("permiso")
+        if not permiso or ROLES.get(usuario, {}).get(permiso, False):
+            if st.button(f"{indent}{contenido.get('icono', '•')} {nombre_modulo}", key=nombre_modulo):
+                st.session_state["modulo_activo"] = contenido["funcion"]
+
+def tipo_carga_seleccionada():
+    """Helper para obtener el tipo de carga seleccionado en el sidebar"""
+    # Esta función se puede expandir según necesidad
+    return "CSS"  # o leer de session_state
+
+def ejecutar_consultas():
+    """Maneja el submenú de consultas"""
     with st.sidebar:
-        # Logo
-        st.image("assets/NEXO.jpeg", width=150)
         st.markdown("---")
-        
-        # Selector de módulo
-        if modulos_activos:
-            opciones_modulo = [f"{mod['icono']} {mod['nombre']}" for mod in modulos_activos.values()]
-            seleccion = st.selectbox("📌 Módulo", opciones_modulo, index=0)
-            
-            # Extraer clave del módulo seleccionado
-            modulo_seleccionado = list(modulos_activos.keys())[opciones_modulo.index(seleccion)]
-        else:
-            st.error("❌ No tienes módulos asignados")
-            st.stop()
-        
-        st.markdown("---")
-        st.caption(f"👤 **Usuario:** {usuario}")
-        st.caption("🤝 **NEXO CRM** | by DolaAI")
+        st.markdown("### 🔍 Tipo de consulta")
+        tipo = st.radio(
+            "Selecciona",
+            ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+            key="tipo_consulta"
+        )
+    consultas.run(usuario, tipo)
+
+# =====================
+# SIDEBAR
+# =====================
+with st.sidebar:
+    st.image("assets/NEXO.jpeg", width=150)
+    st.markdown("---")
     
-    # =====================
-    # EJECUTAR MÓDULO
-    # =====================
-    if modulos_activos:
-        modulos_activos[modulo_seleccionado]["funcion"]()
+    # Menú jerárquico
+    for nombre_modulo, contenido in MODULOS.items():
+        mostrar_submenu(nombre_modulo, contenido)
+    
+    st.markdown("---")
+    st.caption(f"👤 {usuario}")
+    st.caption("🤝 NEXO CRM | by DolaAI")
+    
+    if st.button("🚪 Cerrar sesión", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+
+# =====================
+# CONTENIDO PRINCIPAL
+# =====================
+if "modulo_activo" in st.session_state:
+    st.session_state["modulo_activo"]()
+else:
+    # Pantalla de bienvenida
+    st.title("🤝 NEXO CRM")
+    st.markdown("---")
+    st.info("Selecciona un módulo del menú lateral para comenzar")

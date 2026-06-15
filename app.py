@@ -6,7 +6,6 @@ from modulos.hexagon_panama.hopsa import hopsa
 from modulos.hexagon_panama.hopsa import control_almuerzos
 from modulos.crm import carga_documentos
 from modulos.inventarios import inventario
-from modulos.inventarios import inventario
 from modulos.farmazone import carga_reportes
 
 # =====================
@@ -77,11 +76,11 @@ MODULOS = {
         "icono": "💊",
         "tipo": "categoria",
         "modulos": {
-                    "📋 Cargar  documentos": {
-                        "tipo": "modulo",
-                        "funcion": lambda: carga_reportes.run(usuario),
-                        "permiso": "CARGA_REPORTES"
-                    }
+            "📋 Cargar documentos": {
+                "tipo": "modulo",
+                "funcion": lambda: carga_reportes.run(usuario),
+                "permiso": "CARGA_REPORTES"
+            }
         }
     },
     "📦 Inventarios": {
@@ -111,12 +110,15 @@ ROLES = {
         "HOPSA": True,
         "CONTROL_ALMUERZOS": True
     },
-    
     "arismaytte@gmail.com": {
         "CONSULTAS": True
-        },
-    # ... más usuarios
+    },
+    # Agrega más usuarios aquí
 }
+
+# =====================
+# FUNCIONES AUXILIARES
+# =====================
 
 def ejecutar_consultas():
     """Maneja el submenú de consultas"""
@@ -130,39 +132,54 @@ def ejecutar_consultas():
         )
     consultas.run(usuario, tipo)
 
-def mostrar_menu(modulos_dict, nivel=0):
-    """Muestra menú jerárquico recursivo"""
+def tiene_modulos_visibles(modulos_dict):
+    """Verifica si existe al menos un módulo visible para el usuario"""
     for nombre, contenido in modulos_dict.items():
-        # Verificar permisos
-        tiene_permiso = True
-        if "permiso" in contenido:
-            permiso = contenido["permiso"]
-            tiene_permiso = ROLES.get(usuario, {}).get(permiso, False)
+        # Si es un módulo hoja (tiene función)
+        if contenido.get("tipo") == "modulo":
+            permiso = contenido.get("permiso")
+            if permiso and ROLES.get(usuario, {}).get(permiso, False):
+                return True
+            # Si no tiene permiso explícito, se asume visible (módulo público)
+            elif not permiso:
+                return True
         
-        if not tiene_permiso:
-            continue
-        
+        # Si es una categoría con submódulos
+        elif contenido.get("tipo") == "categoria" and contenido.get("modulos"):
+            if tiene_modulos_visibles(contenido["modulos"]):
+                return True
+    
+    return False
+
+def mostrar_menu(modulos_dict, nivel=0):
+    """Muestra menú jerárquico recursivo - SOLO módulos visibles"""
+    for nombre, contenido in modulos_dict.items():
         # Si es categoría con submódulos
         if contenido.get("tipo") == "categoria" and contenido.get("modulos"):
-            with st.expander(f"{contenido.get('icono', '📁')} {nombre}"):
-                mostrar_menu(contenido["modulos"], nivel + 1)
+            # Solo mostrar categoría si tiene al menos un módulo visible
+            if tiene_modulos_visibles(contenido["modulos"]):
+                with st.expander(f"{contenido.get('icono', '📁')} {nombre}"):
+                    mostrar_menu(contenido["modulos"], nivel + 1)
         
         # Si es módulo hoja (tiene función)
         elif contenido.get("tipo") == "modulo" and "funcion" in contenido:
-            if st.button(f"{'  ' * nivel}{contenido.get('icono', '•')} {nombre}", 
-                        key=f"btn_{nombre}_{nivel}"):
-                st.session_state["modulo_activo"] = contenido["funcion"]
-
-def tipo_carga_seleccionada():
-    """Helper para obtener el tipo de carga seleccionado en el sidebar"""
-    # Esto se puede mejorar según necesidad
-    return "CSS"
+            # Verificar permisos
+            tiene_permiso = True
+            if "permiso" in contenido:
+                permiso = contenido["permiso"]
+                tiene_permiso = ROLES.get(usuario, {}).get(permiso, False)
+            
+            if tiene_permiso:
+                indent = "  " * nivel
+                if st.button(f"{indent}{contenido.get('icono', '•')} {nombre}", 
+                            key=f"btn_{nombre}_{nivel}"):
+                    st.session_state["modulo_activo"] = contenido["funcion"]
 
 # =====================
 # SIDEBAR
 # =====================
 with st.sidebar:
-    # Logo (sin duplicación)
+    # Logo
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.image("assets/NEXO.jpeg", width=120)
@@ -184,7 +201,6 @@ with st.sidebar:
 # CONTENIDO PRINCIPAL
 # =====================
 if "modulo_activo" in st.session_state:
-    # Limpiar después de ejecutar para evitar duplicados? No, mantener
     st.session_state["modulo_activo"]()
 else:
     # Pantalla de bienvenida

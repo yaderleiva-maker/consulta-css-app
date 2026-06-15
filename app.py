@@ -11,7 +11,7 @@ from modulos.farmazone import carga_reportes
 # =====================
 # CONFIGURACIÓN
 # =====================
-st.set_page_config(page_title="NEXO CRM", page_icon="🤝", layout="wide")
+st.set_page_config(page_title="NEXO CRM", page_icon="💻", layout="wide")
 
 # =====================
 # LOGIN

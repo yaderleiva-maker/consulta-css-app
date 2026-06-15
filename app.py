@@ -113,7 +113,7 @@ ROLES = {
     "arismaytte@gmail.com": {
         "CONSULTAS": True
     },
-    "condadodelreyfarmazone@gmail.com: {
+    "condadodelreyfarmazone@gmail.com": {
     "CARGA_REPORTES": True
     },
     

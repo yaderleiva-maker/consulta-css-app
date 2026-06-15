@@ -58,40 +58,52 @@ def run(usuario):
     # FUNCIONES DE PROCESAMIENTO
     # =====================
     
-    def leer_ventas(archivo):
-        """Lee archivo de ventas saltando filas iniciales"""
-        # El archivo de ventas tiene encabezados en la fila 6 (índice 5)
-        if archivo.name.endswith('.csv'):
-            return pd.read_csv(archivo, dtype=str, skiprows=5)
-        else:
-            return pd.read_excel(archivo, dtype=str, skiprows=5, header=0)
+   def leer_ventas(archivo):
+    """Lee archivo de ventas saltando filas iniciales"""
+    nombre = archivo.name.lower()
     
-    def leer_inventario(archivo):
-        """Lee archivo de inventario saltando filas iniciales"""
-        # El archivo de inventario tiene encabezados en la fila 5 (índice 4)
-        if archivo.name.endswith('.csv'):
-            return pd.read_csv(archivo, dtype=str, skiprows=4)
-        else:
-            return pd.read_excel(archivo, dtype=str, skiprows=4, header=0)
+    if nombre.endswith('.csv'):
+        return pd.read_csv(archivo, dtype=str, skiprows=5)
+    elif nombre.endswith('.xls'):
+        # .xls necesita engine='xlrd'
+        return pd.read_excel(archivo, dtype=str, skiprows=5, header=0, engine='xlrd')
+    elif nombre.endswith('.xlsx'):
+        # .xlsx necesita engine='openpyxl'
+        return pd.read_excel(archivo, dtype=str, skiprows=5, header=0, engine='openpyxl')
+    else:
+        raise ValueError(f"Formato no soportado: {nombre}")
+
+def leer_inventario(archivo):
+    """Lee archivo de inventario saltando filas iniciales"""
+    nombre = archivo.name.lower()
     
-    def limpiar_valor(valor):
-        """Convierte cualquier valor a float (maneja strings con comas y puntos)"""
-        if pd.isna(valor) or valor == "" or valor == "-":
-            return 0.0
-        if isinstance(valor, (int, float)):
-            return float(valor)
-        # Es string: limpiar
-        valor_str = str(valor).strip()
-        # Reemplazar coma decimal por punto
-        valor_str = valor_str.replace(',', '.')
-        # Eliminar comas de miles y otros caracteres
-        valor_str = ''.join(c for c in valor_str if c.isdigit() or c == '.' or c == '-')
-        if valor_str == "" or valor_str == "-":
-            return 0.0
-        try:
-            return float(valor_str)
-        except:
-            return 0.0
+    if nombre.endswith('.csv'):
+        return pd.read_csv(archivo, dtype=str, skiprows=4)
+    elif nombre.endswith('.xls'):
+        return pd.read_excel(archivo, dtype=str, skiprows=4, header=0, engine='xlrd')
+    elif nombre.endswith('.xlsx'):
+        return pd.read_excel(archivo, dtype=str, skiprows=4, header=0, engine='openpyxl')
+    else:
+        raise ValueError(f"Formato no soportado: {nombre}")
+    
+   def limpiar_valor(valor):
+    """Convierte cualquier valor a float (maneja strings con comas y puntos)"""
+    if pd.isna(valor) or valor == "" or valor == "-":
+        return 0.0
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    # Es string: limpiar
+    valor_str = str(valor).strip()
+    # Reemplazar coma decimal por punto
+    valor_str = valor_str.replace(',', '.')
+    # Eliminar comas de miles y otros caracteres
+    valor_str = ''.join(c for c in valor_str if c.isdigit() or c == '.' or c == '-')
+    if valor_str == "" or valor_str == "-":
+        return 0.0
+    try:
+        return float(valor_str)
+    except:
+        return 0.0
     
     def limpiar_texto(valor):
         """Convierte valor a string limpio"""

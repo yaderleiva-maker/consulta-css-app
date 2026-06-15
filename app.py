@@ -111,6 +111,10 @@ ROLES = {
         "HOPSA": True,
         "CONTROL_ALMUERZOS": True
     },
+    
+    "arismaytte@gmail.com": {
+        "CONSULTAS": True
+        },
     # ... más usuarios
 }
 

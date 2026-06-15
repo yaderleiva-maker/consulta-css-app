@@ -200,6 +200,9 @@ with st.sidebar:
 # =====================
 # CONTENIDO PRINCIPAL
 # =====================
+# =====================
+# CONTENIDO PRINCIPAL
+# =====================
 if "modulo_activo" in st.session_state:
     st.session_state["modulo_activo"]()
 else:
@@ -207,11 +210,36 @@ else:
     st.title("🤝 NEXO CRM")
     st.markdown("---")
     
-    # Tarjetas de bienvenida
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.info("📊 **Consultas**\n\nConsulta bases de datos CSS")
-    with col2:
-        st.info("📁 **Carga de Documentos**\n\nCarga masiva de clientes")
-    with col3:
-        st.info("🏥 **HOPSA**\n\nGestión de HOPSA y control de almuerzos")
+    st.markdown(f"### ¡Bienvenido, {usuario}! 👋")
+    st.markdown("Selecciona un módulo del menú lateral para comenzar.")
+    st.markdown("---")
+    
+    # Recorrer módulos de primer nivel
+    for categoria_nombre, categoria_contenido in MODULOS.items():
+        if categoria_contenido.get("tipo") == "categoria" and categoria_contenido.get("modulos"):
+            # Verificar si la categoría tiene módulos visibles
+            if tiene_modulos_visibles(categoria_contenido["modulos"]):
+                st.subheader(f"{categoria_contenido.get('icono', '📁')} {categoria_nombre}")
+                
+                # Mostrar módulos de esta categoría en filas de 3
+                modulos_visibles = []
+                for modulo_nombre, modulo_contenido in categoria_contenido["modulos"].items():
+                    if modulo_contenido.get("tipo") == "modulo":
+                        permiso = modulo_contenido.get("permiso")
+                        if permiso and ROLES.get(usuario, {}).get(permiso, False):
+                            modulos_visibles.append({
+                                "nombre": modulo_nombre,
+                                "icono": modulo_contenido.get("icono", "•")
+                            })
+                        elif not permiso:
+                            modulos_visibles.append({
+                                "nombre": modulo_nombre,
+                                "icono": modulo_contenido.get("icono", "•")
+                            })
+                
+                if modulos_visibles:
+                    cols = st.columns(min(3, len(modulos_visibles)))
+                    for idx, modulo in enumerate(modulos_visibles):
+                        with cols[idx % 3]:
+                            st.info(f"{modulo['icono']} **{modulo['nombre']}**")
+                st.markdown("---")

@@ -125,6 +125,9 @@ ROLES = {
     "contenalfa@gmail.com": {
     "CARGA_REPORTES": True
     },
+    "contenbeta@gmail.com": {
+    "CARGA_REPORTES": True
+    },
     
     # Agrega más usuarios aquí
 }

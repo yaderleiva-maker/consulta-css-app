@@ -72,6 +72,7 @@ def login():
                     "contenbeta@gmail.com",
                     "aburgos2630@gmail.com",
                     "condadodelreyfarmazone@gmail.com",
+                    "tmksolutionspty@gmail.com",
                 ]
 
                 if email in usuarios_permitidos:

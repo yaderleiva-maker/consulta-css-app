@@ -119,6 +119,9 @@ ROLES = {
     "tmksolutionspty@gmail.com": {
     "CARGA_REPORTES": True
     },
+    "aburgos2630@gmail.com": {
+    "CARGA_REPORTES": True
+    },
     
     # Agrega más usuarios aquí
 }

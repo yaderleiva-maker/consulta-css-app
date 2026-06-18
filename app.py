@@ -116,6 +116,9 @@ ROLES = {
     "condadodelreyfarmazone@gmail.com": {
     "CARGA_REPORTES": True
     },
+    "tmksolutionspty@gmail.com": {
+    "CARGA_REPORTES": True
+    },
     
     # Agrega más usuarios aquí
 }

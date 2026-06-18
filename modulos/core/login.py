@@ -69,6 +69,7 @@ def login():
                     "yfalconhexagon@gmail.com",
                     "mariachacon@hopsa.com",
                     "gabrielamorales@hopsa.com",
+                    "contenbeta@gmail.com",
                 ]
 
                 if email in usuarios_permitidos:

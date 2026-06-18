@@ -17,24 +17,10 @@ st.set_page_config(page_title="NEXO CRM", page_icon="💻", layout="wide")
 # LOGIN
 # =====================
 login.login()
-# TEMPORAL: Para debuggear
-if st.session_state.get("login_ok"):
-    st.write(f"🔍 Usuario autenticado: **{st.session_state.get('usuario')}**")
-    st.write(f"🔍 Session state completo: {st.session_state}")
-    st.write(f"🔍 ROLES disponibles: {list(ROLES.keys())}")
-
 if not st.session_state.get("login_ok"):
     st.stop()
 
 usuario = st.session_state.get("usuario")
-
-
-# TEMPORAL: Verificar si el usuario está en ROLES
-if usuario not in ROLES:
-    st.warning(f"⚠️ Usuario '{usuario}' no está en ROLES")
-    st.write("ROLES disponibles:", list(ROLES.keys()))
-    # Opcional: Asignar permisos por defecto para debuggear
-    # ROLES[usuario] = {"CARGA_REPORTES": True}
 
 # =====================
 # CONFIGURACIÓN DE ROLES Y MÓDULOS

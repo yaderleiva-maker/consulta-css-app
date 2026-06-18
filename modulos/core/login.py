@@ -70,6 +70,8 @@ def login():
                     "mariachacon@hopsa.com",
                     "gabrielamorales@hopsa.com",
                     "contenbeta@gmail.com",
+                    "aburgos2630@gmail.com",
+                    "condadodelreyfarmazone@gmail.com",
                 ]
 
                 if email in usuarios_permitidos:

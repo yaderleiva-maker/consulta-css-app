@@ -28,6 +28,14 @@ if not st.session_state.get("login_ok"):
 
 usuario = st.session_state.get("usuario")
 
+
+# TEMPORAL: Verificar si el usuario está en ROLES
+if usuario not in ROLES:
+    st.warning(f"⚠️ Usuario '{usuario}' no está en ROLES")
+    st.write("ROLES disponibles:", list(ROLES.keys()))
+    # Opcional: Asignar permisos por defecto para debuggear
+    # ROLES[usuario] = {"CARGA_REPORTES": True}
+
 # =====================
 # CONFIGURACIÓN DE ROLES Y MÓDULOS
 # =====================

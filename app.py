@@ -149,13 +149,20 @@ def ejecutar_consultas():
     with st.sidebar:
         st.markdown("---")
         st.markdown("### 🔍 Tipo de consulta")
+        
+        # Obtener opciones permitidas para este usuario
+        opciones = ROLES.get(usuario, {}).get("CONSULTAS", [])
+        if not opciones:
+            st.error("❌ No tienes permisos para consultas")
+            return
+        
         tipo = st.radio(
             "Selecciona",
-            ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+            opciones,  # ← Solo muestra las permitidas
             key="tipo_consulta"
         )
     consultas.run(usuario, tipo)
-
+    
 def tiene_modulos_visibles(modulos_dict):
     """Verifica si existe al menos un módulo visible para el usuario"""
     for nombre, contenido in modulos_dict.items():

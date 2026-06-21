@@ -5,7 +5,7 @@ from google.oauth2 import service_account
 from datetime import datetime
 
 def run(usuario, tipo_consulta):
-
+    st.write(f"🔍 DEBUG - Tipo de consulta recibido: {tipo_consulta}")
     st.write(f"👤 Usuario: {usuario}")
     st.title("HEXAGON - Extractor de Datos 🔍")
 

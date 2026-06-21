@@ -24,9 +24,7 @@ def run(usuario, tipo_consulta):
     st.markdown("---")
     
     uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
-    # ... resto del código
 
-    uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
     if uploaded_file:
 

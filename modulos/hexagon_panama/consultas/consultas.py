@@ -8,13 +8,23 @@ def run(usuario, tipo_consulta):
     st.write(f"👤 Usuario: {usuario}")
     st.title("HEXAGON - Extractor de Datos 🔍")
     
-    # Mostrar el tipo de consulta actual
-    st.info(f"📌 **Tipo de consulta actual:** {tipo_consulta}")
+    # Selector en la página principal
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.write("### Selecciona el tipo de consulta")
+    with col2:
+        tipo_consulta = st.selectbox(
+            "Tipo",
+            ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+            index=["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"].index(tipo_consulta),
+            key="consulta_selector"
+        )
     
-    # Botón para cambiar de consulta (opcional)
-    if st.button("🔄 Cambiar tipo de consulta"):
-        st.session_state["cambiar_consulta"] = True
-        st.rerun()
+    st.info(f"📌 **Consultando:** {tipo_consulta}")
+    st.markdown("---")
+    
+    uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
+    # ... resto del código
 
     uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 

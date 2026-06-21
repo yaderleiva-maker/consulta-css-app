@@ -133,7 +133,7 @@ ROLES = {
     "yesturainhexagon@gmail.com": {
         "CONSULTAS": True
     },
-    "yfalconhexagon@gmail.com": {
+    "sgonzalez.hex@gmail.com": {
         "CONSULTAS": True
     },
     

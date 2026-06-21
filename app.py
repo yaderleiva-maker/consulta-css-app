@@ -150,17 +150,29 @@ def ejecutar_consultas():
         st.markdown("---")
         st.markdown("### 🔍 Tipo de consulta")
         
-        # Obtener opciones permitidas para este usuario
-        opciones = ROLES.get(usuario, {}).get("CONSULTAS", [])
+        # Obtener opciones permitidas
+        consultas_config = ROLES.get(usuario, {}).get("CONSULTAS", [])
+        
+        # Si es True, mostrar todas
+        if consultas_config is True:
+            opciones = ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
+        # Si es lista, usarla
+        elif isinstance(consultas_config, list):
+            opciones = consultas_config
+        else:
+            st.error("❌ No tienes permisos para consultas")
+            return
+        
         if not opciones:
             st.error("❌ No tienes permisos para consultas")
             return
         
         tipo = st.radio(
             "Selecciona",
-            opciones,  # ← Solo muestra las permitidas
+            opciones,
             key="tipo_consulta"
         )
+    consultas.run(usuario, tipo)
     consultas.run(usuario, tipo)
     
 def tiene_modulos_visibles(modulos_dict):

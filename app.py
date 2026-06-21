@@ -173,7 +173,7 @@ def ejecutar_consultas():
             key="tipo_consulta"
         )
     consultas.run(usuario, tipo)
-    consultas.run(usuario, tipo)
+
     
 def tiene_modulos_visibles(modulos_dict):
     """Verifica si existe al menos un módulo visible para el usuario"""

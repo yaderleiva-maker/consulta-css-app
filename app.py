@@ -113,19 +113,28 @@ ROLES = {
         "CONSULTAS": True
     },
     "condadodelreyfarmazone@gmail.com": {
-    "CARGA_REPORTES": True
+        "CARGA_REPORTES": True
     },
     "tmksolutionspty@gmail.com": {
-    "CARGA_REPORTES": True
+        "CARGA_REPORTES": True
     },
     "aburgos2630@gmail.com": {
-    "CARGA_REPORTES": True
+        "CARGA_REPORTES": True
     },
     "contenalfa@gmail.com": {
-    "CARGA_REPORTES": True
+        "CARGA_REPORTES": True
     },
     "contenbeta@gmail.com": {
-    "CARGA_REPORTES": True
+        "CARGA_REPORTES": True
+    },
+    "yfalconhexagon@gmail.com": {
+        "CONSULTAS": True
+    },
+    "yfalconhexagon@gmail.com": {
+        "CONSULTAS": True
+    },
+    "yfalconhexagon@gmail.com": {
+        "CONSULTAS": True
     },
     
     # Agrega más usuarios aquí

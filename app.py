@@ -98,7 +98,7 @@ MODULOS = {
 # Permisos por usuario
 ROLES = {
     "yaderleiva@gmail.com": {
-        "CONSULTAS": ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
+        "CONSULTAS": True,
         "CARGA_DOCUMENTOS": True,
         "HOPSA": True,
         "CONTROL_ALMUERZOS": True,

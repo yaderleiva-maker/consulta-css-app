@@ -150,37 +150,28 @@ def ejecutar_consultas():
         st.markdown("---")
         st.markdown("### 🔍 Tipo de consulta")
         
-        # Obtener opciones permitidas
         consultas_config = ROLES.get(usuario, {}).get("CONSULTAS", [])
         
-        # DEBUG: Mostrar qué hay en consultas_config
-        st.sidebar.write(f"🔍 DEBUG - consultas_config: {consultas_config}")
-        
-        # Si es True, mostrar todas
-        if consultas_config is True:
+        if consultas_config is True or consultas_config == []:
             opciones = ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
-        # Si es lista, usarla
-        elif isinstance(consultas_config, list):
+        elif isinstance(consultas_config, list) and consultas_config:
             opciones = consultas_config
         else:
             st.error("❌ No tienes permisos para consultas")
             return
         
-        st.sidebar.write(f"🔍 DEBUG - opciones: {opciones}")
-        
-        if not opciones:
-            st.error("❌ No tienes permisos para consultas")
-            return
-        
+        # Mostrar el radio button de forma prominente
+        st.markdown("**Selecciona el tipo de consulta:**")
         tipo = st.radio(
-            "Selecciona",
+            "",
             opciones,
-            key="tipo_consulta"
+            key="tipo_consulta",
+            index=0,  # Por defecto la primera opción
+            horizontal=True  # Opcional: mostrarlo horizontal
         )
         
-        st.sidebar.write(f"🔍 DEBUG - tipo seleccionado: {tipo}")
+        st.markdown("---")
     
-    # UNA SOLA LLAMADA
     consultas.run(usuario, tipo)
 
     

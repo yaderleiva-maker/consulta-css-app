@@ -153,6 +153,9 @@ def ejecutar_consultas():
         # Obtener opciones permitidas
         consultas_config = ROLES.get(usuario, {}).get("CONSULTAS", [])
         
+        # DEBUG: Mostrar qué hay en consultas_config
+        st.sidebar.write(f"🔍 DEBUG - consultas_config: {consultas_config}")
+        
         # Si es True, mostrar todas
         if consultas_config is True:
             opciones = ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"]
@@ -163,6 +166,8 @@ def ejecutar_consultas():
             st.error("❌ No tienes permisos para consultas")
             return
         
+        st.sidebar.write(f"🔍 DEBUG - opciones: {opciones}")
+        
         if not opciones:
             st.error("❌ No tienes permisos para consultas")
             return
@@ -172,6 +177,10 @@ def ejecutar_consultas():
             opciones,
             key="tipo_consulta"
         )
+        
+        st.sidebar.write(f"🔍 DEBUG - tipo seleccionado: {tipo}")
+    
+    # UNA SOLA LLAMADA
     consultas.run(usuario, tipo)
 
     

@@ -5,11 +5,16 @@ from google.oauth2 import service_account
 from datetime import datetime
 
 def run(usuario, tipo_consulta):
-    st.write(f"🔍 DEBUG - Tipo de consulta recibido: {tipo_consulta}")
     st.write(f"👤 Usuario: {usuario}")
     st.title("HEXAGON - Extractor de Datos 🔍")
-
-
+    
+    # Mostrar el tipo de consulta actual
+    st.info(f"📌 **Tipo de consulta actual:** {tipo_consulta}")
+    
+    # Botón para cambiar de consulta (opcional)
+    if st.button("🔄 Cambiar tipo de consulta"):
+        st.session_state["cambiar_consulta"] = True
+        st.rerun()
 
     uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 

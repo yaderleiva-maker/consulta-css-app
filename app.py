@@ -136,7 +136,9 @@ ROLES = {
     "sgonzalez.hex@gmail.com": {
         "CONSULTAS": True
     },
-    
+    "nalvaradohexagon@gmail.com": {
+        "CONSULTAS": True
+    },
     # Agrega más usuarios aquí
 }
 

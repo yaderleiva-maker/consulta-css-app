@@ -33,7 +33,7 @@ def run(usuario):
         return
     
     # =====================
-    # TAB (VENTAS / COMPRAS / AMBOS)
+    # TAB (VENTAS / COMPRAS / UTILIDAD)
     # =====================
     tab_ventas, tab_compras, tab_utilidad = st.tabs([
         "📊 Ventas", 
@@ -45,7 +45,6 @@ def run(usuario):
     # FUNCIONES COMPARTIDAS
     # =====================
     def limpiar_valor(valor):
-        """Convierte cualquier valor a float"""
         if pd.isna(valor) or valor == "" or valor == "-":
             return 0.0
         if isinstance(valor, (int, float)):
@@ -114,7 +113,6 @@ def run(usuario):
                         df_ventas = leer_excel(archivo_ventas, skiprows=5)
                         df_inventario = leer_excel(archivo_inventario, skiprows=4)
                         
-                        # Diccionario de inventario
                         dict_inventario = {}
                         for _, row in df_inventario.iterrows():
                             upc = limpiar_texto(row.get('UPC Code', ''))
@@ -185,7 +183,7 @@ def run(usuario):
                         
                         if registros_nuevos:
                             df_nuevos = pd.DataFrame(registros_nuevos)
-                            df_nuevos['fecha_factura'] = pd.to_datetime(row.get('Fecha Factura', None), errors='coerce')
+                            df_nuevos['fecha_factura'] = pd.to_datetime(df_ventas['Fecha Factura'], errors='coerce')
                             table_id = f"{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}"
                             client.load_table_from_dataframe(df_nuevos, table_id).result()
                             st.success(f"✅ {len(registros_nuevos)} ventas guardadas")
@@ -196,176 +194,137 @@ def run(usuario):
                         st.error(f"❌ Error: {e}")
                         st.exception(e)
     
-   # =====================
-# TAB 2: COMPRAS (CORREGIDO)
-# =====================
-with tab_compras:
-    st.subheader("📦 Carga de Compras")
-    
-    archivo_compras = st.file_uploader(
-        "Sube el archivo de compras (CSV o Excel)",
-        type=["xlsx", "xls", "csv"],
-        key="farmazone_compras"
-    )
-    
-    if archivo_compras:
-        if st.button("🚀 Procesar Compras", key="btn_compras"):
-            with st.spinner("Procesando compras..."):
-                try:
-                    # Leer archivo con skiprows=5 (igual que ventas)
-                    df_compras = leer_excel(archivo_compras, skiprows=5)
-                    
-                    # DEBUG: Mostrar columnas encontradas
-                    st.write(f"📋 Columnas encontradas: {list(df_compras.columns)}")
-                    st.write(f"📊 Filas encontradas: {len(df_compras)}")
-                    st.dataframe(df_compras.head(3))
-                    
-                    # Mapeo de columnas (con nombres exactos del archivo)
-                    columnas_esperadas = {
-                        'Compra': 'Compra',
-                        'Referencia': 'Referencia',
-                        'Proveedor': 'Proveedor',
-                        'Fecha': 'Fecha',
-                        'Payment Type': 'Payment Type',
-                        'Bodega': 'Bodega',
-                        'Status Proveedor': 'Status Proveedor',
-                        'Codigo': 'Codigo',
-                        'Status Compra': 'Status Compra',
-                        'Descripcion': 'Descripcion',
-                        'Cuenta': 'Cuenta',
-                        'Centro de Costo': 'Centro de Costo',
-                        'Unidades': 'Unidades',
-                        'UoM Compra': 'UoM Compra',
-                        'UoM Unidades': 'UoM Unidades',
-                        'UoM Instock': 'UoM Instock',
-                        'Currency': 'Currency',
-                        'Factor': 'Factor',
-                        'Impuesto': 'Impuesto',
-                        'Total de Linea': 'Total de Linea'
-                    }
-                    
-                    # Verificar qué columnas existen realmente
-                    columnas_existentes = [col for col in columnas_esperadas.values() if col in df_compras.columns]
-                    st.info(f"✅ Columnas encontradas: {len(columnas_existentes)} de {len(columnas_esperadas)}")
-                    
-                    if not columnas_existentes:
-                        st.error("❌ No se encontraron columnas esperadas. Verifica el formato del archivo.")
-                        st.stop()
-                    
-                    claves_existentes = cargar_claves_existentes(TABLE_COMPRAS)
-                    id_carga = str(uuid.uuid4())
-                    registros_nuevos = []
-                    duplicados = 0
-                    sin_codigo = 0
-                    
-                    for _, row in df_compras.iterrows():
-                        no_compra = limpiar_texto(row.get('Compra', ''))
-                        codigo = limpiar_texto(row.get('Codigo', ''))
+    # =====================
+    # TAB 2: COMPRAS
+    # =====================
+    with tab_compras:
+        st.subheader("📦 Carga de Compras")
+        
+        archivo_compras = st.file_uploader(
+            "Sube el archivo de compras (CSV o Excel)",
+            type=["xlsx", "xls", "csv"],
+            key="farmazone_compras"
+        )
+        
+        if archivo_compras:
+            if st.button("🚀 Procesar Compras", key="btn_compras"):
+                with st.spinner("Procesando compras..."):
+                    try:
+                        df_compras = leer_excel(archivo_compras, skiprows=5)
                         
-                        if not no_compra or not codigo:
-                            sin_codigo += 1
-                            continue
+                        st.write(f"📋 Columnas encontradas: {list(df_compras.columns)}")
+                        st.write(f"📊 Filas encontradas: {len(df_compras)}")
+                        st.dataframe(df_compras.head(3))
                         
-                        clave = f"{no_compra}|{codigo}"
-                        if clave in claves_existentes:
-                            duplicados += 1
-                            continue
+                        claves_existentes = cargar_claves_existentes(TABLE_COMPRAS)
+                        id_carga = str(uuid.uuid4())
+                        registros_nuevos = []
+                        duplicados = 0
+                        sin_codigo = 0
                         
-                        # Crear registro con todas las columnas posibles
-                        registro = {
-                            'id_registro': str(uuid.uuid4()),
-                            'id_carga': id_carga,
-                            'fecha_carga_lote': datetime.now(),
-                            'clave_unica': clave,
-                            'fecha_proceso': datetime.now(),
-                            'usuario_proceso': usuario,
-                            'archivo_origen': archivo_compras.name,
-                            'no_compra': no_compra,
-                            'referencia': limpiar_texto(row.get('Referencia', '')),
-                            'proveedor': limpiar_texto(row.get('Proveedor', '')),
-                            'fecha_compra': row.get('Fecha', None),
-                            'payment_type': limpiar_texto(row.get('Payment Type', '')),
-                            'bodega': limpiar_texto(row.get('Bodega', '')),
-                            'status_proveedor': limpiar_texto(row.get('Status Proveedor', '')),
-                            'codigo': codigo,
-                            'status_compra': limpiar_texto(row.get('Status Compra', '')),
-                            'descripcion': limpiar_texto(row.get('Descripcion', '')),
-                            'cuenta': limpiar_texto(row.get('Cuenta', '')),
-                            'centro_costo': limpiar_texto(row.get('Centro de Costo', '')),
-                            'unidades': limpiar_valor(row.get('Unidades', 0)),
-                            'uom_compra': limpiar_texto(row.get('UoM Compra', '')),
-                            'uom_unidades': limpiar_valor(row.get('UoM Unidades', 0)),
-                            'uom_instock': limpiar_texto(row.get('UoM Instock', '')),
-                            'currency': limpiar_texto(row.get('Currency', '')),
-                            'factor': limpiar_valor(row.get('Factor', 0)),
-                            'impuesto': limpiar_valor(row.get('Impuesto', 0)),
-                            'total_linea': limpiar_valor(row.get('Total de Linea', 0)),
-                            'activo': True,
-                            'fecha_actualizacion': datetime.now(),
-                            'usuario_actualizacion': usuario
-                        }
-                        registros_nuevos.append(registro)
-                    
-                    st.info(f"📊 Nuevos: {len(registros_nuevos)} | Duplicados: {duplicados} | Sin código: {sin_codigo}")
-                    
-                    if registros_nuevos:
-                        df_nuevos = pd.DataFrame(registros_nuevos)
-                        df_nuevos['fecha_compra'] = pd.to_datetime(df_nuevos['fecha_compra'], errors='coerce')
-                        table_id = f"{PROJECT_ID}.{DATASET}.{TABLE_COMPRAS}"
+                        for _, row in df_compras.iterrows():
+                            no_compra = limpiar_texto(row.get('Compra', ''))
+                            codigo = limpiar_texto(row.get('Codigo', ''))
+                            
+                            if not no_compra or not codigo:
+                                sin_codigo += 1
+                                continue
+                            
+                            clave = f"{no_compra}|{codigo}"
+                            if clave in claves_existentes:
+                                duplicados += 1
+                                continue
+                            
+                            registro = {
+                                'id_registro': str(uuid.uuid4()),
+                                'id_carga': id_carga,
+                                'fecha_carga_lote': datetime.now(),
+                                'clave_unica': clave,
+                                'fecha_proceso': datetime.now(),
+                                'usuario_proceso': usuario,
+                                'archivo_origen': archivo_compras.name,
+                                'no_compra': no_compra,
+                                'referencia': limpiar_texto(row.get('Referencia', '')),
+                                'proveedor': limpiar_texto(row.get('Proveedor', '')),
+                                'fecha_compra': row.get('Fecha', None),
+                                'payment_type': limpiar_texto(row.get('Payment Type', '')),
+                                'bodega': limpiar_texto(row.get('Bodega', '')),
+                                'status_proveedor': limpiar_texto(row.get('Status Proveedor', '')),
+                                'codigo': codigo,
+                                'status_compra': limpiar_texto(row.get('Status Compra', '')),
+                                'descripcion': limpiar_texto(row.get('Descripcion', '')),
+                                'cuenta': limpiar_texto(row.get('Cuenta', '')),
+                                'centro_costo': limpiar_texto(row.get('Centro de Costo', '')),
+                                'unidades': limpiar_valor(row.get('Unidades', 0)),
+                                'uom_compra': limpiar_texto(row.get('UoM Compra', '')),
+                                'uom_unidades': limpiar_valor(row.get('UoM Unidades', 0)),
+                                'uom_instock': limpiar_texto(row.get('UoM Instock', '')),
+                                'currency': limpiar_texto(row.get('Currency', '')),
+                                'factor': limpiar_valor(row.get('Factor', 0)),
+                                'impuesto': limpiar_valor(row.get('Impuesto', 0)),
+                                'total_linea': limpiar_valor(row.get('Total de Linea', 0)),
+                                'activo': True,
+                                'fecha_actualizacion': datetime.now(),
+                                'usuario_actualizacion': usuario
+                            }
+                            registros_nuevos.append(registro)
                         
-                        # Crear tabla si no existe
-                        try:
-                            client.get_table(table_id)
-                        except Exception:
-                            # Crear tabla con el esquema completo
-                            schema = [
-                                bigquery.SchemaField("id_registro", "STRING", mode="REQUIRED"),
-                                bigquery.SchemaField("id_carga", "STRING", mode="REQUIRED"),
-                                bigquery.SchemaField("fecha_carga_lote", "TIMESTAMP"),
-                                bigquery.SchemaField("clave_unica", "STRING", mode="REQUIRED"),
-                                bigquery.SchemaField("fecha_proceso", "TIMESTAMP"),
-                                bigquery.SchemaField("usuario_proceso", "STRING"),
-                                bigquery.SchemaField("archivo_origen", "STRING"),
-                                bigquery.SchemaField("no_compra", "STRING"),
-                                bigquery.SchemaField("referencia", "STRING"),
-                                bigquery.SchemaField("proveedor", "STRING"),
-                                bigquery.SchemaField("fecha_compra", "DATE"),
-                                bigquery.SchemaField("payment_type", "STRING"),
-                                bigquery.SchemaField("bodega", "STRING"),
-                                bigquery.SchemaField("status_proveedor", "STRING"),
-                                bigquery.SchemaField("codigo", "STRING"),
-                                bigquery.SchemaField("status_compra", "STRING"),
-                                bigquery.SchemaField("descripcion", "STRING"),
-                                bigquery.SchemaField("cuenta", "STRING"),
-                                bigquery.SchemaField("centro_costo", "STRING"),
-                                bigquery.SchemaField("unidades", "FLOAT64"),
-                                bigquery.SchemaField("uom_compra", "STRING"),
-                                bigquery.SchemaField("uom_unidades", "FLOAT64"),
-                                bigquery.SchemaField("uom_instock", "STRING"),
-                                bigquery.SchemaField("currency", "STRING"),
-                                bigquery.SchemaField("factor", "FLOAT64"),
-                                bigquery.SchemaField("impuesto", "FLOAT64"),
-                                bigquery.SchemaField("total_linea", "FLOAT64"),
-                                bigquery.SchemaField("activo", "BOOL"),
-                                bigquery.SchemaField("fecha_actualizacion", "TIMESTAMP"),
-                                bigquery.SchemaField("usuario_actualizacion", "STRING"),
-                            ]
-                            table = bigquery.Table(table_id, schema=schema)
-                            client.create_table(table)
-                            st.info(f"📋 Tabla {TABLE_COMPRAS} creada")
+                        st.info(f"📊 Nuevos: {len(registros_nuevos)} | Duplicados: {duplicados} | Sin código: {sin_codigo}")
                         
-                        job = client.load_table_from_dataframe(df_nuevos, table_id)
-                        job.result()
-                        st.success(f"✅ {len(registros_nuevos)} compras guardadas")
+                        if registros_nuevos:
+                            df_nuevos = pd.DataFrame(registros_nuevos)
+                            df_nuevos['fecha_compra'] = pd.to_datetime(df_nuevos['fecha_compra'], errors='coerce')
+                            table_id = f"{PROJECT_ID}.{DATASET}.{TABLE_COMPRAS}"
+                            
+                            try:
+                                client.get_table(table_id)
+                            except Exception:
+                                schema = [
+                                    bigquery.SchemaField("id_registro", "STRING", mode="REQUIRED"),
+                                    bigquery.SchemaField("id_carga", "STRING", mode="REQUIRED"),
+                                    bigquery.SchemaField("fecha_carga_lote", "TIMESTAMP"),
+                                    bigquery.SchemaField("clave_unica", "STRING", mode="REQUIRED"),
+                                    bigquery.SchemaField("fecha_proceso", "TIMESTAMP"),
+                                    bigquery.SchemaField("usuario_proceso", "STRING"),
+                                    bigquery.SchemaField("archivo_origen", "STRING"),
+                                    bigquery.SchemaField("no_compra", "STRING"),
+                                    bigquery.SchemaField("referencia", "STRING"),
+                                    bigquery.SchemaField("proveedor", "STRING"),
+                                    bigquery.SchemaField("fecha_compra", "DATE"),
+                                    bigquery.SchemaField("payment_type", "STRING"),
+                                    bigquery.SchemaField("bodega", "STRING"),
+                                    bigquery.SchemaField("status_proveedor", "STRING"),
+                                    bigquery.SchemaField("codigo", "STRING"),
+                                    bigquery.SchemaField("status_compra", "STRING"),
+                                    bigquery.SchemaField("descripcion", "STRING"),
+                                    bigquery.SchemaField("cuenta", "STRING"),
+                                    bigquery.SchemaField("centro_costo", "STRING"),
+                                    bigquery.SchemaField("unidades", "FLOAT64"),
+                                    bigquery.SchemaField("uom_compra", "STRING"),
+                                    bigquery.SchemaField("uom_unidades", "FLOAT64"),
+                                    bigquery.SchemaField("uom_instock", "STRING"),
+                                    bigquery.SchemaField("currency", "STRING"),
+                                    bigquery.SchemaField("factor", "FLOAT64"),
+                                    bigquery.SchemaField("impuesto", "FLOAT64"),
+                                    bigquery.SchemaField("total_linea", "FLOAT64"),
+                                    bigquery.SchemaField("activo", "BOOL"),
+                                    bigquery.SchemaField("fecha_actualizacion", "TIMESTAMP"),
+                                    bigquery.SchemaField("usuario_actualizacion", "STRING"),
+                                ]
+                                table = bigquery.Table(table_id, schema=schema)
+                                client.create_table(table)
+                                st.info(f"📋 Tabla {TABLE_COMPRAS} creada")
+                            
+                            job = client.load_table_from_dataframe(df_nuevos, table_id)
+                            job.result()
+                            st.success(f"✅ {len(registros_nuevos)} compras guardadas")
+                            st.info(f"🆔 Para revertir: DELETE FROM `{table_id}` WHERE id_carga = '{id_carga}'")
+                        else:
+                            st.warning("⚠️ No se encontraron compras nuevas para guardar")
                         
-                        # Mostrar comando para reversión
-                        st.info(f"🆔 Para revertir: DELETE FROM `{table_id}` WHERE id_carga = '{id_carga}'")
-                    else:
-                        st.warning("⚠️ No se encontraron compras nuevas para guardar")
-                    
-                except Exception as e:
-                    st.error(f"❌ Error: {e}")
-                    st.exception(e)
+                    except Exception as e:
+                        st.error(f"❌ Error: {e}")
+                        st.exception(e)
     
     # =====================
     # TAB 3: UTILIDAD DIARIA
@@ -410,7 +369,6 @@ with tab_compras:
                     else:
                         st.dataframe(df_utilidad)
                         
-                        # Resumen
                         col1, col2, col3 = st.columns(3)
                         with col1:
                             st.metric("Total Ventas", f"${df_utilidad['ventas'].sum():,.2f}")
@@ -421,7 +379,6 @@ with tab_compras:
                             st.metric("Utilidad Total", f"${utilidad_total:,.2f}", 
                                      delta=f"{utilidad_total/df_utilidad['ventas'].sum()*100:.1f}%" if df_utilidad['ventas'].sum() > 0 else None)
                         
-                        # Descarga
                         csv = df_utilidad.to_csv(index=False)
                         st.download_button(
                             label="📥 Descargar utilidad diaria (CSV)",

@@ -254,39 +254,42 @@ def run(usuario):
                         st.write(f"📊 Filas compras: {len(df_compras)}")
                         st.dataframe(df_compras.head(3))
                         
-                        # Crear diccionario de inventario (Código → Categoria_L1)
+                        # Crear diccionario de inventario (Id → Categoria_L1)
                         dict_inventario = {}
                         for _, row in df_inventario.iterrows():
-                            # Buscar por Item Number o UPC Code
-                            codigo = limpiar_texto(row.get('Item Number', ''))
-                            if not codigo:
-                                codigo = limpiar_texto(row.get('UPC Code', ''))
-                            if codigo:
-                                dict_inventario[codigo] = {
-                                    'Categoria_L1': limpiar_texto(row.get('Categoria L1', '')),
-                                    'Proveedor_Principal': limpiar_texto(row.get('Proveedor Principal', ''))
+                        # 🔥 USAR 'Id' como clave (ej: PRO1, PRO10, PRO100)
+                            id_producto = limpiar_texto(row.get('Id', ''))
+                        if id_producto:
+                            dict_inventario[id_producto] = {
+                                'Categoria_L1': limpiar_texto(row.get('Categoria L1', '')),
+                                'Nombre': limpiar_texto(row.get('Nombre', ''))
                                 }
-                        
+
                         st.info(f"📦 Inventario cargado: {len(dict_inventario)} productos únicos")
+
                         
                         claves_existentes = cargar_claves_existentes(TABLE_COMPRAS)
                         id_carga = str(uuid.uuid4())
                         registros_nuevos = []
                         duplicados = 0
                         sin_codigo = 0
-                        
+
                         for _, row in df_compras.iterrows():
-                            no_compra = limpiar_texto(row.get('Compra', ''))
-                            codigo = limpiar_texto(row.get('Codigo', ''))
-                            
+                                no_compra = limpiar_texto(row.get('Compra', ''))
+                                codigo = limpiar_texto(row.get('Codigo', ''))  # 🔥 Esto es PRO1120, PRO1217, etc.
+    
                             if not no_compra or not codigo:
                                 sin_codigo += 1
                                 continue
-                            
+    
                             clave = f"{no_compra}|{codigo}"
                             if clave in claves_existentes:
                                 duplicados += 1
                                 continue
+    
+    # 🔥 BUSCAR POR 'Id' (que coincide con 'Codigo' de compras)
+    datos_inv = dict_inventario.get(codigo, {})  # codigo = PRO1120, etc.
+    categoria = datos_inv.get('Categoria_L1', '')
                             
                             # Obtener categoría desde inventario
                             datos_inv = dict_inventario.get(codigo, {})

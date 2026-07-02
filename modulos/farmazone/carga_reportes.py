@@ -223,26 +223,51 @@ def run(usuario):
                         st.exception(e)
     
     # =====================
-    # TAB 2: COMPRAS
+    # TAB 2: COMPRAS (CON INVENTARIO)
     # =====================
     with tab_compras:
         st.subheader("📦 Carga de Compras")
         
-        archivo_compras = st.file_uploader(
-            "Sube el archivo de compras (CSV o Excel)",
-            type=["xlsx", "xls", "csv"],
-            key="farmazone_compras"
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            archivo_compras = st.file_uploader(
+                "Sube el archivo de compras (CSV o Excel)",
+                type=["xlsx", "xls", "csv"],
+                key="farmazone_compras"
+            )
+        with col2:
+            archivo_inventario_compras = st.file_uploader(
+                "Sube el archivo de inventario (CSV o Excel) para categorías",
+                type=["xlsx", "xls", "csv"],
+                key="farmazone_inventario_compras"
+            )
         
-        if archivo_compras:
+        if archivo_compras and archivo_inventario_compras:
             if st.button("🚀 Procesar Compras", key="btn_compras"):
                 with st.spinner("Procesando compras..."):
                     try:
+                        # Leer archivos
                         df_compras = leer_compras(archivo_compras)
+                        df_inventario = leer_excel(archivo_inventario_compras, skiprows=4)
                         
-                        st.write(f"📋 Columnas: {list(df_compras.columns)}")
-                        st.write(f"📊 Filas encontradas: {len(df_compras)}")
+                        st.write(f"📋 Columnas compras: {list(df_compras.columns)}")
+                        st.write(f"📊 Filas compras: {len(df_compras)}")
                         st.dataframe(df_compras.head(3))
+                        
+                        # Crear diccionario de inventario (Código → Categoria_L1)
+                        dict_inventario = {}
+                        for _, row in df_inventario.iterrows():
+                            # Buscar por Item Number o UPC Code
+                            codigo = limpiar_texto(row.get('Item Number', ''))
+                            if not codigo:
+                                codigo = limpiar_texto(row.get('UPC Code', ''))
+                            if codigo:
+                                dict_inventario[codigo] = {
+                                    'Categoria_L1': limpiar_texto(row.get('Categoria L1', '')),
+                                    'Proveedor_Principal': limpiar_texto(row.get('Proveedor Principal', ''))
+                                }
+                        
+                        st.info(f"📦 Inventario cargado: {len(dict_inventario)} productos únicos")
                         
                         claves_existentes = cargar_claves_existentes(TABLE_COMPRAS)
                         id_carga = str(uuid.uuid4())
@@ -262,6 +287,10 @@ def run(usuario):
                             if clave in claves_existentes:
                                 duplicados += 1
                                 continue
+                            
+                            # Obtener categoría desde inventario
+                            datos_inv = dict_inventario.get(codigo, {})
+                            categoria = datos_inv.get('Categoria_L1', '')
                             
                             registro = {
                                 'id_registro': str(uuid.uuid4()),
@@ -291,6 +320,7 @@ def run(usuario):
                                 'factor': limpiar_valor(row.get('Factor', 0)),
                                 'impuesto': limpiar_valor(row.get('Impuesto', 0)),
                                 'total_linea': limpiar_valor(row.get('Total de Linea', 0)),
+                                'categoria_l1': categoria,  # 🔥 NUEVO: desde inventario
                                 'activo': True,
                                 'fecha_actualizacion': datetime.now(),
                                 'usuario_actualizacion': usuario
@@ -304,6 +334,7 @@ def run(usuario):
                             df_nuevos['fecha_compra'] = pd.to_datetime(df_nuevos['fecha_compra'], errors='coerce')
                             table_id = f"{PROJECT_ID}.{DATASET}.{TABLE_COMPRAS}"
                             
+                            # Crear tabla si no existe (con categoria_l1)
                             try:
                                 client.get_table(table_id)
                             except Exception:
@@ -335,13 +366,14 @@ def run(usuario):
                                     bigquery.SchemaField("factor", "FLOAT64"),
                                     bigquery.SchemaField("impuesto", "FLOAT64"),
                                     bigquery.SchemaField("total_linea", "FLOAT64"),
+                                    bigquery.SchemaField("categoria_l1", "STRING"),  # 🔥 NUEVA
                                     bigquery.SchemaField("activo", "BOOL"),
                                     bigquery.SchemaField("fecha_actualizacion", "TIMESTAMP"),
                                     bigquery.SchemaField("usuario_actualizacion", "STRING"),
                                 ]
                                 table = bigquery.Table(table_id, schema=schema)
                                 client.create_table(table)
-                                st.info(f"📋 Tabla {TABLE_COMPRAS} creada")
+                                st.info(f"📋 Tabla {TABLE_COMPRAS} creada con categoría")
                             
                             job = client.load_table_from_dataframe(df_nuevos, table_id)
                             job.result()

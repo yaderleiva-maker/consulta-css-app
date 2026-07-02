@@ -257,41 +257,36 @@ def run(usuario):
                         # Crear diccionario de inventario (Id → Categoria_L1)
                         dict_inventario = {}
                         for _, row in df_inventario.iterrows():
-                        # 🔥 USAR 'Id' como clave (ej: PRO1, PRO10, PRO100)
+                            # 🔥 USAR 'Id' como clave (ej: PRO1, PRO10, PRO100)
                             id_producto = limpiar_texto(row.get('Id', ''))
-                        if id_producto:
-                            dict_inventario[id_producto] = {
-                                'Categoria_L1': limpiar_texto(row.get('Categoria L1', '')),
-                                'Nombre': limpiar_texto(row.get('Nombre', ''))
+                            if id_producto:
+                                dict_inventario[id_producto] = {
+                                    'Categoria_L1': limpiar_texto(row.get('Categoria L1', '')),
+                                    'Nombre': limpiar_texto(row.get('Nombre', ''))
                                 }
-
+                        
                         st.info(f"📦 Inventario cargado: {len(dict_inventario)} productos únicos")
-
                         
                         claves_existentes = cargar_claves_existentes(TABLE_COMPRAS)
                         id_carga = str(uuid.uuid4())
                         registros_nuevos = []
                         duplicados = 0
                         sin_codigo = 0
-
+                        
                         for _, row in df_compras.iterrows():
-                                no_compra = limpiar_texto(row.get('Compra', ''))
-                                codigo = limpiar_texto(row.get('Codigo', ''))  # 🔥 Esto es PRO1120, PRO1217, etc.
-    
+                            no_compra = limpiar_texto(row.get('Compra', ''))
+                            codigo = limpiar_texto(row.get('Codigo', ''))
+                            
                             if not no_compra or not codigo:
                                 sin_codigo += 1
                                 continue
-    
+                            
                             clave = f"{no_compra}|{codigo}"
                             if clave in claves_existentes:
                                 duplicados += 1
                                 continue
-    
-    # 🔥 BUSCAR POR 'Id' (que coincide con 'Codigo' de compras)
-    datos_inv = dict_inventario.get(codigo, {})  # codigo = PRO1120, etc.
-    categoria = datos_inv.get('Categoria_L1', '')
                             
-                            # Obtener categoría desde inventario
+                            # 🔥 BUSCAR POR 'Id' (que coincide con 'Codigo' de compras)
                             datos_inv = dict_inventario.get(codigo, {})
                             categoria = datos_inv.get('Categoria_L1', '')
                             
@@ -323,7 +318,7 @@ def run(usuario):
                                 'factor': limpiar_valor(row.get('Factor', 0)),
                                 'impuesto': limpiar_valor(row.get('Impuesto', 0)),
                                 'total_linea': limpiar_valor(row.get('Total de Linea', 0)),
-                                'categoria_l1': categoria,  # 🔥 NUEVO: desde inventario
+                                'categoria_l1': categoria,
                                 'activo': True,
                                 'fecha_actualizacion': datetime.now(),
                                 'usuario_actualizacion': usuario
@@ -369,7 +364,7 @@ def run(usuario):
                                     bigquery.SchemaField("factor", "FLOAT64"),
                                     bigquery.SchemaField("impuesto", "FLOAT64"),
                                     bigquery.SchemaField("total_linea", "FLOAT64"),
-                                    bigquery.SchemaField("categoria_l1", "STRING"),  # 🔥 NUEVA
+                                    bigquery.SchemaField("categoria_l1", "STRING"),
                                     bigquery.SchemaField("activo", "BOOL"),
                                     bigquery.SchemaField("fecha_actualizacion", "TIMESTAMP"),
                                     bigquery.SchemaField("usuario_actualizacion", "STRING"),
@@ -387,8 +382,7 @@ def run(usuario):
                         
                     except Exception as e:
                         st.error(f"❌ Error: {e}")
-                        st.exception(e)
-    
+                        st.exception(e)    
     # =====================
     # TAB 3: UTILIDAD DIARIA
     # =====================

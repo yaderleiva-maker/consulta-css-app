@@ -110,6 +110,38 @@ def run(usuario, tipo_consulta):
         # -----------------------
         # VALIDACIONES
         # -----------------------
+         # -----------------------
+        # ASEGURAR COLUMNAS EXISTENTES
+        # -----------------------
+        # Columnas que deben existir para las consultas
+        columnas_telefono = ["telf1", "telf2", "telf3", "telf4", "telf5",
+                            "telf6", "telf7", "telf8", "telf9", "telf10"]
+        
+        columnas_correo = ["correo1", "correo2"]
+        
+        # Crear columnas faltantes
+        for col in columnas_telefono + columnas_correo + ["nombre"]:
+            if col not in df.columns:
+                df[col] = ""
+                st.warning(f"⚠️ Columna '{col}' no encontrada, creada vacía")
+
+        # -----------------------
+        # LIMPIAR DECIMALES .0 EN TELÉFONOS
+        # -----------------------
+        for col in columnas_telefono:
+            if col in df.columns:
+                df[col] = (
+                    df[col]
+                    .astype(str)
+                    .str.replace(r"\.0$", "", regex=True)
+                    .str.strip()
+                    .replace('nan', '')
+                    .replace('None', '')
+                )
+        
+        # -----------------------
+        # VALIDACIONES
+        # -----------------------
         columnas_validas = [
             "cedula", "nombre", "correo1", "correo2",
             "telf1", "telf2", "telf3", "telf4", "telf5",
@@ -121,14 +153,25 @@ def run(usuario, tipo_consulta):
         if columnas_invalidas:
             st.warning(f"⚠️ Columnas adicionales ignoradas: {columnas_invalidas}")
 
+        if "cedula" not in df.columns:
+            st.error("❌ Falta la columna 'cedula'")
+            st.stop()
+
+        # Eliminar filas sin cédula
+        df = df[df['cedula'].notna() & (df['cedula'].astype(str).str.strip() != '')]
+        
+        if df.empty:
+            st.error("❌ El archivo no contiene cédulas válidas")
+            st.stop()
+
         # 🔥 NORMALIZAR TODO A STRING
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip()
             df[col] = df[col].replace('nan', '').replace('None', '')
 
-        st.success(f"✅ Archivo válido con {len(df)} filas")
+        st.success(f"✅ Archivo válido con {len(df)} filas y {len(df.columns)} columnas")
         st.write("Vista previa:", df.head())
-
+        
         # -----------------------
         # CONEXIÓN A BIGQUERY
         # -----------------------

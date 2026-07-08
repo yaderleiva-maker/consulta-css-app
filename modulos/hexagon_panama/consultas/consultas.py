@@ -123,7 +123,7 @@ def run(usuario, tipo_consulta):
         for col in columnas_telefono + columnas_correo + ["nombre"]:
             if col not in df.columns:
                 df[col] = ""
-                st.warning(f"⚠️ Columna '{col}' no encontrada, creada vacía")
+                #st.warning(f"⚠️ Columna '{col}' no encontrada, creada vacía")
 
         # -----------------------
         # LIMPIAR DECIMALES .0 EN TELÉFONOS

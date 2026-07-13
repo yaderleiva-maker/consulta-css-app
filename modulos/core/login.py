@@ -73,7 +73,8 @@ def login():
                     "aburgos2630@gmail.com",
                     "condadodelreyfarmazone@gmail.com",
                     "tmksolutionspty@gmail.com",
-                    "nalvaradohexagon@gmail.com"
+                    "nalvaradohexagon@gmail.com",
+                    "hexagonclaudia@gmail.com"
                 ]
 
                 if email in usuarios_permitidos:

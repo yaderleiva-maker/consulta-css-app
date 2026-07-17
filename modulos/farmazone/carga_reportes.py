@@ -418,94 +418,126 @@ def run(usuario):
                     st.error(f"❌ Error: {e}")
                     st.exception(e)
     
-    # =====================
-    # 🆕 TAB 4: INVENTARIO
-    # =====================
-    with tab_inventario:
-        st.subheader("📦 Actualizar Inventario en BigQuery")
-        
-        st.markdown("""
-        **Instrucciones:**
-        1. Descarga el archivo `Inventario17.xlsx` desde el sistema de la farmacia.
-        2. Súbelo aquí para actualizar la tabla en BigQuery.
-        3. La tabla **se sobrescribirá completamente** con los datos más recientes.
-        4. Esto permite actualizar las categorías en ventas y compras.
-        """)
-        
-        archivo_inventario_actual = st.file_uploader(
-            "Sube el archivo de inventario (Inventario17.xlsx)",
-            type=["xlsx", "xls", "csv"],
-            key="farmazone_inventario_actual"
-        )
-        
-        if archivo_inventario_actual:
-            try:
-                # Leer archivo (saltando 4 filas)
-                df_inventario = leer_excel(archivo_inventario_actual, skiprows=4)
-                
-                st.success(f"✅ Archivo leído: {len(df_inventario)} productos")
-                
-                # Mostrar vista previa
-                with st.expander("📊 Vista previa de los datos", expanded=False):
-                    st.dataframe(df_inventario.head(10))
-                    st.caption(f"Total de columnas: {len(df_inventario.columns)}")
-                
-                # Mostrar estadísticas básicas
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total productos", len(df_inventario))
-                with col2:
-                    if 'InStock' in df_inventario.columns:
-                        productos_con_stock = len(df_inventario[df_inventario['InStock'] > 0])
-                        st.metric("Productos con stock", productos_con_stock)
-                with col3:
-                    if 'Status' in df_inventario.columns:
-                        activos = len(df_inventario[df_inventario['Status'] == 'ACTIVO'])
-                        st.metric("Productos activos", activos)
-                
-                # Botón para guardar
-                if st.button("🚀 Guardar Inventario en BigQuery", type="primary", key="btn_inventario"):
-                    with st.spinner("Guardando inventario en BigQuery..."):
-                        try:
-                            filas_guardadas = guardar_inventario(df_inventario, archivo_inventario_actual.name)
-                            st.success(f"✅ ¡Inventario guardado exitosamente!")
-                            st.success(f"📊 {filas_guardadas:,} productos en `{PROJECT_ID}.{DATASET}.{TABLE_INVENTARIO}`")
-                            st.info(f"🕒 Snapshot creado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                            
-                            # Opción para actualizar categorías en ventas
-                            if st.button("🔄 Actualizar categorías en ventas (último mes)", key="btn_actualizar_categorias"):
-                                with st.spinner("Actualizando categorías en ventas..."):
-                                    query_update = f"""
-                                    UPDATE `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}` v
-                                    SET v.categoria_l1 = i.`Categoria L1`
-                                    FROM `{PROJECT_ID}.{DATASET}.{TABLE_INVENTARIO}` i
-                                    WHERE v.upc = i.`UPC Code`
-                                      AND (v.categoria_l1 IS NULL OR v.categoria_l1 = '')
-                                      AND v.fecha_factura >= '2026-07-01'
-                                    """
-                                    job = client.query(query_update)
-                                    job.result()
-                                    st.success(f"✅ Categorías actualizadas en ventas")
-                            
-                            # Opción para actualizar categorías en compras
-                            if st.button("🔄 Actualizar categorías en compras (último mes)", key="btn_actualizar_categorias_compras"):
-                                with st.spinner("Actualizando categorías en compras..."):
-                                    query_update = f"""
-                                    UPDATE `{PROJECT_ID}.{DATASET}.{TABLE_COMPRAS}` c
-                                    SET c.categoria_l1 = i.`Categoria L1`
-                                    FROM `{PROJECT_ID}.{DATASET}.{TABLE_INVENTARIO}` i
-                                    WHERE c.codigo = i.`Id`
-                                      AND (c.categoria_l1 IS NULL OR c.categoria_l1 = '')
-                                      AND c.fecha_compra >= '2026-07-01'
-                                    """
-                                    job = client.query(query_update)
-                                    job.result()
-                                    st.success(f"✅ Categorías actualizadas en compras")
-                            
-                        except Exception as e:
-                            st.error(f"❌ Error al guardar inventario: {e}")
-                            st.exception(e)
-                            
-            except Exception as e:
-                st.error(f"❌ Error al leer el archivo: {e}")
-                st.exception(e)
+  # =====================
+# 🆕 TAB 4: INVENTARIO
+# =====================
+with tab_inventario:
+    st.subheader("📦 Actualizar Inventario en BigQuery")
+    
+    st.markdown("""
+    **Instrucciones:**
+    1. Descarga el archivo `Inventario17.xlsx` desde el sistema de la farmacia.
+    2. Súbelo aquí para actualizar la tabla en BigQuery.
+    3. La tabla **se sobrescribirá completamente** con los datos más recientes.
+    4. Esto permite actualizar las categorías en ventas y compras.
+    """)
+    
+    archivo_inventario_actual = st.file_uploader(
+        "Sube el archivo de inventario (Inventario17.xlsx)",
+        type=["xlsx", "xls", "csv"],
+        key="farmazone_inventario_actual"
+    )
+    
+    if archivo_inventario_actual:
+        try:
+            # Leer archivo (saltando 4 filas)
+            df_inventario = leer_excel(archivo_inventario_actual, skiprows=4)
+            
+            st.success(f"✅ Archivo leído: {len(df_inventario)} productos")
+            
+            # Mostrar vista previa
+            with st.expander("📊 Vista previa de los datos", expanded=False):
+                st.dataframe(df_inventario.head(10))
+                st.caption(f"Total de columnas: {len(df_inventario.columns)}")
+            
+            # 🔥 FUNCIÓN PARA LIMPIAR VALORES NUMÉRICOS EN INVENTARIO
+            def limpiar_numero_inventario(valor):
+                if pd.isna(valor) or valor == "" or valor == "-":
+                    return 0
+                if isinstance(valor, (int, float)):
+                    return float(valor)
+                try:
+                    # Limpiar caracteres no numéricos
+                    valor_str = str(valor).strip().replace(',', '.')
+                    valor_str = ''.join(c for c in valor_str if c.isdigit() or c == '.' or c == '-')
+                    if valor_str == "" or valor_str == "-":
+                        return 0
+                    return float(valor_str)
+                except:
+                    return 0
+            
+            # Mostrar estadísticas básicas
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total productos", len(df_inventario))
+            with col2:
+                # 🔥 CONVERTIR InStock A NUMÉRICO ANTES DE COMPARAR
+                if 'InStock' in df_inventario.columns:
+                    df_inventario['InStock'] = df_inventario['InStock'].apply(limpiar_numero_inventario)
+                    productos_con_stock = len(df_inventario[df_inventario['InStock'] > 0])
+                    st.metric("Productos con stock", productos_con_stock)
+            with col3:
+                if 'Status' in df_inventario.columns:
+                    activos = len(df_inventario[df_inventario['Status'] == 'ACTIVO'])
+                    st.metric("Productos activos", activos)
+            
+            # 🔥 TAMBIÉN LIMPIAR OTRAS COLUMNAS NUMÉRICAS IMPORTANTES
+            columnas_numericas = [
+                'Punto de ReOrden', 'Ultimo Precio Proveedor', 'InStock',
+                'Costo Promedio', 'Precio de Lista Predeterminada', 
+                'Costo Promedio WH', 'Ultimo Precio Proveedor Purchase',
+                'Ultimo Costo Entrada', 'Ultimo Costo Unitario F',
+                'Ultimo Costo Unitario', 'Margen', 'Comision',
+                'Grosor', 'Ancho', 'Altura', 'Largo', 'Peso'
+            ]
+            
+            for col in columnas_numericas:
+                if col in df_inventario.columns:
+                    df_inventario[col] = df_inventario[col].apply(limpiar_numero_inventario)
+            
+            # Botón para guardar
+            if st.button("🚀 Guardar Inventario en BigQuery", type="primary", key="btn_inventario"):
+                with st.spinner("Guardando inventario en BigQuery..."):
+                    try:
+                        filas_guardadas = guardar_inventario(df_inventario, archivo_inventario_actual.name)
+                        st.success(f"✅ ¡Inventario guardado exitosamente!")
+                        st.success(f"📊 {filas_guardadas:,} productos en `{PROJECT_ID}.{DATASET}.{TABLE_INVENTARIO}`")
+                        st.info(f"🕒 Snapshot creado: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                        
+                        # Opción para actualizar categorías en ventas
+                        if st.button("🔄 Actualizar categorías en ventas (último mes)", key="btn_actualizar_categorias"):
+                            with st.spinner("Actualizando categorías en ventas..."):
+                                query_update = f"""
+                                UPDATE `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}` v
+                                SET v.categoria_l1 = i.`Categoria L1`
+                                FROM `{PROJECT_ID}.{DATASET}.{TABLE_INVENTARIO}` i
+                                WHERE v.upc = i.`UPC Code`
+                                  AND (v.categoria_l1 IS NULL OR v.categoria_l1 = '')
+                                  AND v.fecha_factura >= '2026-07-01'
+                                """
+                                job = client.query(query_update)
+                                job.result()
+                                st.success(f"✅ Categorías actualizadas en ventas")
+                        
+                        # Opción para actualizar categorías en compras
+                        if st.button("🔄 Actualizar categorías en compras (último mes)", key="btn_actualizar_categorias_compras"):
+                            with st.spinner("Actualizando categorías en compras..."):
+                                query_update = f"""
+                                UPDATE `{PROJECT_ID}.{DATASET}.{TABLE_COMPRAS}` c
+                                SET c.categoria_l1 = i.`Categoria L1`
+                                FROM `{PROJECT_ID}.{DATASET}.{TABLE_INVENTARIO}` i
+                                WHERE c.codigo = i.`Id`
+                                  AND (c.categoria_l1 IS NULL OR c.categoria_l1 = '')
+                                  AND c.fecha_compra >= '2026-07-01'
+                                """
+                                job = client.query(query_update)
+                                job.result()
+                                st.success(f"✅ Categorías actualizadas en compras")
+                        
+                    except Exception as e:
+                        st.error(f"❌ Error al guardar inventario: {e}")
+                        st.exception(e)
+                        
+        except Exception as e:
+            st.error(f"❌ Error al leer el archivo: {e}")
+            st.exception(e)

@@ -76,48 +76,73 @@ def run(usuario):
         else:
             raise ValueError(f"Formato no soportado: {nombre}")
     
-    def leer_ventas(archivo):
-        """Lee archivo de ventas con estructura correcta."""
-        nombre = archivo.name.lower()
-        
-        if nombre.endswith('.csv'):
-            df = pd.read_csv(archivo, dtype=str)
-        elif nombre.endswith('.xls'):
-            df = pd.read_excel(archivo, dtype=str, engine='xlrd')
-        elif nombre.endswith('.xlsx'):
-            df = pd.read_excel(archivo, dtype=str, engine='openpyxl')
-        else:
-            raise ValueError(f"Formato no soportado: {nombre}")
-        
-        # 🔥 MAPEO DE COLUMNAS DEL ARCHIVO → BIGQUERY
-        columnas_map = {
-            'No. de Factura': 'no_factura',
-            'ID Fiscal': 'id_fiscal',
-            'Documento': 'documento',
-            'Año_Mes Factura': 'ano_mes_factura',
-            'Fecha Factura': 'fecha_factura',
-            'Nombre del Cliente': 'nombre_cliente',
-            'Pais': 'pais',
-            'Caja': 'caja',
-            'Vendedor': 'vendedor',
-            'Codigo': 'codigo',          # 🔥 ESTA ES LA CLAVE
-            'Item Number': 'item_number',
-            'UPC': 'upc',
-            'Category': 'category',
-            'Bodega': 'bodega',
-            'Categoria L2': 'categoria_l2',
-            'Categoria L3': 'categoria_l3',
-            'Producto': 'producto',
-            'Unidades': 'unidades',
-            'Precio Unitario': 'precio_unitario',
-            'Ult. Precio Compra': 'ult_precio_compra_original',
-        }
-        
-        # Renombrar solo las columnas que existen
-        columnas_existentes = {k: v for k, v in columnas_map.items() if k in df.columns}
-        df = df.rename(columns=columnas_existentes)
-        
-        return df
+def leer_ventas(archivo):
+    """Lee archivo de ventas con estructura correcta."""
+    nombre = archivo.name.lower()
+    
+    if nombre.endswith('.csv'):
+        df = pd.read_csv(archivo, dtype=str)
+    elif nombre.endswith('.xls'):
+        df = pd.read_excel(archivo, dtype=str, engine='xlrd')
+    elif nombre.endswith('.xlsx'):
+        df = pd.read_excel(archivo, dtype=str, engine='openpyxl')
+    else:
+        raise ValueError(f"Formato no soportado: {nombre}")
+    
+    # 🔥 DIAGNÓSTICO 1: Mostrar columnas originales con caracteres visibles
+    st.write("📋 **Columnas originales (con caracteres visibles):**")
+    for i, col in enumerate(df.columns):
+        st.write(f"  {i+1}. [{col}] (longitud: {len(col)})")
+    
+    # 🔥 DIAGNÓSTICO 2: Mostrar los primeros registros
+    st.write("📊 **Primeras 3 filas del archivo original:**")
+    st.dataframe(df.head(3))
+    
+    # 🔥 NORMALIZAR NOMBRES DE COLUMNAS (con regex=False)
+    df.columns = (
+        df.columns
+        .str.strip()
+        .str.lower()
+        .str.replace(" ", "_", regex=False)
+        .str.replace(".", "", regex=False)
+        .str.replace("ñ", "n", regex=False)
+        .str.replace("á", "a", regex=False)
+        .str.replace("é", "e", regex=False)
+        .str.replace("í", "i", regex=False)
+        .str.replace("ó", "o", regex=False)
+        .str.replace("ú", "u", regex=False)
+    )
+    
+    # 🔥 DIAGNÓSTICO 3: Mostrar columnas normalizadas
+    st.write("📋 **Columnas normalizadas:**")
+    for i, col in enumerate(df.columns):
+        st.write(f"  {i+1}. [{col}] (longitud: {len(col)})")
+    
+    # 🔥 DIAGNÓSTICO 4: Buscar columnas clave
+    columnas_clave = ['codigo', 'item_number', 'upc', 'no_de_factura', 'fecha_factura']
+    st.write("🔍 **Buscando columnas clave:**")
+    for col in columnas_clave:
+        existe = col in df.columns
+        st.write(f"  - '{col}': {'✅' if existe else '❌'} ")
+    
+    # 🔥 DIAGNÓSTICO 5: Si 'codigo' existe, mostrar muestra
+    if 'codigo' in df.columns:
+        st.write("📊 **Muestra de 'codigo':**")
+        st.write(df['codigo'].head(10).tolist())
+    
+    # Renombrar 'no_de_factura' a 'no_factura' para consistencia
+    if 'no_de_factura' in df.columns:
+        df = df.rename(columns={'no_de_factura': 'no_factura'})
+    
+    # 🔥 Si 'ano_mes_factura' no existe, calcularlo desde fecha_factura
+    if 'ano_mes_factura' not in df.columns and 'fecha_factura' in df.columns:
+        try:
+            df['ano_mes_factura'] = pd.to_datetime(df['fecha_factura'], errors='coerce').dt.strftime('%Y%m')
+            st.write("✅ **'ano_mes_factura' calculado automáticamente desde 'fecha_factura'**")
+        except:
+            st.warning("⚠️ No se pudo calcular 'ano_mes_factura'")
+    
+    return df
     
     def leer_compras(archivo):
         """Lee archivo de compras (sin encabezados, desde la fila 5)"""
@@ -184,155 +209,206 @@ def run(usuario):
         job.result()
         return len(df_inventario)
     
-    # =====================
-    # TAB 1: VENTAS
-    # =====================
-    with tab_ventas:
-        st.subheader("📊 Carga de Ventas")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            archivo_ventas = st.file_uploader(
-                "Sube el archivo de ventas (CSV o Excel)",
-                type=["xlsx", "xls", "csv"],
-                key="farmazone_ventas"
-            )
-        with col2:
-            archivo_inventario = st.file_uploader(
-                "Sube el archivo de inventario (CSV o Excel)",
-                type=["xlsx", "xls", "csv"],
-                key="farmazone_inventario"
-            )
-        
-        if archivo_ventas and archivo_inventario:
-            if st.button("🚀 Procesar Ventas", key="btn_ventas"):
-                with st.spinner("Procesando ventas..."):
-                    try:
-                        # Leer archivos
-                        df_ventas = leer_ventas(archivo_ventas)
-                        df_inventario = leer_excel(archivo_inventario, skiprows=4)
-                        
-                        # Crear diccionario de inventario (usando Id)
-                        dict_inventario = {}
-                        for _, row in df_inventario.iterrows():
-                            id_producto = limpiar_texto(row.get('Id', ''))
-                            if id_producto:
-                                dict_inventario[id_producto] = {
-                                    'Ultimo_Costo_Unitario': limpiar_valor(row.get('Ultimo Costo Unitario', 0)),
-                                    'Categoria_L1': limpiar_texto(row.get('Categoria L1', ''))
-                                }
-                        
-                        claves_existentes = cargar_claves_existentes(TABLE_VENTAS)
-                        id_carga = str(uuid.uuid4())
-                        registros_nuevos = []
-                        duplicados = 0
-                        sin_codigo = 0
-                        
-                        for _, row in df_ventas.iterrows():
-                            no_factura = limpiar_texto(row.get('no_factura', ''))
-                            
-                            # 🔥 USAR 'codigo' que viene de la columna 'Codigo' del archivo
-                            codigo = limpiar_texto(row.get('codigo', ''))
-                            
-                            # Si no hay codigo, usar item_number
-                            if not codigo:
-                                codigo = limpiar_texto(row.get('item_number', ''))
-                            
-                            # Si no hay, usar upc
-                            if not codigo:
-                                codigo = limpiar_texto(row.get('upc', ''))
-                            
-                            if not no_factura or not codigo:
-                                sin_codigo += 1
-                                continue
-                            
-                            clave = f"{no_factura}|{codigo}"
-                            if clave in claves_existentes:
-                                duplicados += 1
-                                continue
-                            
-                            datos_inv = dict_inventario.get(codigo, {})
-                            categoria = datos_inv.get('Categoria_L1', '')
-                            
-                            unidades = limpiar_valor(row.get('unidades', 0))
-                            precio_unitario = limpiar_valor(row.get('precio_unitario', 0))
-                            precio_compra_orig = limpiar_valor(row.get('ult_precio_compra_original', 0))
-                            
-                            totalxcompra = unidades * precio_unitario
-                            precio_compra_corr = datos_inv.get('Ultimo_Costo_Unitario', 0) if precio_compra_orig <= 0 else precio_compra_orig
-                            total_costo = precio_compra_corr * unidades
-                            utilidad = totalxcompra - total_costo
-                            pct_utilidad = (utilidad / totalxcompra * 100) if totalxcompra > 0 else 0
-                            
-                            upc = limpiar_texto(row.get('upc', ''))
-                            if not upc:
-                                upc = limpiar_texto(row.get('item_number', ''))
-                            
-                            registros_nuevos.append({
-                                'id_registro': str(uuid.uuid4()),
-                                'id_carga': id_carga,
-                                'fecha_carga_lote': datetime.now(),
-                                'clave_unica': clave,
-                                'fecha_proceso': datetime.now(),
-                                'usuario_proceso': usuario,
-                                'archivo_origen': archivo_ventas.name,
-                                'no_factura': no_factura,
-                                'id_fiscal': limpiar_texto(row.get('id_fiscal', '')),
-                                'documento': limpiar_texto(row.get('documento', '')),
-                                'ano_mes_factura': limpiar_texto(row.get('ano_mes_factura', '')),
-                                'fecha_factura': pd.to_datetime(row.get('fecha_factura', None), errors='coerce'),
-                                'nombre_cliente': limpiar_texto(row.get('nombre_cliente', '')),
-                                'pais': limpiar_texto(row.get('pais', '')),
-                                'caja': limpiar_texto(row.get('caja', '')),
-                                'vendedor': limpiar_texto(row.get('vendedor', '')),
-                                'codigo': codigo,
-                                'upc': upc,
-                                'lote': limpiar_texto(row.get('lote', '')),
-                                'arancel': limpiar_texto(row.get('arancel', '')),
-                                'producto': limpiar_texto(row.get('producto', '')),
-                                'marca': limpiar_texto(row.get('marca', '')),
-                                'industria': limpiar_texto(row.get('industria', '')),
-                                'proveedor_id': limpiar_texto(row.get('proveedor_id', '')),
-                                'proveedor_nombre': limpiar_texto(row.get('proveedor_nombre', '')),
-                                'categoria_l1': categoria,
-                                'categoria_l2': limpiar_texto(row.get('categoria_l2', '')),
-                                'categoria_l3': limpiar_texto(row.get('categoria_l3', '')),
-                                'unidades': unidades,
-                                'precio_unitario': precio_unitario,
-                                'total_factura': limpiar_valor(row.get('total_factura', 0)),
-                                'subtotal': limpiar_valor(row.get('subtotal', 0)),
-                                'por_desc_linea': limpiar_valor(row.get('por_desc_linea', 0)),
-                                'des_por_linea': limpiar_valor(row.get('des_por_linea', 0)),
-                                'total_linea': limpiar_valor(row.get('total_linea', 0)),
-                                'itbms': limpiar_valor(row.get('itbms', 0)),
-                                'ult_precio_compra_original': precio_compra_orig,
-                                'ult_precio_compra': precio_compra_corr,
-                                'total_costo': total_costo,
-                                'utilidad': utilidad,
-                                'porcentaje_utilidad': pct_utilidad,
-                                'margen_utilidad': limpiar_texto(row.get('margen_utilidad', '')),
-                                'ultimo_costo_unitario': datos_inv.get('Ultimo_Costo_Unitario', 0),
-                                'costo_promedio': limpiar_valor(row.get('costo_promedio', 0)),
-                                'precio_lista': limpiar_valor(row.get('precio_lista', 0)),
-                                'activo': True,
-                                'fecha_actualizacion': datetime.now(),
-                                'usuario_actualizacion': usuario,
-                                'bodega': limpiar_texto(row.get('bodega', '')),
-                                'totalxcompra': totalxcompra
-                            })
-                        
-                        if registros_nuevos:
-                            df_nuevos = pd.DataFrame(registros_nuevos)
-                            table_id = f"{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}"
-                            client.load_table_from_dataframe(df_nuevos, table_id).result()
-                            st.success(f"✅ {len(registros_nuevos)} ventas guardadas")
-                        
-                        st.info(f"📊 Nuevos: {len(registros_nuevos)} | Duplicados: {duplicados} | Sin código: {sin_codigo}")
-                        
-                    except Exception as e:
-                        st.error(f"❌ Error: {e}")
-                        st.exception(e)
+# =====================
+# TAB 1: VENTAS (CON DIAGNÓSTICO COMPLETO)
+# =====================
+with tab_ventas:
+    st.subheader("📊 Carga de Ventas")
     
+    col1, col2 = st.columns(2)
+    with col1:
+        archivo_ventas = st.file_uploader(
+            "Sube el archivo de ventas (CSV o Excel)",
+            type=["xlsx", "xls", "csv"],
+            key="farmazone_ventas"
+        )
+    with col2:
+        archivo_inventario = st.file_uploader(
+            "Sube el archivo de inventario (CSV o Excel)",
+            type=["xlsx", "xls", "csv"],
+            key="farmazone_inventario"
+        )
+    
+    if archivo_ventas and archivo_inventario:
+        if st.button("🚀 Procesar Ventas", key="btn_ventas"):
+            with st.spinner("Procesando ventas..."):
+                try:
+                    # Leer archivos
+                    df_ventas = leer_ventas(archivo_ventas)
+                    df_inventario = leer_excel(archivo_inventario, skiprows=4)
+                    
+                    # 🔥 DIAGNÓSTICO FINAL: Verificar que 'codigo' existe y tiene datos
+                    if 'codigo' not in df_ventas.columns:
+                        st.error("❌ La columna 'codigo' no existe después de la normalización")
+                        st.write("Columnas disponibles:", list(df_ventas.columns))
+                        st.stop()
+                    
+                    # 🔥 Verificar si 'codigo' tiene datos
+                    codigos_vacios = df_ventas['codigo'].isna().sum() + (df_ventas['codigo'] == '').sum()
+                    st.write(f"📊 **'codigo' tiene {codigos_vacios} valores vacíos de {len(df_ventas)} totales**")
+                    
+                    # 🔥 Mostrar muestra de 'codigo'
+                    st.write("📊 **Muestra de 'codigo' (primeros 10):**")
+                    st.write(df_ventas['codigo'].head(10).tolist())
+                    
+                    # 🔥 Mostrar muestra de 'no_factura'
+                    if 'no_factura' in df_ventas.columns:
+                        st.write("📊 **Muestra de 'no_factura' (primeros 10):**")
+                        st.write(df_ventas['no_factura'].head(10).tolist())
+                    
+                    # Crear diccionario de inventario
+                    dict_inventario = {}
+                    for _, row in df_inventario.iterrows():
+                        id_producto = limpiar_texto(row.get('Id', ''))
+                        if id_producto:
+                            dict_inventario[id_producto] = {
+                                'Ultimo_Costo_Unitario': limpiar_valor(row.get('Ultimo Costo Unitario', 0)),
+                                'Categoria_L1': limpiar_texto(row.get('Categoria L1', ''))
+                            }
+                    
+                    # 🔥 Mostrar muestra de inventario
+                    st.write("📊 **Muestra de inventario (primeros 10 Ids):**")
+                    st.write(list(dict_inventario.keys())[:10])
+                    
+                    # Verificar match entre 'codigo' e inventario
+                    codigos_unicos = set(df_ventas['codigo'].dropna().tolist())
+                    codigos_en_inventario = set(dict_inventario.keys())
+                    match_count = len(codigos_unicos.intersection(codigos_en_inventario))
+                    
+                    st.write(f"📊 **Match entre ventas e inventario:**")
+                    st.write(f"  - Códigos únicos en ventas: {len(codigos_unicos)}")
+                    st.write(f"  - Códigos en inventario: {len(codigos_en_inventario)}")
+                    st.write(f"  - Match: {match_count}")
+                    
+                    if match_count == 0 and len(codigos_unicos) > 0:
+                        st.warning("⚠️ **Ningún código de ventas coincide con inventario**")
+                        st.write("📊 **Primeros 10 códigos de ventas:**", list(codigos_unicos)[:10])
+                        st.write("📊 **Primeros 10 códigos de inventario:**", list(codigos_en_inventario)[:10])
+                    
+                    # Procesar registros
+                    claves_existentes = cargar_claves_existentes(TABLE_VENTAS)
+                    id_carga = str(uuid.uuid4())
+                    registros_nuevos = []
+                    duplicados = 0
+                    sin_codigo = 0
+                    sin_factura = 0
+                    
+                    for idx, row in df_ventas.iterrows():
+                        no_factura = limpiar_texto(row.get('no_factura', ''))
+                        codigo = limpiar_texto(row.get('codigo', ''))
+                        
+                        # 🔥 DIAGNÓSTICO: Mostrar primeros 5 registros detallados
+                        if idx < 5:
+                            st.write(f"🔍 **Registro {idx+1}:**")
+                            st.write(f"  - no_factura: '{no_factura}' (len: {len(no_factura)})")
+                            st.write(f"  - codigo: '{codigo}' (len: {len(codigo)})")
+                            st.write(f"  - item_number: '{limpiar_texto(row.get('item_number', ''))}'")
+                            st.write(f"  - upc: '{limpiar_texto(row.get('upc', ''))}'")
+                        
+                        if not no_factura:
+                            sin_factura += 1
+                            continue
+                        
+                        if not codigo:
+                            sin_codigo += 1
+                            continue
+                        
+                        clave = f"{no_factura}|{codigo}"
+                        if clave in claves_existentes:
+                            duplicados += 1
+                            continue
+                        
+                        datos_inv = dict_inventario.get(codigo, {})
+                        categoria = datos_inv.get('Categoria_L1', '')
+                        
+                        unidades = limpiar_valor(row.get('unidades', 0))
+                        precio_unitario = limpiar_valor(row.get('precio_unitario', 0))
+                        precio_compra_orig = limpiar_valor(row.get('ult_precio_compra_original', 0))
+                        
+                        totalxcompra = unidades * precio_unitario
+                        precio_compra_corr = datos_inv.get('Ultimo_Costo_Unitario', 0) if precio_compra_orig <= 0 else precio_compra_orig
+                        total_costo = precio_compra_corr * unidades
+                        utilidad = totalxcompra - total_costo
+                        pct_utilidad = (utilidad / totalxcompra * 100) if totalxcompra > 0 else 0
+                        
+                        upc = limpiar_texto(row.get('upc', ''))
+                        if not upc:
+                            upc = limpiar_texto(row.get('item_number', ''))
+                        
+                        # Obtener fecha para cálculo de año_mes
+                        fecha_factura = pd.to_datetime(row.get('fecha_factura', None), errors='coerce')
+                        ano_mes = fecha_factura.strftime('%Y%m') if pd.notna(fecha_factura) else ''
+                        
+                        registros_nuevos.append({
+                            'id_registro': str(uuid.uuid4()),
+                            'id_carga': id_carga,
+                            'fecha_carga_lote': datetime.now(),
+                            'clave_unica': clave,
+                            'fecha_proceso': datetime.now(),
+                            'usuario_proceso': usuario,
+                            'archivo_origen': archivo_ventas.name,
+                            'no_factura': no_factura,
+                            'id_fiscal': limpiar_texto(row.get('id_fiscal', '')),
+                            'documento': limpiar_texto(row.get('documento', '')),
+                            'ano_mes_factura': ano_mes,  # 🔥 CALCULADO DESDE fecha_factura
+                            'fecha_factura': fecha_factura,
+                            'nombre_cliente': limpiar_texto(row.get('nombre_cliente', '')),
+                            'pais': limpiar_texto(row.get('pais', '')),
+                            'caja': limpiar_texto(row.get('caja', '')),
+                            'vendedor': limpiar_texto(row.get('vendedor', '')),
+                            'codigo': codigo,
+                            'upc': upc,
+                            'lote': limpiar_texto(row.get('lote', '')),
+                            'arancel': limpiar_texto(row.get('arancel', '')),
+                            'producto': limpiar_texto(row.get('producto', '')),
+                            'marca': limpiar_texto(row.get('marca', '')),
+                            'industria': limpiar_texto(row.get('industria', '')),
+                            'proveedor_id': limpiar_texto(row.get('proveedor_id', '')),
+                            'proveedor_nombre': limpiar_texto(row.get('proveedor_nombre', '')),
+                            'categoria_l1': categoria,
+                            'categoria_l2': limpiar_texto(row.get('categoria_l2', '')),
+                            'categoria_l3': limpiar_texto(row.get('categoria_l3', '')),
+                            'unidades': unidades,
+                            'precio_unitario': precio_unitario,
+                            'total_factura': limpiar_valor(row.get('total_factura', 0)),
+                            'subtotal': limpiar_valor(row.get('subtotal', 0)),
+                            'por_desc_linea': limpiar_valor(row.get('por_desc_linea', 0)),
+                            'des_por_linea': limpiar_valor(row.get('des_por_linea', 0)),
+                            'total_linea': limpiar_valor(row.get('total_linea', 0)),
+                            'itbms': limpiar_valor(row.get('itbms', 0)),
+                            'ult_precio_compra_original': precio_compra_orig,
+                            'ult_precio_compra': precio_compra_corr,
+                            'total_costo': total_costo,
+                            'utilidad': utilidad,
+                            'porcentaje_utilidad': pct_utilidad,
+                            'margen_utilidad': limpiar_texto(row.get('margen_utilidad', '')),
+                            'ultimo_costo_unitario': datos_inv.get('Ultimo_Costo_Unitario', 0),
+                            'costo_promedio': limpiar_valor(row.get('costo_promedio', 0)),
+                            'precio_lista': limpiar_valor(row.get('precio_lista', 0)),
+                            'activo': True,
+                            'fecha_actualizacion': datetime.now(),
+                            'usuario_actualizacion': usuario,
+                            'bodega': limpiar_texto(row.get('bodega', '')),
+                            'totalxcompra': totalxcompra
+                        })
+                    
+                    if registros_nuevos:
+                        df_nuevos = pd.DataFrame(registros_nuevos)
+                        table_id = f"{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}"
+                        client.load_table_from_dataframe(df_nuevos, table_id).result()
+                        st.success(f"✅ {len(registros_nuevos)} ventas guardadas")
+                    
+                    st.info(f"""
+                    📊 **Resumen:**
+                    - Nuevos: {len(registros_nuevos)}
+                    - Duplicados: {duplicados}
+                    - Sin factura: {sin_factura}
+                    - Sin código: {sin_codigo}
+                    """)
+                    
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+                    st.exception(e)    
     # =====================
     # TAB 2: COMPRAS
     # =====================

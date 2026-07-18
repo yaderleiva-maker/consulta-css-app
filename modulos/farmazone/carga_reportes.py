@@ -77,15 +77,16 @@ def run(usuario):
             raise ValueError(f"Formato no soportado: {nombre}")
     
     def leer_ventas(archivo):
-        """Lee archivo de ventas y normaliza columnas."""
+        """Lee archivo de ventas con estructura correcta (skiprows=4)."""
         nombre = archivo.name.lower()
         
+        # 🔥 USAR skiprows=4 para saltar las filas de título
         if nombre.endswith('.csv'):
-            df = pd.read_csv(archivo, dtype=str)
+            df = pd.read_csv(archivo, dtype=str, skiprows=4)
         elif nombre.endswith('.xls'):
-            df = pd.read_excel(archivo, dtype=str, engine='xlrd')
+            df = pd.read_excel(archivo, dtype=str, skiprows=4, header=0, engine='xlrd')
         elif nombre.endswith('.xlsx'):
-            df = pd.read_excel(archivo, dtype=str, engine='openpyxl')
+            df = pd.read_excel(archivo, dtype=str, skiprows=4, header=0, engine='openpyxl')
         else:
             raise ValueError(f"Formato no soportado: {nombre}")
         
@@ -202,10 +203,10 @@ def run(usuario):
                         df_ventas = leer_ventas(archivo_ventas)
                         df_inventario = leer_excel(archivo_inventario, skiprows=4)
                         
-                        # 🔥 DIAGNÓSTICO: Verificar columnas
+                        # 🔥 DIAGNÓSTICO: Mostrar columnas
                         st.write("📋 Columnas en ventas:", list(df_ventas.columns))
                         
-                        # 🔥 CREAR DICCIONARIO DE INVENTARIO POR Id (NO por UPC)
+                        # 🔥 CREAR DICCIONARIO DE INVENTARIO POR Id
                         dict_inventario = {}
                         for _, row in df_inventario.iterrows():
                             id_producto = limpiar_texto(row.get('Id', ''))
@@ -226,14 +227,14 @@ def run(usuario):
                         for _, row in df_ventas.iterrows():
                             no_factura = limpiar_texto(row.get('no_factura', ''))
                             
-                            # 🔥 PRIORIDAD: Usar 'codigo' (que viene de la columna 'Codigo' del Excel)
+                            # 🔥 PRIORIDAD: Usar 'codigo'
                             codigo = limpiar_texto(row.get('codigo', ''))
                             
-                            # 🔥 RESPALDO: Si no hay codigo, usar item_number
+                            # 🔥 RESPALDO: item_number
                             if not codigo:
                                 codigo = limpiar_texto(row.get('item_number', ''))
                             
-                            # 🔥 ÚLTIMO RESPALDO: Si no hay, usar upc
+                            # 🔥 ÚLTIMO RESPALDO: upc
                             if not codigo:
                                 codigo = limpiar_texto(row.get('upc', ''))
                             
@@ -246,7 +247,7 @@ def run(usuario):
                                 duplicados += 1
                                 continue
                             
-                            # 🔥 BUSCAR EN INVENTARIO POR codigo (Id del producto)
+                            # 🔥 BUSCAR EN INVENTARIO POR codigo
                             datos_inv = dict_inventario.get(codigo, {})
                             categoria = datos_inv.get('Categoria_L1', '')
                             
@@ -279,13 +280,13 @@ def run(usuario):
                                 'no_factura': no_factura,
                                 'id_fiscal': limpiar_texto(row.get('id_fiscal', '')),
                                 'documento': limpiar_texto(row.get('documento', '')),
-                                'ano_mes_factura': ano_mes_factura,  # 🔥 CALCULADO
+                                'ano_mes_factura': ano_mes_factura,
                                 'fecha_factura': fecha_factura,
                                 'nombre_cliente': limpiar_texto(row.get('nombre_cliente', '')),
                                 'pais': limpiar_texto(row.get('pais', '')),
                                 'caja': limpiar_texto(row.get('caja', '')),
                                 'vendedor': limpiar_texto(row.get('vendedor', '')),
-                                'codigo': codigo,  # 🔥 ESTE ES EL Id DEL PRODUCTO
+                                'codigo': codigo,
                                 'upc': upc,
                                 'lote': limpiar_texto(row.get('lote', '')),
                                 'arancel': limpiar_texto(row.get('arancel', '')),

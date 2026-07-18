@@ -77,16 +77,16 @@ def run(usuario):
             raise ValueError(f"Formato no soportado: {nombre}")
     
     def leer_ventas(archivo):
-        """Lee archivo de ventas con estructura correcta (skiprows=4)."""
+        """Lee archivo de ventas con estructura correcta (skiprows=5)."""
         nombre = archivo.name.lower()
         
-        # 🔥 USAR skiprows=4 para saltar las filas de título
+        # 🔥 USAR skiprows=5 para saltar las filas de título
         if nombre.endswith('.csv'):
-            df = pd.read_csv(archivo, dtype=str, skiprows=4)
+            df = pd.read_csv(archivo, dtype=str, skiprows=5)
         elif nombre.endswith('.xls'):
-            df = pd.read_excel(archivo, dtype=str, skiprows=4, header=0, engine='xlrd')
+            df = pd.read_excel(archivo, dtype=str, skiprows=5, header=0, engine='xlrd')
         elif nombre.endswith('.xlsx'):
-            df = pd.read_excel(archivo, dtype=str, skiprows=4, header=0, engine='openpyxl')
+            df = pd.read_excel(archivo, dtype=str, skiprows=5, header=0, engine='openpyxl')
         else:
             raise ValueError(f"Formato no soportado: {nombre}")
         
@@ -176,7 +176,7 @@ def run(usuario):
         return len(df_inventario)
     
     # =====================
-    # TAB 1: VENTAS (CORREGIDO)
+    # TAB 1: VENTAS
     # =====================
     with tab_ventas:
         st.subheader("📊 Carga de Ventas")

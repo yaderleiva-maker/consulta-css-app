@@ -1,3 +1,4 @@
+# services/archivos.py
 """
 Servicio de Archivos
 Manejo de archivos desde Google Drive usando la API.
@@ -17,22 +18,40 @@ from services.bigquery import get_client as get_bigquery_client
 DRIVE_ROOT_FOLDER_ID = "1valY4tU6X--x9-9gBlJPzJg7n1gW5NFO"
 
 # ============================================================
-# CLIENTE DE DRIVE
+# CLIENTE DE DRIVE (CON SCOPES CORRECTOS)
 # ============================================================
 
 @st.cache_resource
 def get_drive_client():
     """
-    Obtener cliente de Google Drive usando la Service Account.
+    Obtener cliente de Google Drive usando la Service Account con los scopes correctos.
     """
     try:
-        # Usar las mismas credenciales que BigQuery
-        client = get_bigquery_client()
-        credentials = client._credentials
+        # 👇 IMPORTANTE: Crear credenciales con scopes de Drive
+        from google.oauth2 import service_account
         
-        if credentials is None:
-            st.error("❌ No se encontraron credenciales para Drive")
-            return None
+        # Obtener las credenciales desde los secrets o variable de entorno
+        import json
+        import os
+        
+        # Intentar cargar desde secrets (Streamlit Cloud)
+        if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
+            service_account_info = dict(st.secrets["gcp_service_account"])
+            credentials = service_account.Credentials.from_service_account_info(
+                service_account_info,
+                scopes=['https://www.googleapis.com/auth/drive.readonly']  # 👈 SCOPES CORRECTOS
+            )
+        else:
+            # Fallback: usar variable de entorno
+            creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            if creds_path:
+                credentials = service_account.Credentials.from_service_account_file(
+                    creds_path,
+                    scopes=['https://www.googleapis.com/auth/drive.readonly']  # 👈 SCOPES CORRECTOS
+                )
+            else:
+                st.error("❌ No se encontraron credenciales para Drive")
+                return None
         
         drive_service = build('drive', 'v3', credentials=credentials)
         return drive_service
@@ -59,7 +78,8 @@ def buscar_archivo_por_nombre(nombre_archivo):
     try:
         results = drive_service.files().list(
             q=query,
-            fields="files(id, name, mimeType)"
+            fields="files(id, name, mimeType)",
+            supportsAllDrives=True  # 👈 Para buscar en Drives compartidos
         ).execute()
         
         files = results.get('files', [])
@@ -97,23 +117,13 @@ def descargar_archivo(file_id):
 def obtener_imagen_desde_ruta(ruta_relativa):
     """
     Obtener imagen desde una ruta de AppSheet.
-    
-    Args:
-        ruta_relativa (str): Ej. 'NexoPeople/Empleados/EMPL86413e4e/EMPL86413e4e.foto_url.213759.jpg'
-    
-    Returns:
-        bytes: Datos de la imagen o None si falla.
     """
     if not ruta_relativa:
         return None
     
-    # Extraer el nombre del archivo de la ruta
     nombre_archivo = ruta_relativa.split('/')[-1]
-    
-    # Buscar el archivo en Drive
     file_info = buscar_archivo_por_nombre(nombre_archivo)
     if not file_info:
         return None
     
-    # Descargar el archivo
     return descargar_archivo(file_info['id'])

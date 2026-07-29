@@ -4,6 +4,7 @@ Conexión y utilidades para BigQuery.
 NO depende de config.py. Usa variables de entorno directamente.
 """
 
+# services/bigquery.py
 import os
 import streamlit as st
 import pandas as pd

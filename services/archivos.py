@@ -9,7 +9,6 @@ import io
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2 import service_account
-from services.bigquery import get_client as get_bigquery_client
 
 # ============================================================
 # CONFIGURACIÓN
@@ -18,40 +17,24 @@ from services.bigquery import get_client as get_bigquery_client
 DRIVE_ROOT_FOLDER_ID = "1valY4tU6X--x9-9gBlJPzJg7n1gW5NFO"
 
 # ============================================================
-# CLIENTE DE DRIVE (CON SCOPES CORRECTOS)
+# CLIENTE DE DRIVE
 # ============================================================
 
 @st.cache_resource
 def get_drive_client():
     """
-    Obtener cliente de Google Drive usando la Service Account con los scopes correctos.
+    Obtener cliente de Google Drive usando la Service Account.
     """
     try:
-        # 👇 IMPORTANTE: Crear credenciales con scopes de Drive
-        from google.oauth2 import service_account
-        
-        # Obtener las credenciales desde los secrets o variable de entorno
-        import json
-        import os
-        
-        # Intentar cargar desde secrets (Streamlit Cloud)
         if hasattr(st, 'secrets') and 'gcp_service_account' in st.secrets:
             service_account_info = dict(st.secrets["gcp_service_account"])
             credentials = service_account.Credentials.from_service_account_info(
                 service_account_info,
-                scopes=['https://www.googleapis.com/auth/drive.readonly']  # 👈 SCOPES CORRECTOS
+                scopes=['https://www.googleapis.com/auth/drive.readonly']
             )
         else:
-            # Fallback: usar variable de entorno
-            creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-            if creds_path:
-                credentials = service_account.Credentials.from_service_account_file(
-                    creds_path,
-                    scopes=['https://www.googleapis.com/auth/drive.readonly']  # 👈 SCOPES CORRECTOS
-                )
-            else:
-                st.error("❌ No se encontraron credenciales para Drive")
-                return None
+            st.error("❌ No se encontraron credenciales en secrets.toml")
+            return None
         
         drive_service = build('drive', 'v3', credentials=credentials)
         return drive_service
@@ -67,23 +50,31 @@ def get_drive_client():
 
 def buscar_archivo_por_nombre(nombre_archivo):
     """
-    Buscar un archivo en Google Drive por su nombre dentro de la carpeta raíz.
+    Buscar un archivo en Google Drive por su nombre (sin importar la carpeta).
     """
     drive_service = get_drive_client()
     if drive_service is None:
         return None
     
-    query = f"name = '{nombre_archivo}' and '{DRIVE_ROOT_FOLDER_ID}' in parents and trashed = false"
+    # 🔥 BUSCAR SOLO POR NOMBRE (sin filtrar por carpeta)
+    query = f"name = '{nombre_archivo}' and trashed = false"
     
     try:
         results = drive_service.files().list(
             q=query,
             fields="files(id, name, mimeType)",
-            supportsAllDrives=True  # 👈 Para buscar en Drives compartidos
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
         ).execute()
         
         files = results.get('files', [])
-        return files[0] if files else None
+        
+        if not files:
+            st.warning(f"⚠️ Archivo no encontrado: {nombre_archivo}")
+            return None
+        
+        # Si hay múltiples archivos con el mismo nombre (poco probable), tomar el primero
+        return files[0]
     
     except Exception as e:
         st.error(f"❌ Error buscando archivo en Drive: {e}")
@@ -117,18 +108,31 @@ def descargar_archivo(file_id):
 def obtener_imagen_desde_ruta(ruta_relativa):
     """
     Obtener imagen desde una ruta de AppSheet.
+    
+    Args:
+        ruta_relativa (str): Ej. 'NexoPeople/Empleados/EMPL86413e4e/EMPL86413e4e.foto_url.213759.jpg'
+    
+    Returns:
+        bytes: Datos de la imagen o None si falla.
     """
     if not ruta_relativa:
         return None
     
+    # Extraer el nombre del archivo de la ruta
     nombre_archivo = ruta_relativa.split('/')[-1]
+    
+    # Buscar el archivo en Drive por nombre
     file_info = buscar_archivo_por_nombre(nombre_archivo)
     if not file_info:
         return None
     
+    # Descargar el archivo
     return descargar_archivo(file_info['id'])
 
-# services/archivos.py (agregar esta función temporal)
+
+# ============================================================
+# FUNCIONES DE PRUEBA (para mantener la compatibilidad)
+# ============================================================
 
 def listar_archivos():
     """
@@ -137,7 +141,7 @@ def listar_archivos():
     drive_service = get_drive_client()
     if drive_service is None:
         st.error("❌ No se pudo conectar a Drive")
-        return
+        return []
     
     try:
         results = drive_service.files().list(
@@ -161,89 +165,3 @@ def listar_archivos():
     except Exception as e:
         st.error(f"❌ Error listando archivos: {e}")
         return []
-
-# services/archivos.py
-
-def listar_carpetas(parent_id=None, nivel=0):
-    """
-    Listar carpetas dentro de Drive para ver la estructura.
-    """
-    drive_service = get_drive_client()
-    if drive_service is None:
-        return
-    
-    query = f"'{DRIVE_ROOT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-    
-    try:
-        results = drive_service.files().list(
-            q=query,
-            fields="files(id, name, parents)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        
-        folders = results.get('files', [])
-        
-        st.write(f"📁 **Carpetas en la raíz ({DRIVE_ROOT_FOLDER_ID})**")
-        for folder in folders:
-            st.write(f"  📁 {folder['name']} (ID: {folder['id']})")
-        
-        return folders
-    
-    except Exception as e:
-        st.error(f"❌ Error listando carpetas: {e}")
-        return []
-
-# services/archivos.py
-
-def buscar_archivo_por_nombre_recursivo(nombre_archivo, folder_id=None):
-    """
-    Buscar un archivo recursivamente en toda la carpeta raíz.
-    """
-    drive_service = get_drive_client()
-    if drive_service is None:
-        return None
-    
-    # Si no se especifica folder_id, usar la raíz
-    if folder_id is None:
-        folder_id = DRIVE_ROOT_FOLDER_ID
-    
-    # Buscar archivo en la carpeta actual
-    query = f"name = '{nombre_archivo}' and '{folder_id}' in parents and trashed = false"
-    
-    try:
-        results = drive_service.files().list(
-            q=query,
-            fields="files(id, name, parents, mimeType)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        
-        files = results.get('files', [])
-        
-        if files:
-            return files[0]
-        
-        # Si no se encuentra, buscar en subcarpetas
-        # 1. Obtener todas las subcarpetas
-        query_folders = f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-        folders_result = drive_service.files().list(
-            q=query_folders,
-            fields="files(id, name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        
-        subfolders = folders_result.get('files', [])
-        
-        # 2. Buscar recursivamente en cada subcarpeta
-        for subfolder in subfolders:
-            result = buscar_archivo_por_nombre_recursivo(nombre_archivo, subfolder['id'])
-            if result:
-                return result
-        
-        return None
-    
-    except Exception as e:
-        st.error(f"❌ Error en búsqueda recursiva: {e}")
-        return None

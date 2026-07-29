@@ -9,102 +9,28 @@ from services.empleados import (
     obtener_activos_inactivos,
     generar_excel_activos_inactivos
 )
+from services.fotos import mostrar_foto_sidebar, mostrar_foto_ficha
 from services.bigquery import probar_conexion
 
 
-def run(usuario):
+# ============================================================
+# MÓDULO 1: IN & OUT
+# ============================================================
+
+def run_in_out(usuario):
     """
-    Página principal de NEXO People.
+    Módulo In & Out
     """
-    st.markdown("## 👥 NEXO People")
-    st.markdown("---")
-    
-    # Inicializar estado de navegación
-    if 'pagina_actual' not in st.session_state:
-        st.session_state['pagina_actual'] = 'in_out'
-    if 'empleado_seleccionado' not in st.session_state:
-        st.session_state['empleado_seleccionado'] = None
-    
-    # ============================================================
-    # SIDEBAR: Buscador de empleados
-    # ============================================================
-    with st.sidebar:
-        st.markdown("### 🔍 Buscar Colaborador")
-        termino = st.text_input("Nombre o cédula", placeholder="Ej: Juan Pérez")
-        
-        if termino and len(termino) >= 2:
-            resultados = buscar_empleados(termino)
-            if resultados:
-                for emp in resultados:
-                    with st.container():
-                        col1, col2 = st.columns([1, 3])
-                        with col1:
-                            if emp.get('foto'):
-                                st.image(
-                                    f"https://drive.google.com/uc?export=view&id={emp['foto']}",
-                                    width=50
-                                )
-                            else:
-                                st.image(
-                                    f"https://ui-avatars.com/api/?name={emp['nombre_completo']}&size=50&background=4A90E2&color=white",
-                                    width=50
-                                )
-                        with col2:
-                            st.markdown(f"**{emp['nombre_completo']}**")
-                            st.caption(f"📌 {emp.get('cargo', 'Sin cargo')}")
-                            estado = emp.get('estado', 'DESCONOCIDO')
-                            color = {
-                                'ACTIVO': '🟢',
-                                'INACTIVO': '🔴'
-                            }.get(estado, '⚪')
-                            st.caption(f"{color} {estado}")
-                        
-                        if st.button(f"Ver ficha", key=f"btn_{emp['id_empleado']}"):
-                            st.session_state['empleado_seleccionado'] = emp['id_empleado']
-                            st.session_state['pagina_actual'] = 'ficha'
-                            st.rerun()
-                        
-                        st.markdown("---")
-            else:
-                st.info("No se encontraron empleados")
-        else:
-            st.info("Escribe al menos 2 caracteres")
-    
-    # ============================================================
-    # CONTENIDO PRINCIPAL
-    # ============================================================
-    
-    # Si hay un empleado seleccionado, mostrar ficha
-    if st.session_state['empleado_seleccionado']:
-        mostrar_ficha_empleado(st.session_state['empleado_seleccionado'])
-        return
-    
-    # Si no, mostrar In & Out
-    mostrar_in_out()
-
-
-# modulos/hexagon_colombia/nexo_people.py
-
-# modulos/hexagon_colombia/nexo_people.py
-
-# modulos/hexagon_colombia/nexo_people.py
-
-# modulos/hexagon_colombia/nexo_people.py
-
-def mostrar_in_out():
-    """
-    Módulo In & Out: Lista de activos e inactivos.
-    """
-    st.markdown("### 📊 In & Out - Personal Activo / Inactivo")
+    st.markdown("## 📊 In & Out - Personal Activo / Inactivo")
     st.caption("Lista de empleados activos e inactivos. Ordenados de más antiguos a más recientes.")
     
+    # Usar el mismo código que antes (sin el sidebar de búsqueda)
     empleados = obtener_activos_inactivos()
     
     if not empleados:
         st.info("No hay empleados registrados")
         return
     
-    # Separar activos e inactivos usando estado_nombre
     inactivos = [e for e in empleados if e.get('estado_nombre') == 'Inactivo']
     activos = [e for e in empleados if e.get('estado_nombre') == 'Activo']
     
@@ -119,16 +45,10 @@ def mostrar_in_out():
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     df.to_excel(writer, sheet_name='In_Out', index=False)
-                    
-                    # Ajustar ancho de columnas automáticamente
                     workbook = writer.book
                     worksheet = writer.sheets['In_Out']
-                    
                     for i, col in enumerate(df.columns):
-                        # Calcular longitud máxima de la columna
-                        series = df[col].astype(str)
-                        # Reemplazar 'nan' por cadena vacía para el cálculo
-                        series = series.replace('nan', '')
+                        series = df[col].astype(str).replace('nan', '')
                         max_len = series.str.len().max() if not series.empty else 0
                         col_len = max(max_len, len(col)) + 2
                         worksheet.set_column(i, i, min(col_len, 50))
@@ -146,20 +66,13 @@ def mostrar_in_out():
     with st.expander(f"🔴 Inactivos ({len(inactivos)})", expanded=True):
         if inactivos:
             for emp in inactivos:
-                col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+                col1, col2, col3 = st.columns([2, 2, 1])
                 with col1:
                     st.markdown(f"**{emp['nombre_completo']}**")
                 with col2:
-                    cargo = emp.get('cargo_nombre', 'Sin cargo')
-                    st.caption(f"📌 {cargo}")
+                    st.caption(f"📌 {emp.get('cargo_nombre', 'Sin cargo')}")
                 with col3:
-                    fecha_salida = emp.get('fecha_terminacion', '')
-                    st.caption(f"📅 Salida: {fecha_salida}")
-                with col4:
-                    if st.button(f"Ver", key=f"ver_{emp['id_empleado']}"):
-                        st.session_state['empleado_seleccionado'] = emp['id_empleado']
-                        st.session_state['pagina_actual'] = 'ficha'
-                        st.rerun()
+                    st.caption(f"📅 Salida: {emp.get('fecha_terminacion', '-')}")
                 st.divider()
         else:
             st.success("🎉 No hay empleados inactivos")
@@ -170,25 +83,78 @@ def mostrar_in_out():
     with st.expander(f"🟢 Activos ({len(activos)})", expanded=False):
         if activos:
             for emp in activos:
-                col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
+                col1, col2, col3 = st.columns([2, 2, 1])
                 with col1:
                     st.markdown(f"**{emp['nombre_completo']}**")
                 with col2:
-                    cargo = emp.get('cargo_nombre', 'Sin cargo')
-                    st.caption(f"📌 {cargo}")
+                    st.caption(f"📌 {emp.get('cargo_nombre', 'Sin cargo')}")
                 with col3:
-                    fecha_ingreso = emp.get('fecha_ingreso_empresa', '')
-                    st.caption(f"📅 Ingreso: {fecha_ingreso}")
-                with col4:
-                    if st.button(f"Ver", key=f"ver_{emp['id_empleado']}"):
-                        st.session_state['empleado_seleccionado'] = emp['id_empleado']
-                        st.session_state['pagina_actual'] = 'ficha'
-                        st.rerun()
+                    st.caption(f"📅 Ingreso: {emp.get('fecha_ingreso_empresa', '-')}")
                 st.divider()
         else:
             st.info("No hay empleados activos")
+
+
+# ============================================================
+# MÓDULO 2: FICHA DE EMPLEADOS
+# ============================================================
+
+def run_ficha(usuario):
+    """
+    Módulo Ficha de Empleados (con buscador y ficha)
+    """
+    st.markdown("## 👤 Ficha de Empleados")
+    st.caption("Busca un colaborador para ver su información completa.")
     
-    st.info("👆 Haz clic en 'Ver' para abrir la ficha del empleado.")
+    # Inicializar estado
+    if 'empleado_seleccionado_ficha' not in st.session_state:
+        st.session_state['empleado_seleccionado_ficha'] = None
+    
+    # ============================================================
+    # SIDEBAR: Buscador de empleados (dentro del módulo)
+    # ============================================================
+    with st.sidebar:
+        st.markdown("### 🔍 Buscar Colaborador")
+        termino = st.text_input("Nombre o cédula", placeholder="Ej: Juan Pérez", key="busqueda_ficha")
+        
+        if termino and len(termino) >= 2:
+            resultados = buscar_empleados(termino)
+            if resultados:
+                for emp in resultados:
+                    with st.container():
+                        col1, col2 = st.columns([1, 3])
+                        with col1:
+                            mostrar_foto_sidebar(emp.get('foto'), emp['nombre_completo'], size=50)
+                        with col2:
+                            st.markdown(f"**{emp['nombre_completo']}**")
+                            st.caption(f"📌 {emp.get('cargo', 'Sin cargo')}")
+                            estado = emp.get('estado', 'Desconocido')
+                            color = {'Activo': '🟢', 'Inactivo': '🔴'}.get(estado, '⚪')
+                            st.caption(f"{color} {estado}")
+                        
+                        if st.button(f"Ver ficha", key=f"btn_ficha_{emp['id_empleado']}"):
+                            st.session_state['empleado_seleccionado_ficha'] = emp['id_empleado']
+                            st.rerun()
+                        
+                        st.markdown("---")
+            else:
+                st.info("No se encontraron empleados")
+        else:
+            st.info("Escribe al menos 2 caracteres")
+    
+    # ============================================================
+    # CONTENIDO PRINCIPAL
+    # ============================================================
+    if st.session_state['empleado_seleccionado_ficha']:
+        mostrar_ficha_empleado(st.session_state['empleado_seleccionado_ficha'])
+    else:
+        st.info("🔍 Busca un colaborador en el panel izquierdo para ver su ficha.")
+
+
+# ============================================================
+# FUNCIÓN PARA MOSTRAR LA FICHA DEL EMPLEADO
+# ============================================================
+
 def mostrar_ficha_empleado(id_empleado):
     """
     Mostrar la ficha completa de un empleado.
@@ -200,11 +166,10 @@ def mostrar_ficha_empleado(id_empleado):
         return
     
     # ============================================================
-    # Botón para volver al In & Out
+    # BOTÓN PARA VOLVER
     # ============================================================
-    if st.button("← Volver a In & Out"):
-        st.session_state['empleado_seleccionado'] = None
-        st.session_state['pagina_actual'] = 'in_out'
+    if st.button("← Volver a la búsqueda"):
+        st.session_state['empleado_seleccionado_ficha'] = None
         st.rerun()
     
     # ============================================================
@@ -214,12 +179,7 @@ def mostrar_ficha_empleado(id_empleado):
         col1, col2 = st.columns([1, 3])
         
         with col1:
-            if empleado.get('foto'):
-                url_foto = f"https://drive.google.com/uc?export=view&id={empleado['foto']}"
-                st.image(url_foto, width=150)
-            else:
-                avatar = f"https://ui-avatars.com/api/?name={empleado['nombre_completo']}&size=150&background=4A90E2&color=white"
-                st.image(avatar, width=150)
+            mostrar_foto_ficha(empleado.get('foto'), empleado['nombre_completo'], size=150)
         
         with col2:
             st.markdown(f"## {empleado['nombre_completo']}")
@@ -227,8 +187,8 @@ def mostrar_ficha_empleado(id_empleado):
             
             col_badges = st.columns(4)
             with col_badges[0]:
-                estado = empleado.get('estado', 'DESCONOCIDO')
-                color = {'ACTIVO': '🟢', 'INACTIVO': '🔴', 'VACACIONES': '🟡', 'LICENCIA': '🔵'}.get(estado, '⚪')
+                estado = empleado.get('estado', 'Desconocido')
+                color = {'Activo': '🟢', 'Inactivo': '🔴', 'Vacaciones': '🟡', 'Licencia': '🔵'}.get(estado, '⚪')
                 st.markdown(f"{color} **{estado}**")
             with col_badges[1]:
                 if empleado.get('fecha_ingreso_empresa'):
@@ -259,4 +219,49 @@ def mostrar_ficha_empleado(id_empleado):
         "📈 Historial"
     ])
     
-    # ... (resto igual que antes)
+    # TAB 1: Personal
+    with tabs[0]:
+        st.markdown("### Información Personal")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Cédula:** {empleado.get('cedula', '-')}")
+            st.markdown(f"**Fecha Nacimiento:** {empleado.get('fecha_nacimiento', '-')}")
+            if empleado.get('fecha_nacimiento'):
+                from datetime import date
+                nac = empleado['fecha_nacimiento']
+                if isinstance(nac, str):
+                    from datetime import datetime
+                    nac = datetime.strptime(nac, '%Y-%m-%d').date()
+                edad = date.today().year - nac.year - ((date.today().month, date.today().day) < (nac.month, nac.day))
+                st.markdown(f"**Edad:** {edad} años")
+        with col2:
+            st.markdown(f"**Teléfono:** {empleado.get('telefono', '-')}")
+            st.markdown(f"**Correo:** {empleado.get('email_corporativo', '-')}")
+            st.markdown(f"**Correo Personal:** {empleado.get('email_personal', '-')}")
+    
+    # TAB 2: Laboral
+    with tabs[1]:
+        st.markdown("### Información Laboral")
+        st.markdown(f"**Ingreso a la empresa:** {empleado.get('fecha_ingreso_empresa', '-')}")
+        if empleado.get('fecha_ingreso_empresa'):
+            from datetime import date
+            ing = empleado['fecha_ingreso_empresa']
+            if isinstance(ing, str):
+                from datetime import datetime
+                ing = datetime.strptime(ing, '%Y-%m-%d').date()
+            delta = date.today() - ing
+            años = delta.days // 365
+            meses = (delta.days % 365) // 30
+            st.markdown(f"**Antigüedad:** {años} años, {meses} meses")
+        st.markdown(f"**Departamento:** {empleado.get('departamento', '-')}")
+        st.markdown(f"**Supervisor:** {empleado.get('supervisor_nombre', '-')}")
+    
+    # TAB 3-6: Próximamente
+    with tabs[2]:
+        st.info("📞 Contactos de emergencia - Próximamente")
+    with tabs[3]:
+        st.info("👨‍👩‍👧 Dependientes - Próximamente")
+    with tabs[4]:
+        st.info("📂 Documentos - Próximamente")
+    with tabs[5]:
+        st.info("📈 Historial laboral - Próximamente")

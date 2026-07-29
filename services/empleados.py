@@ -155,8 +155,8 @@ def generar_excel_activos_inactivos():
       e.fecha_ingreso_empresa AS Fecha_Ingreso,
       e.fecha_terminacion AS Fecha_Terminacion,
       CASE 
-        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'ACTIVO') THEN 'ACTIVO'
-        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'INACTIVO') THEN 'INACTIVO'
+        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Activo') THEN 'ACTIVO'
+        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') THEN 'INACTIVO'
         ELSE 'DESCONOCIDO'
       END AS Estado
     FROM `nexo_people.empleados` e

@@ -219,49 +219,81 @@ def mostrar_ficha_empleado(id_empleado):
         "📈 Historial"
     ])
     
-    # TAB 1: Personal
+    # ============================================================
+    # TAB 1: Personal (con manejo de fechas nulas)
+    # ============================================================
     with tabs[0]:
         st.markdown("### Información Personal")
         col1, col2 = st.columns(2)
         with col1:
             st.markdown(f"**Cédula:** {empleado.get('cedula', '-')}")
-            st.markdown(f"**Fecha Nacimiento:** {empleado.get('fecha_nacimiento', '-')}")
-            if empleado.get('fecha_nacimiento'):
+            
+            # Fecha de nacimiento (manejo de NaT)
+            fecha_nac = empleado.get('fecha_nacimiento')
+            if fecha_nac and str(fecha_nac) != 'NaT' and str(fecha_nac) != 'NaT':
+                st.markdown(f"**Fecha Nacimiento:** {fecha_nac}")
+                # Calcular edad
                 from datetime import date
-                nac = empleado['fecha_nacimiento']
-                if isinstance(nac, str):
+                if isinstance(fecha_nac, str):
                     from datetime import datetime
-                    nac = datetime.strptime(nac, '%Y-%m-%d').date()
-                edad = date.today().year - nac.year - ((date.today().month, date.today().day) < (nac.month, nac.day))
+                    fecha_nac = datetime.strptime(fecha_nac, '%Y-%m-%d').date()
+                edad = date.today().year - fecha_nac.year - ((date.today().month, date.today().day) < (fecha_nac.month, fecha_nac.day))
                 st.markdown(f"**Edad:** {edad} años")
+            else:
+                st.markdown(f"**Fecha Nacimiento:** -")
+                st.markdown(f"**Edad:** -")
+        
         with col2:
             st.markdown(f"**Teléfono:** {empleado.get('telefono', '-')}")
             st.markdown(f"**Correo:** {empleado.get('email_corporativo', '-')}")
             st.markdown(f"**Correo Personal:** {empleado.get('email_personal', '-')}")
     
+    # ============================================================
     # TAB 2: Laboral
+    # ============================================================
     with tabs[1]:
         st.markdown("### Información Laboral")
-        st.markdown(f"**Ingreso a la empresa:** {empleado.get('fecha_ingreso_empresa', '-')}")
-        if empleado.get('fecha_ingreso_empresa'):
+        
+        # Fecha de ingreso (manejo de nulos)
+        fecha_ingreso = empleado.get('fecha_ingreso_empresa')
+        if fecha_ingreso and str(fecha_ingreso) != 'NaT':
+            st.markdown(f"**Ingreso a la empresa:** {fecha_ingreso}")
+            # Calcular antigüedad
             from datetime import date
-            ing = empleado['fecha_ingreso_empresa']
-            if isinstance(ing, str):
+            if isinstance(fecha_ingreso, str):
                 from datetime import datetime
-                ing = datetime.strptime(ing, '%Y-%m-%d').date()
-            delta = date.today() - ing
+                fecha_ingreso = datetime.strptime(fecha_ingreso, '%Y-%m-%d').date()
+            delta = date.today() - fecha_ingreso
             años = delta.days // 365
             meses = (delta.days % 365) // 30
             st.markdown(f"**Antigüedad:** {años} años, {meses} meses")
+        else:
+            st.markdown(f"**Ingreso a la empresa:** -")
+            st.markdown(f"**Antigüedad:** -")
+        
         st.markdown(f"**Departamento:** {empleado.get('departamento', '-')}")
         st.markdown(f"**Supervisor:** {empleado.get('supervisor_nombre', '-')}")
     
-    # TAB 3-6: Próximamente
+    # ============================================================
+    # TAB 3: Contactos (Próximamente)
+    # ============================================================
     with tabs[2]:
         st.info("📞 Contactos de emergencia - Próximamente")
+    
+    # ============================================================
+    # TAB 4: Dependientes (Próximamente)
+    # ============================================================
     with tabs[3]:
         st.info("👨‍👩‍👧 Dependientes - Próximamente")
+    
+    # ============================================================
+    # TAB 5: Documentos (Próximamente)
+    # ============================================================
     with tabs[4]:
         st.info("📂 Documentos - Próximamente")
+    
+    # ============================================================
+    # TAB 6: Historial (Próximamente)
+    # ============================================================
     with tabs[5]:
         st.info("📈 Historial laboral - Próximamente")

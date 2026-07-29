@@ -89,6 +89,8 @@ def run(usuario):
 
 # modulos/hexagon_colombia/nexo_people.py
 
+# modulos/hexagon_colombia/nexo_people.py
+
 def mostrar_in_out():
     """
     Módulo In & Out: Lista de activos e inactivos.
@@ -102,12 +104,12 @@ def mostrar_in_out():
         st.info("No hay empleados registrados")
         return
     
-    # Usar estado_nombre para separar
+    # Separar activos e inactivos usando estado_nombre
     inactivos = [e for e in empleados if e.get('estado_nombre') == 'Inactivo']
     activos = [e for e in empleados if e.get('estado_nombre') == 'Activo']
     
     # ============================================================
-    # BOTÓN PARA DESCARGAR EXCEL (CORREGIDO)
+    # BOTÓN PARA DESCARGAR EXCEL
     # ============================================================
     col1, col2, col3 = st.columns([1, 1, 3])
     with col1:
@@ -118,18 +120,17 @@ def mostrar_in_out():
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     df.to_excel(writer, sheet_name='In_Out', index=False)
                     
-                    # Ajustar ancho de columnas automáticamente (versión robusta)
+                    # Ajustar ancho de columnas automáticamente
                     workbook = writer.book
                     worksheet = writer.sheets['In_Out']
                     
                     for i, col in enumerate(df.columns):
-                        # Calcular el largo máximo de la columna
-                        # Convertir todos los valores a string y manejar NaN
-                        series = df[col].astype(str).replace('nan', '')
+                        # Calcular longitud máxima de la columna
+                        series = df[col].astype(str)
+                        # Reemplazar 'nan' por cadena vacía para el cálculo
+                        series = series.replace('nan', '')
                         max_len = series.str.len().max() if not series.empty else 0
-                        # Comparar con el largo del encabezado
                         col_len = max(max_len, len(col)) + 2
-                        # Limitar a 50 caracteres para no hacer columnas muy anchas
                         worksheet.set_column(i, i, min(col_len, 50))
                 
                 st.download_button(
@@ -149,9 +150,11 @@ def mostrar_in_out():
                 with col1:
                     st.markdown(f"**{emp['nombre_completo']}**")
                 with col2:
-                    st.caption(f"📌 {emp.get('cargo_nombre', 'Sin cargo')}")
+                    cargo = emp.get('cargo_nombre', 'Sin cargo')
+                    st.caption(f"📌 {cargo}")
                 with col3:
-                    st.caption(f"📅 Salida: {emp.get('fecha_terminacion', '-')}")
+                    fecha_salida = emp.get('fecha_terminacion', '')
+                    st.caption(f"📅 Salida: {fecha_salida}")
                 with col4:
                     if st.button(f"Ver", key=f"ver_{emp['id_empleado']}"):
                         st.session_state['empleado_seleccionado'] = emp['id_empleado']
@@ -171,9 +174,11 @@ def mostrar_in_out():
                 with col1:
                     st.markdown(f"**{emp['nombre_completo']}**")
                 with col2:
-                    st.caption(f"📌 {emp.get('cargo_nombre', 'Sin cargo')}")
+                    cargo = emp.get('cargo_nombre', 'Sin cargo')
+                    st.caption(f"📌 {cargo}")
                 with col3:
-                    st.caption(f"📅 Ingreso: {emp.get('fecha_ingreso_empresa', '-')}")
+                    fecha_ingreso = emp.get('fecha_ingreso_empresa', '')
+                    st.caption(f"📅 Ingreso: {fecha_ingreso}")
                 with col4:
                     if st.button(f"Ver", key=f"ver_{emp['id_empleado']}"):
                         st.session_state['empleado_seleccionado'] = emp['id_empleado']
@@ -184,7 +189,6 @@ def mostrar_in_out():
             st.info("No hay empleados activos")
     
     st.info("👆 Haz clic en 'Ver' para abrir la ficha del empleado.")
-
 def mostrar_ficha_empleado(id_empleado):
     """
     Mostrar la ficha completa de un empleado.

@@ -14,10 +14,6 @@ from services.bigquery import ejecutar_query
 # ============================================================
 
 def obtener_empleado(id_empleado):
-    """
-    Obtener datos completos de un empleado por su ID.
-    Usa JOIN con historial_laboral para obtener cargo, proyecto, departamento y supervisor.
-    """
     query = """
     SELECT 
       e.id_empleado,
@@ -29,25 +25,21 @@ def obtener_empleado(id_empleado):
       e.email_corporativo,
       e.telefono,
       e.fecha_nacimiento,
-      e.foto_url AS foto,  -- 👈 CAMBIADO: e.foto → e.foto_url AS foto
+      e.foto_url AS foto,
       e.fecha_ingreso_empresa,
-      e.id_estado_empleado AS estado,
+      
+      -- Estado con nombre en lugar de ID
+      COALESCE(est.nombre, 'Desconocido') AS estado,  -- 👈 CAMBIADO
+      
       emp.nombre AS empresa,
-      
-      -- Cargo actual desde historial_laboral (usando JOIN)
       c.nombre AS cargo,
-      
-      -- Proyecto actual desde historial_laboral
       p.nombre AS proyecto,
-      
-      -- Departamento actual desde historial_laboral
       d.nombre AS departamento,
-      
-      -- Supervisor actual desde historial_laboral
       CONCAT(sup.nombres, ' ', sup.apellidos) AS supervisor_nombre
       
     FROM `nexo_people.empleados` e
     LEFT JOIN `nexo_people.empresas` emp ON e.id_empresa = emp.id_empresa
+    LEFT JOIN `nexo_people.catalogo_estados_empleado` est ON e.id_estado_empleado = est.id_estado_empleado  -- 👈 JOIN con catálogo
     LEFT JOIN `nexo_people.historial_laboral` h ON e.id_empleado = h.id_empleado AND h.fecha_fin IS NULL
     LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     LEFT JOIN `nexo_people.proyectos` p ON h.id_proyecto = p.id_proyecto
@@ -63,7 +55,6 @@ def obtener_empleado(id_empleado):
         return None
     
     return df.iloc[0].to_dict()
-
 
 def buscar_empleados(termino):
     """

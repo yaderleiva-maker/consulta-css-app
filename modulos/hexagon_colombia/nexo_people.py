@@ -83,6 +83,8 @@ def run(usuario):
     mostrar_in_out()
 
 
+# modulos/hexagon_colombia/nexo_people.py
+
 def mostrar_in_out():
     """
     Módulo In & Out: Lista de activos e inactivos.
@@ -90,16 +92,16 @@ def mostrar_in_out():
     st.markdown("### 📊 In & Out - Personal Activo / Inactivo")
     st.caption("Lista de empleados activos e inactivos. Ordenados de más antiguos a más recientes.")
     
-    # Obtener datos
     empleados = obtener_activos_inactivos()
     
     if not empleados:
         st.info("No hay empleados registrados")
         return
     
-    # Separar activos e inactivos
-    inactivos = [e for e in empleados if e['estado'] == 'INACTIVO']
-    activos = [e for e in empleados if e['estado'] == 'ACTIVO']
+    # Separar activos e inactivos (usando los nombres exactos del catálogo)
+    inactivos = [e for e in empleados if e['estado'] == 'Inactivo']
+    activos = [e for e in empleados if e['estado'] == 'Activo']
+    
     
     # ============================================================
     # BOTÓN PARA DESCARGAR EXCEL

@@ -24,7 +24,7 @@ def obtener_empleado(id_empleado):
       e.email_corporativo,
       e.telefono,
       e.fecha_nacimiento,
-      e.foto,
+      e.foto_url as foto,
       e.fecha_ingreso_empresa,
       e.id_estado_empleado AS estado,
       emp.nombre AS empresa,

@@ -8,7 +8,6 @@ from services.bigquery import ejecutar_query
 import streamlit as st
 import pandas as pd
 
-
 def obtener_empleado(id_empleado):
     """
     Obtener datos completos de un empleado por su ID.
@@ -100,10 +99,13 @@ def obtener_estadisticas_rapidas():
     return df.iloc[0].to_dict() if not df.empty else {}
 
 
+# services/empleados.py
+
+
 def obtener_activos_inactivos():
     """
     Obtener lista de empleados activos e inactivos.
-    Retorna: lista de diccionarios con id_empleado, nombre, estado, fechas, etc.
+    Maneja valores NULL correctamente.
     """
     query = """
     SELECT 
@@ -113,10 +115,9 @@ def obtener_activos_inactivos():
       e.id_estado_empleado AS estado_id,
       e.fecha_terminacion,
       e.fecha_ingreso_empresa,
-      (SELECT nombre FROM `nexo_people.catalogo_cargos` WHERE id_cargo = e.id_cargo) AS cargo_nombre,
-      (SELECT nombre FROM `nexo_people.empresas` WHERE id_empresa = e.id_empresa) AS empresa_nombre,
-      (SELECT nombre FROM `nexo_people.catalogo_estados_empleado` WHERE id_estado_empleado = e.id_estado_empleado) AS estado_nombre,
-      -- Prioridad: 0 = Inactivo primero, 1 = Activo después
+      COALESCE((SELECT nombre FROM `nexo_people.catalogo_cargos` WHERE id_cargo = e.id_cargo), 'Sin cargo') AS cargo_nombre,
+      COALESCE((SELECT nombre FROM `nexo_people.empresas` WHERE id_empresa = e.id_empresa), 'Sin empresa') AS empresa_nombre,
+      COALESCE((SELECT nombre FROM `nexo_people.catalogo_estados_empleado` WHERE id_estado_empleado = e.id_estado_empleado), 'Desconocido') AS estado_nombre,
       CASE 
         WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') THEN 0
         ELSE 1
@@ -132,15 +133,20 @@ def obtener_activos_inactivos():
     """
     
     df = ejecutar_query(query)
+    
+    # Manejar fechas nulas: convertir None a ''
+    if 'fecha_terminacion' in df.columns:
+        df['fecha_terminacion'] = df['fecha_terminacion'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '')
+    
+    if 'fecha_ingreso_empresa' in df.columns:
+        df['fecha_ingreso_empresa'] = df['fecha_ingreso_empresa'].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '')
+    
     return df.to_dict('records')
 
-
-# services/empleados.py
 
 def generar_excel_activos_inactivos():
     """
     Generar un DataFrame con activos e inactivos para descargar como Excel.
-    Incluye: Nombre, Cédula, Fecha Ingreso, Fecha Terminación, Estado, Motivo Salida.
     """
     query = """
     SELECT 
@@ -148,8 +154,8 @@ def generar_excel_activos_inactivos():
       e.cedula AS Cedula,
       e.fecha_ingreso_empresa AS Fecha_Ingreso,
       e.fecha_terminacion AS Fecha_Terminacion,
-      (SELECT nombre FROM `nexo_people.catalogo_estados_empleado` WHERE id_estado_empleado = e.id_estado_empleado) AS Estado,
-      (SELECT nombre FROM `nexo_people.catalogo_motivos_salida` WHERE id_motivo_salida = e.id_motivo_salida) AS Motivo_Salida
+      COALESCE((SELECT nombre FROM `nexo_people.catalogo_estados_empleado` WHERE id_estado_empleado = e.id_estado_empleado), 'Desconocido') AS Estado,
+      COALESCE((SELECT nombre FROM `nexo_people.catalogo_motivos_salida` WHERE id_motivo_salida = e.id_motivo_salida), '') AS Motivo_Salida
     FROM `nexo_people.empleados` e
     ORDER BY 
       CASE 
@@ -161,12 +167,12 @@ def generar_excel_activos_inactivos():
     
     df = ejecutar_query(query)
     
-    # Limpiar valores NaN para evitar problemas en Excel
-    df = df.fillna('')  # Reemplazar NaN con cadena vacía
-    
-    # Formatear fechas para que sean legibles
+    # Convertir fechas a string y manejar nulos
     for col in ['Fecha_Ingreso', 'Fecha_Terminacion']:
         if col in df.columns:
-            df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d') if not df[col].isnull().all() else ''
+            df[col] = df[col].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '')
+    
+    # Rellenar NaN con string vacío (seguridad extra)
+    df = df.fillna('')
     
     return df

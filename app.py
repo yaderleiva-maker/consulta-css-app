@@ -155,6 +155,9 @@ ROLES = {
      "hexagonclaudia@gmail.com": {
         "CONSULTAS": True
     },
+     "clautotini1224@gmail.com": {
+         "NEXO_PEOPLE": True
+    },
     # Agrega más usuarios aquí
 }
 

@@ -85,6 +85,8 @@ def run(usuario):
 
 # modulos/hexagon_colombia/nexo_people.py
 
+# modulos/hexagon_colombia/nexo_people.py
+
 def mostrar_in_out():
     """
     Módulo In & Out: Lista de activos e inactivos.
@@ -98,13 +100,12 @@ def mostrar_in_out():
         st.info("No hay empleados registrados")
         return
     
-    # Separar activos e inactivos (usando los nombres exactos del catálogo)
-    inactivos = [e for e in empleados if e['estado'] == 'Inactivo']
-    activos = [e for e in empleados if e['estado'] == 'Activo']
-    
+    # Usar estado_nombre para separar
+    inactivos = [e for e in empleados if e.get('estado_nombre') == 'Inactivo']
+    activos = [e for e in empleados if e.get('estado_nombre') == 'Activo']
     
     # ============================================================
-    # BOTÓN PARA DESCARGAR EXCEL
+    # BOTÓN PARA DESCARGAR EXCEL (mejorado)
     # ============================================================
     col1, col2, col3 = st.columns([1, 1, 3])
     with col1:
@@ -114,6 +115,13 @@ def mostrar_in_out():
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     df.to_excel(writer, sheet_name='In_Out', index=False)
+                    # Ajustar ancho de columnas automáticamente
+                    workbook = writer.book
+                    worksheet = writer.sheets['In_Out']
+                    for i, col in enumerate(df.columns):
+                        max_len = max(df[col].astype(str).map(len).max(), len(col)) + 2
+                        worksheet.set_column(i, i, max_len)
+                
                 st.download_button(
                     label="✅ Descargar Excel",
                     data=output.getvalue(),
@@ -135,7 +143,6 @@ def mostrar_in_out():
                 with col3:
                     st.caption(f"📅 Salida: {emp.get('fecha_terminacion', '-')}")
                 with col4:
-                    # Botón para ver ficha desde In & Out
                     if st.button(f"Ver", key=f"ver_{emp['id_empleado']}"):
                         st.session_state['empleado_seleccionado'] = emp['id_empleado']
                         st.session_state['pagina_actual'] = 'ficha'
@@ -167,7 +174,6 @@ def mostrar_in_out():
             st.info("No hay empleados activos")
     
     st.info("👆 Haz clic en 'Ver' para abrir la ficha del empleado.")
-
 
 def mostrar_ficha_empleado(id_empleado):
     """

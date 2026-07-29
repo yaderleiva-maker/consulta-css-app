@@ -135,6 +135,8 @@ def obtener_activos_inactivos():
     return df.to_dict('records')
 
 
+# services/empleados.py
+
 def generar_excel_activos_inactivos():
     """
     Generar un DataFrame con activos e inactivos para descargar como Excel.
@@ -158,4 +160,13 @@ def generar_excel_activos_inactivos():
     """
     
     df = ejecutar_query(query)
+    
+    # Limpiar valores NaN para evitar problemas en Excel
+    df = df.fillna('')  # Reemplazar NaN con cadena vacía
+    
+    # Formatear fechas para que sean legibles
+    for col in ['Fecha_Ingreso', 'Fecha_Terminacion']:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col]).dt.strftime('%Y-%m-%d') if not df[col].isnull().all() else ''
+    
     return df

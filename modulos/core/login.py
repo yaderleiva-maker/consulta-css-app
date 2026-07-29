@@ -66,7 +66,6 @@ def login():
                     "arismaytte@gmail.com",
                     "sgonzalez.hex@gmail.com",
                     "yesturainhexagon@gmail.com",
-                    "yfalconhexagon@gmail.com",
                     "mariachacon@hopsa.com",
                     "gabrielamorales@hopsa.com",
                     "contenbeta@gmail.com",

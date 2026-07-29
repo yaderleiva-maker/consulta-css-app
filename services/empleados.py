@@ -8,10 +8,11 @@ import pandas as pd
 from services.bigquery import ejecutar_query
 
 
+# services/empleados.py (corrección en obtener_empleado)
+
 def obtener_empleado(id_empleado):
     """
     Obtener datos completos de un empleado por su ID.
-    Usa la vista vw_historial_laboral_actual.
     """
     query = """
     SELECT 
@@ -24,19 +25,16 @@ def obtener_empleado(id_empleado):
       e.email_corporativo,
       e.telefono,
       e.fecha_nacimiento,
-      e.foto_url as foto,
+      e.foto_url AS foto,  -- 👈 CAMBIADO: e.foto → e.foto_url (alias 'foto' para mantener compatibilidad)
       e.fecha_ingreso_empresa,
       e.id_estado_empleado AS estado,
       emp.nombre AS empresa,
       
       -- Datos del historial actual (desde la vista)
-      h_actual.id_historial,
       c.nombre AS cargo,
       p.nombre AS proyecto,
       d.nombre AS departamento,
-      CONCAT(sup.nombres, ' ', sup.apellidos) AS supervisor_nombre,
-      h_actual.fecha_inicio AS fecha_inicio_puesto,
-      h_actual.fecha_fin AS fecha_fin_puesto
+      CONCAT(sup.nombres, ' ', sup.apellidos) AS supervisor_nombre
       
     FROM `nexo_people.empleados` e
     LEFT JOIN `nexo_people.empresas` emp ON e.id_empresa = emp.id_empresa

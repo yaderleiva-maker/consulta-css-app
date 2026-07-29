@@ -67,13 +67,18 @@ MODULOS = {
             }
         }
     },
-    "🏢 Hexagon Colombia": {  # 👈 MODIFICAR ESTE BLOQUE
+"🏢 Hexagon Colombia": {
         "icono": "🏢",
         "tipo": "categoria",
         "modulos": {
-            "👥 NEXO People": {
+            "📊 In & Out": {  # 👈 NUEVO
                 "tipo": "modulo",
-                "funcion": lambda: nexo_people.run(usuario),
+                "funcion": lambda: nexo_people.run_in_out(usuario),
+                "permiso": "NEXO_PEOPLE"
+            },
+            "👤 Ficha de Empleados": {  # 👈 NUEVO
+                "tipo": "modulo",
+                "funcion": lambda: nexo_people.run_ficha(usuario),
                 "permiso": "NEXO_PEOPLE"
             }
         }

@@ -1,23 +1,24 @@
 # services/bigquery.py
 """
 Conexión y utilidades para BigQuery.
-NO depende de config.py. Usa variables de entorno directamente.
+Usa st.secrets para autenticación (compatible con Streamlit Cloud).
 """
 
-# services/bigquery.py
 import os
+import json
 import streamlit as st
 import pandas as pd
 from google.cloud import bigquery
+from google.oauth2 import service_account
 from google.api_core.exceptions import GoogleAPIError
 
 # ============================================================
-# CONFIGURACIÓN (desde variables de entorno)
+# CONFIGURACIÓN
 # ============================================================
 
-PROJECT_ID = os.getenv("PROJECT_ID", "tu-proyecto-id")
+# Leer project_id desde secrets o variable de entorno
+PROJECT_ID = st.secrets.get("gcp", {}).get("project_id", os.getenv("PROJECT_ID", "proyecto-css-panama"))
 DATASET = "nexo_people"
-CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
 # ============================================================
 # CLIENTE DE BIGQUERY (cacheado)
@@ -26,19 +27,41 @@ CREDENTIALS_PATH = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 @st.cache_resource
 def get_client():
     """
-    Obtener cliente de BigQuery (cacheado para reutilizar).
-    Usa las credenciales de la variable de entorno.
+    Obtener cliente de BigQuery usando credenciales de st.secrets.
     """
     try:
-        # Si hay credenciales definidas, usarlas
-        if CREDENTIALS_PATH:
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = CREDENTIALS_PATH
+        # ---------- MODO 1: Usar st.secrets (Streamlit Cloud) ----------
+        if "gcp_service_account" in st.secrets:
+            # Las credenciales están en secrets.toml (formato TOML)
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            
+            # Convertir claves a minúsculas si es necesario
+            if "private_key_id" in creds_dict:
+                # Ya está en el formato correcto
+                pass
+            
+            # Crear credenciales desde el dict
+            credentials = service_account.Credentials.from_service_account_info(
+                creds_dict
+            )
+            
+            return bigquery.Client(
+                project=PROJECT_ID,
+                credentials=credentials
+            )
         
-        return bigquery.Client(project=PROJECT_ID)
+        # ---------- MODO 2: Usar variable de entorno (local) ----------
+        elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+            return bigquery.Client(project=PROJECT_ID)
+        
+        # ---------- MODO 3: Fallback - credenciales por defecto ----------
+        else:
+            return bigquery.Client(project=PROJECT_ID)
     
     except Exception as e:
         st.error(f"❌ Error conectando a BigQuery: {e}")
-        st.stop()  # Detiene la ejecución si no hay conexión
+        st.error(f"📋 Detalles: Asegúrate de tener 'gcp_service_account' en secrets.toml")
+        st.stop()
 
 
 # ============================================================
@@ -48,15 +71,6 @@ def get_client():
 def ejecutar_query(query, params=None):
     """
     Ejecutar una consulta en BigQuery y devolver un DataFrame.
-    
-    Args:
-        query (str): Consulta SQL
-        params (list): Lista de parámetros para la consulta
-                      Cada parámetro es un dict con: name, type, value
-                      Ejemplo: [{"name": "id_empleado", "type": "STRING", "value": "EMP001"}]
-    
-    Returns:
-        pd.DataFrame: Resultado de la consulta
     """
     client = get_client()
     
@@ -82,19 +96,13 @@ def ejecutar_query(query, params=None):
         return pd.DataFrame()
     
     except Exception as e:
-        st.error(f"❌ Error inesperado: {e}")
+        st.error(f"❌ Error inesperado en BigQuery: {e}")
         return pd.DataFrame()
 
 
 def leer_sql(nombre_archivo):
     """
     Leer un archivo SQL desde la carpeta sql/
-    
-    Args:
-        nombre_archivo (str): Nombre del archivo sin extensión .sql
-    
-    Returns:
-        str: Contenido del archivo SQL, o cadena vacía si no existe.
     """
     import os
     path = f"sql/{nombre_archivo}.sql"
@@ -102,34 +110,22 @@ def leer_sql(nombre_archivo):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        st.warning(f"⚠️ Archivo SQL no encontrado: {nombre_archivo}.sql")
+        # Si no existe, retornamos cadena vacía (no warning para no saturar)
         return ""
 
 
-def obtener_dataset():
-    """Devuelve el nombre del dataset para construir consultas."""
-    return DATASET
-
-
-def obtener_tabla_completa(nombre_tabla):
-    """Devuelve el nombre completo de una tabla (dataset.tabla)."""
-    return f"`{PROJECT_ID}.{DATASET}.{nombre_tabla}`"
-
-
-# ============================================================
-# FUNCIÓN DE PRUEBA (para verificar la conexión)
-# ============================================================
-
 def probar_conexion():
-    """Prueba rápida para verificar que la conexión a BigQuery funciona."""
+    """
+    Prueba rápida para verificar la conexión a BigQuery.
+    """
     try:
         query = "SELECT 1 AS test"
         df = ejecutar_query(query)
-        if not df.empty:
+        if not df.empty and df.iloc[0]['test'] == 1:
             st.success("✅ Conexión a BigQuery exitosa")
             return True
         else:
-            st.error("❌ La conexión a BigQuery devolvió un resultado vacío")
+            st.error("❌ La conexión a BigQuery devolvió un resultado inesperado")
             return False
     except Exception as e:
         st.error(f"❌ Error en la prueba de conexión: {e}")

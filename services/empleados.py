@@ -57,10 +57,6 @@ def obtener_empleado(id_empleado):
     return df.iloc[0].to_dict()
 
 def buscar_empleados(termino):
-    """
-    Buscar empleados por nombre o cédula.
-    Incluye el cargo actual desde historial_laboral usando JOIN.
-    """
     if not termino or len(termino) < 2:
         return []
     
@@ -69,10 +65,11 @@ def buscar_empleados(termino):
       e.id_empleado,
       CONCAT(e.nombres, ' ', e.apellidos) AS nombre_completo,
       e.cedula,
-      e.id_estado_empleado AS estado,
-      e.foto_url AS foto,  -- 👈 CAMBIADO: e.foto → e.foto_url AS foto
-      COALESCE(c.nombre, 'Sin cargo') AS cargo  -- 👈 Usar COALESCE para evitar NULL
+      COALESCE(est.nombre, 'Desconocido') AS estado,  -- 👈 Nombre del estado
+      e.foto_url AS foto,
+      COALESCE(c.nombre, 'Sin cargo') AS cargo
     FROM `nexo_people.empleados` e
+    LEFT JOIN `nexo_people.catalogo_estados_empleado` est ON e.id_estado_empleado = est.id_estado_empleado
     LEFT JOIN `nexo_people.historial_laboral` h ON e.id_empleado = h.id_empleado AND h.fecha_fin IS NULL
     LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     WHERE 
@@ -84,11 +81,6 @@ def buscar_empleados(termino):
     
     params = [{"name": "termino", "type": "STRING", "value": f"%{termino}%"}]
     df = ejecutar_query(query, params)
-    
-    # Ya no necesitamos fillna porque usamos COALESCE en la consulta
-    # Pero por seguridad, verificamos que la columna exista
-    if 'cargo' not in df.columns:
-        df['cargo'] = 'Sin cargo'
     
     return df.to_dict('records')
 

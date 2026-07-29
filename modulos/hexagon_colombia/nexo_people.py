@@ -87,6 +87,8 @@ def run(usuario):
 
 # modulos/hexagon_colombia/nexo_people.py
 
+# modulos/hexagon_colombia/nexo_people.py
+
 def mostrar_in_out():
     """
     Módulo In & Out: Lista de activos e inactivos.
@@ -105,7 +107,7 @@ def mostrar_in_out():
     activos = [e for e in empleados if e.get('estado_nombre') == 'Activo']
     
     # ============================================================
-    # BOTÓN PARA DESCARGAR EXCEL (mejorado)
+    # BOTÓN PARA DESCARGAR EXCEL (CORREGIDO)
     # ============================================================
     col1, col2, col3 = st.columns([1, 1, 3])
     with col1:
@@ -115,12 +117,20 @@ def mostrar_in_out():
                 output = BytesIO()
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                     df.to_excel(writer, sheet_name='In_Out', index=False)
-                    # Ajustar ancho de columnas automáticamente
+                    
+                    # Ajustar ancho de columnas automáticamente (versión robusta)
                     workbook = writer.book
                     worksheet = writer.sheets['In_Out']
+                    
                     for i, col in enumerate(df.columns):
-                        max_len = max(df[col].astype(str).map(len).max(), len(col)) + 2
-                        worksheet.set_column(i, i, max_len)
+                        # Calcular el largo máximo de la columna
+                        # Convertir todos los valores a string y manejar NaN
+                        series = df[col].astype(str).replace('nan', '')
+                        max_len = series.str.len().max() if not series.empty else 0
+                        # Comparar con el largo del encabezado
+                        col_len = max(max_len, len(col)) + 2
+                        # Limitar a 50 caracteres para no hacer columnas muy anchas
+                        worksheet.set_column(i, i, min(col_len, 50))
                 
                 st.download_button(
                     label="✅ Descargar Excel",

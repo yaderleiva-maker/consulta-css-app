@@ -127,3 +127,123 @@ def obtener_imagen_desde_ruta(ruta_relativa):
         return None
     
     return descargar_archivo(file_info['id'])
+
+# services/archivos.py (agregar esta función temporal)
+
+def listar_archivos():
+    """
+    FUNCIÓN TEMPORAL DE PRUEBA: Listar archivos en Drive.
+    """
+    drive_service = get_drive_client()
+    if drive_service is None:
+        st.error("❌ No se pudo conectar a Drive")
+        return
+    
+    try:
+        results = drive_service.files().list(
+            pageSize=20,
+            fields="files(id, name, parents)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        
+        files = results.get('files', [])
+        
+        if not files:
+            st.warning("⚠️ No se encontraron archivos (puede ser problema de permisos)")
+        else:
+            st.success(f"✅ Encontrados {len(files)} archivos")
+            for file in files:
+                st.write(f"📄 {file['name']} (ID: {file['id']})")
+        
+        return files
+    
+    except Exception as e:
+        st.error(f"❌ Error listando archivos: {e}")
+        return []
+
+# services/archivos.py
+
+def listar_carpetas(parent_id=None, nivel=0):
+    """
+    Listar carpetas dentro de Drive para ver la estructura.
+    """
+    drive_service = get_drive_client()
+    if drive_service is None:
+        return
+    
+    query = f"'{DRIVE_ROOT_FOLDER_ID}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    
+    try:
+        results = drive_service.files().list(
+            q=query,
+            fields="files(id, name, parents)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        
+        folders = results.get('files', [])
+        
+        st.write(f"📁 **Carpetas en la raíz ({DRIVE_ROOT_FOLDER_ID})**")
+        for folder in folders:
+            st.write(f"  📁 {folder['name']} (ID: {folder['id']})")
+        
+        return folders
+    
+    except Exception as e:
+        st.error(f"❌ Error listando carpetas: {e}")
+        return []
+
+# services/archivos.py
+
+def buscar_archivo_por_nombre_recursivo(nombre_archivo, folder_id=None):
+    """
+    Buscar un archivo recursivamente en toda la carpeta raíz.
+    """
+    drive_service = get_drive_client()
+    if drive_service is None:
+        return None
+    
+    # Si no se especifica folder_id, usar la raíz
+    if folder_id is None:
+        folder_id = DRIVE_ROOT_FOLDER_ID
+    
+    # Buscar archivo en la carpeta actual
+    query = f"name = '{nombre_archivo}' and '{folder_id}' in parents and trashed = false"
+    
+    try:
+        results = drive_service.files().list(
+            q=query,
+            fields="files(id, name, parents, mimeType)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        
+        files = results.get('files', [])
+        
+        if files:
+            return files[0]
+        
+        # Si no se encuentra, buscar en subcarpetas
+        # 1. Obtener todas las subcarpetas
+        query_folders = f"'{folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        folders_result = drive_service.files().list(
+            q=query_folders,
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+        
+        subfolders = folders_result.get('files', [])
+        
+        # 2. Buscar recursivamente en cada subcarpeta
+        for subfolder in subfolders:
+            result = buscar_archivo_por_nombre_recursivo(nombre_archivo, subfolder['id'])
+            if result:
+                return result
+        
+        return None
+    
+    except Exception as e:
+        st.error(f"❌ Error en búsqueda recursiva: {e}")
+        return None

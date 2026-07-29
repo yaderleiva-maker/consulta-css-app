@@ -81,6 +81,8 @@ def buscar_empleados(termino):
 
 # services/empleados.py
 
+# services/empleados.py
+
 def obtener_estadisticas_rapidas():
     """
     Estadísticas rápidas para el dashboard.
@@ -101,40 +103,31 @@ def obtener_estadisticas_rapidas():
 def obtener_activos_inactivos():
     """
     Obtener lista de empleados activos e inactivos.
+    Retorna: lista de diccionarios con id_empleado, nombre, estado, fechas, etc.
     """
     query = """
     SELECT 
-      id_empleado,
-      CONCAT(nombres, ' ', apellidos) AS nombre_completo,
-      cedula,
-      id_estado_empleado AS estado,
-      fecha_terminacion,
-      fecha_ingreso_empresa,
-      cargo_nombre,
-      empresa_nombre
-    FROM (
-      SELECT 
-        e.id_empleado,
-        e.nombres,
-        e.apellidos,
-        e.cedula,
-        e.id_estado_empleado,
-        e.fecha_terminacion,
-        e.fecha_ingreso_empresa,
-        (SELECT nombre FROM `nexo_people.catalogo_cargos` WHERE id_cargo = e.id_cargo) AS cargo_nombre,
-        (SELECT nombre FROM `nexo_people.empresas` WHERE id_empresa = e.id_empresa) AS empresa_nombre,
-        CASE 
-          WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') THEN 0
-          ELSE 1
-        END AS orden_estado
-      FROM `nexo_people.empleados` e
-    )
+      e.id_empleado,
+      CONCAT(e.nombres, ' ', e.apellidos) AS nombre_completo,
+      e.cedula,
+      e.id_estado_empleado AS estado_id,
+      e.fecha_terminacion,
+      e.fecha_ingreso_empresa,
+      (SELECT nombre FROM `nexo_people.catalogo_cargos` WHERE id_cargo = e.id_cargo) AS cargo_nombre,
+      (SELECT nombre FROM `nexo_people.empresas` WHERE id_empresa = e.id_empresa) AS empresa_nombre,
+      (SELECT nombre FROM `nexo_people.catalogo_estados_empleado` WHERE id_estado_empleado = e.id_estado_empleado) AS estado_nombre,
+      -- Prioridad: 0 = Inactivo primero, 1 = Activo después
+      CASE 
+        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') THEN 0
+        ELSE 1
+      END AS orden_estado
+    FROM `nexo_people.empleados` e
     ORDER BY 
       orden_estado ASC,
       CASE 
-        WHEN id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') 
-        THEN fecha_terminacion 
-        ELSE fecha_ingreso_empresa 
+        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') 
+        THEN e.fecha_terminacion 
+        ELSE e.fecha_ingreso_empresa 
       END ASC
     """
     
@@ -145,22 +138,23 @@ def obtener_activos_inactivos():
 def generar_excel_activos_inactivos():
     """
     Generar un DataFrame con activos e inactivos para descargar como Excel.
+    Incluye: Nombre, Cédula, Fecha Ingreso, Fecha Terminación, Estado, Motivo Salida.
     """
     query = """
     SELECT 
       CONCAT(e.nombres, ' ', e.apellidos) AS Nombre_Completo,
       e.cedula AS Cedula,
-      (SELECT nombre FROM `nexo_people.catalogo_cargos` WHERE id_cargo = e.id_cargo) AS Cargo,
-      (SELECT nombre FROM `nexo_people.empresas` WHERE id_empresa = e.id_empresa) AS Empresa,
       e.fecha_ingreso_empresa AS Fecha_Ingreso,
       e.fecha_terminacion AS Fecha_Terminacion,
-      CASE 
-        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Activo') THEN 'Activo'
-        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') THEN 'Inactivo'
-        ELSE 'Desconocido'
-      END AS Estado
+      (SELECT nombre FROM `nexo_people.catalogo_estados_empleado` WHERE id_estado_empleado = e.id_estado_empleado) AS Estado,
+      (SELECT nombre FROM `nexo_people.catalogo_motivos_salida` WHERE id_motivo_salida = e.id_motivo_salida) AS Motivo_Salida
     FROM `nexo_people.empleados` e
-    ORDER BY Estado DESC, Fecha_Terminacion ASC NULLS LAST
+    ORDER BY 
+      CASE 
+        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') THEN 0
+        ELSE 1
+      END ASC,
+      e.fecha_terminacion ASC NULLS LAST
     """
     
     df = ejecutar_query(query)

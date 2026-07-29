@@ -297,3 +297,20 @@ def mostrar_ficha_empleado(id_empleado):
     # ============================================================
     with tabs[5]:
         st.info("📈 Historial laboral - Próximamente")
+
+
+# modulos/hexagon_colombia/nexo_people.py (agregar al inicio de run_ficha)
+
+def run_ficha(usuario):
+    st.markdown("## 👤 Ficha de Empleados")
+    st.caption("Busca un colaborador para ver su información completa.")
+    
+    # ============================================================
+    # BOTÓN DE PRUEBA (TEMPORAL)
+    # ============================================================
+    if st.button("🧪 Probar conexión a Drive"):
+        from services.archivos import listar_archivos
+        with st.expander("📂 Resultado de la prueba", expanded=True):
+            listar_archivos()
+    
+    # ... (resto del código)

@@ -7,7 +7,7 @@ from modulos.hexagon_panama.hopsa import control_almuerzos
 from modulos.crm import carga_documentos
 from modulos.inventarios import inventario
 from modulos.farmazone import carga_reportes
-from services.bigquery import probar_conexion, ejecutar_query
+from modulos.hexagon_colombia import nexo_people
 
 # =====================
 # CONFIGURACIÓN
@@ -67,10 +67,16 @@ MODULOS = {
             }
         }
     },
-    "🏢 Hexagon Colombia": {
+    "🏢 Hexagon Colombia": {  # 👈 MODIFICAR ESTE BLOQUE
         "icono": "🏢",
         "tipo": "categoria",
-        "modulos": {}
+        "modulos": {
+            "👥 NEXO People": {
+                "tipo": "modulo",
+                "funcion": lambda: nexo_people.run(usuario),
+                "permiso": "NEXO_PEOPLE"
+            }
+        }
     },
     "💊 Farmazone": {
         "icono": "💊",

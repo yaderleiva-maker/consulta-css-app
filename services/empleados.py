@@ -86,11 +86,10 @@ def obtener_estadisticas_rapidas():
     query = """
     SELECT 
       COUNT(*) AS total_empleados,
-      COUNTIF(id_estado_empleado = 'ACTIVO') AS activos,
-      COUNTIF(id_estado_empleado = 'INACTIVO') AS inactivos,
-      COUNTIF(id_estado_empleado = 'VACACIONES') AS vacaciones,
-      COUNTIF(id_estado_empleado = 'LICENCIA') AS licencia
-    FROM `nexo_people.empleados`
+      COUNTIF(e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'ACTIVO')) AS activos,
+      COUNTIF(e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'INACTIVO')) AS inactivos,
+      COUNTIF(e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'VACACIONES')) AS vacaciones
+    FROM `nexo_people.empleados` e
     """
     
     df = ejecutar_query(query)

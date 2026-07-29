@@ -124,7 +124,7 @@ def obtener_activos_inactivos():
         (SELECT nombre FROM `nexo_people.catalogo_cargos` WHERE id_cargo = e.id_cargo) AS cargo_nombre,
         (SELECT nombre FROM `nexo_people.empresas` WHERE id_empresa = e.id_empresa) AS empresa_nombre,
         CASE 
-          WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'INACTIVO') THEN 0
+          WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') THEN 0
           ELSE 1
         END AS orden_estado
       FROM `nexo_people.empleados` e
@@ -132,7 +132,7 @@ def obtener_activos_inactivos():
     ORDER BY 
       orden_estado ASC,  -- Inactivos primero
       CASE 
-        WHEN id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'INACTIVO') 
+        WHEN id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') 
         THEN fecha_terminacion 
         ELSE fecha_ingreso_empresa 
       END ASC  -- Los más antiguos primero

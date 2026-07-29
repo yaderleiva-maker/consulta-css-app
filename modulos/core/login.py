@@ -74,7 +74,8 @@ def login():
                     "condadodelreyfarmazone@gmail.com",
                     "tmksolutionspty@gmail.com",
                     "nalvaradohexagon@gmail.com",
-                    "hexagonclaudia@gmail.com"
+                    "hexagonclaudia@gmail.com",
+                    "clautotini1224@gmail.com"
                 ]
 
                 if email in usuarios_permitidos:

@@ -104,7 +104,9 @@ ROLES = {
         "HOPSA": True,
         "CONTROL_ALMUERZOS": True,
         "INVENTARIO": True,
-        "CARGA_REPORTES": True
+        "CARGA_REPORTES": True,
+        "probar_conexion": True, 
+        "ejecutar_query": True
     },
     "mariachacon@hopsa.com": {
         "HOPSA": True,

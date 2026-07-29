@@ -1,18 +1,22 @@
 # services/empleados.py
 """
 Servicio de Empleados
-Todas las consultas usan la vista vw_historial_laboral_actual para obtener el cargo, proyecto, etc.
+Todas las consultas relacionadas con la tabla empleados.
+El cargo, proyecto, departamento y supervisor se obtienen del historial laboral actual usando JOINS.
 """
 
 import pandas as pd
 from services.bigquery import ejecutar_query
 
 
-# services/empleados.py (corrección en obtener_empleado)
+# ============================================================
+# CONSULTAS PRINCIPALES
+# ============================================================
 
 def obtener_empleado(id_empleado):
     """
     Obtener datos completos de un empleado por su ID.
+    Usa JOIN con historial_laboral para obtener cargo, proyecto, departamento y supervisor.
     """
     query = """
     SELECT 
@@ -25,24 +29,30 @@ def obtener_empleado(id_empleado):
       e.email_corporativo,
       e.telefono,
       e.fecha_nacimiento,
-      e.foto_url AS foto,  -- 👈 CAMBIADO: e.foto → e.foto_url (alias 'foto' para mantener compatibilidad)
+      e.foto_url AS foto,  -- 👈 CAMBIADO: e.foto → e.foto_url AS foto
       e.fecha_ingreso_empresa,
       e.id_estado_empleado AS estado,
       emp.nombre AS empresa,
       
-      -- Datos del historial actual (desde la vista)
+      -- Cargo actual desde historial_laboral (usando JOIN)
       c.nombre AS cargo,
+      
+      -- Proyecto actual desde historial_laboral
       p.nombre AS proyecto,
+      
+      -- Departamento actual desde historial_laboral
       d.nombre AS departamento,
+      
+      -- Supervisor actual desde historial_laboral
       CONCAT(sup.nombres, ' ', sup.apellidos) AS supervisor_nombre
       
     FROM `nexo_people.empleados` e
     LEFT JOIN `nexo_people.empresas` emp ON e.id_empresa = emp.id_empresa
-    LEFT JOIN `nexo_people.vw_historial_laboral_actual` h_actual ON e.id_empleado = h_actual.id_empleado
-    LEFT JOIN `nexo_people.catalogo_cargos` c ON h_actual.id_cargo = c.id_cargo
-    LEFT JOIN `nexo_people.proyectos` p ON h_actual.id_proyecto = p.id_proyecto
-    LEFT JOIN `nexo_people.catalogo_departamentos_empresa` d ON h_actual.id_departamento = d.id_departamento
-    LEFT JOIN `nexo_people.empleados` sup ON h_actual.id_supervisor = sup.id_empleado
+    LEFT JOIN `nexo_people.historial_laboral` h ON e.id_empleado = h.id_empleado AND h.fecha_fin IS NULL
+    LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
+    LEFT JOIN `nexo_people.proyectos` p ON h.id_proyecto = p.id_proyecto
+    LEFT JOIN `nexo_people.catalogo_departamentos_empresa` d ON h.id_departamento = d.id_departamento
+    LEFT JOIN `nexo_people.empleados` sup ON h.id_supervisor = sup.id_empleado
     WHERE e.id_empleado = @id_empleado
     """
     
@@ -58,7 +68,7 @@ def obtener_empleado(id_empleado):
 def buscar_empleados(termino):
     """
     Buscar empleados por nombre o cédula.
-    Usa la vista vw_historial_laboral_actual.
+    Incluye el cargo actual desde historial_laboral usando JOIN.
     """
     if not termino or len(termino) < 2:
         return []
@@ -69,11 +79,11 @@ def buscar_empleados(termino):
       CONCAT(e.nombres, ' ', e.apellidos) AS nombre_completo,
       e.cedula,
       e.id_estado_empleado AS estado,
-      e.foto,
-      COALESCE(c.nombre, 'Sin cargo') AS cargo
+      e.foto_url AS foto,  -- 👈 CAMBIADO: e.foto → e.foto_url AS foto
+      COALESCE(c.nombre, 'Sin cargo') AS cargo  -- 👈 Usar COALESCE para evitar NULL
     FROM `nexo_people.empleados` e
-    LEFT JOIN `nexo_people.vw_historial_laboral_actual` h_actual ON e.id_empleado = h_actual.id_empleado
-    LEFT JOIN `nexo_people.catalogo_cargos` c ON h_actual.id_cargo = c.id_cargo
+    LEFT JOIN `nexo_people.historial_laboral` h ON e.id_empleado = h.id_empleado AND h.fecha_fin IS NULL
+    LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     WHERE 
       LOWER(CONCAT(e.nombres, ' ', e.apellidos)) LIKE LOWER(@termino)
       OR LOWER(e.cedula) LIKE LOWER(@termino)
@@ -84,8 +94,10 @@ def buscar_empleados(termino):
     params = [{"name": "termino", "type": "STRING", "value": f"%{termino}%"}]
     df = ejecutar_query(query, params)
     
-    # Manejar valores nulos
-    df['cargo'] = df['cargo'].fillna('Sin cargo')
+    # Ya no necesitamos fillna porque usamos COALESCE en la consulta
+    # Pero por seguridad, verificamos que la columna exista
+    if 'cargo' not in df.columns:
+        df['cargo'] = 'Sin cargo'
     
     return df.to_dict('records')
 
@@ -110,7 +122,7 @@ def obtener_estadisticas_rapidas():
 def obtener_activos_inactivos():
     """
     Obtener lista de empleados activos e inactivos.
-    Usa la vista vw_historial_laboral_actual.
+    El cargo se obtiene desde historial_laboral usando JOIN.
     """
     query = """
     SELECT 
@@ -121,7 +133,7 @@ def obtener_activos_inactivos():
       e.fecha_terminacion,
       e.fecha_ingreso_empresa,
       
-      -- Cargo actual desde la vista
+      -- Cargo actual desde historial_laboral
       COALESCE(c.nombre, 'Sin cargo') AS cargo_nombre,
       
       COALESCE(emp.nombre, 'Sin empresa') AS empresa_nombre,
@@ -132,8 +144,8 @@ def obtener_activos_inactivos():
         ELSE 1
       END AS orden_estado
     FROM `nexo_people.empleados` e
-    LEFT JOIN `nexo_people.vw_historial_laboral_actual` h_actual ON e.id_empleado = h_actual.id_empleado
-    LEFT JOIN `nexo_people.catalogo_cargos` c ON h_actual.id_cargo = c.id_cargo
+    LEFT JOIN `nexo_people.historial_laboral` h ON e.id_empleado = h.id_empleado AND h.fecha_fin IS NULL
+    LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     LEFT JOIN `nexo_people.empresas` emp ON e.id_empresa = emp.id_empresa
     LEFT JOIN `nexo_people.catalogo_estados_empleado` est ON e.id_estado_empleado = est.id_estado_empleado
     ORDER BY 
@@ -168,14 +180,14 @@ def generar_excel_activos_inactivos():
       e.fecha_ingreso_empresa AS Fecha_Ingreso,
       e.fecha_terminacion AS Fecha_Terminacion,
       
-      -- Cargo actual desde la vista
+      -- Cargo actual desde historial_laboral
       COALESCE(c.nombre, 'Sin cargo') AS Cargo,
       
       COALESCE(est.nombre, 'Desconocido') AS Estado,
       COALESCE(ms.nombre, '') AS Motivo_Salida
     FROM `nexo_people.empleados` e
-    LEFT JOIN `nexo_people.vw_historial_laboral_actual` h_actual ON e.id_empleado = h_actual.id_empleado
-    LEFT JOIN `nexo_people.catalogo_cargos` c ON h_actual.id_cargo = c.id_cargo
+    LEFT JOIN `nexo_people.historial_laboral` h ON e.id_empleado = h.id_empleado AND h.fecha_fin IS NULL
+    LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     LEFT JOIN `nexo_people.catalogo_estados_empleado` est ON e.id_estado_empleado = est.id_estado_empleado
     LEFT JOIN `nexo_people.catalogo_motivos_salida` ms ON e.id_motivo_salida = ms.id_motivo_salida
     ORDER BY 
@@ -193,7 +205,9 @@ def generar_excel_activos_inactivos():
         if col in df.columns:
             df[col] = df[col].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '')
     
+    # Rellenar NaN con string vacío
     df = df.fillna('')
+    
     return df
 
 
@@ -207,15 +221,20 @@ def obtener_empleados_por_supervisor(id_supervisor):
       CONCAT(e.nombres, ' ', e.apellidos) AS nombre_completo,
       e.cedula,
       e.id_estado_empleado AS estado,
-      e.foto,
+      e.foto_url AS foto,  -- 👈 CAMBIADO: e.foto → e.foto_url AS foto
       COALESCE(c.nombre, 'Sin cargo') AS cargo
     FROM `nexo_people.empleados` e
-    LEFT JOIN `nexo_people.vw_historial_laboral_actual` h_actual ON e.id_empleado = h_actual.id_empleado
-    LEFT JOIN `nexo_people.catalogo_cargos` c ON h_actual.id_cargo = c.id_cargo
+    LEFT JOIN `nexo_people.historial_laboral` h ON e.id_empleado = h.id_empleado AND h.fecha_fin IS NULL
+    LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     WHERE e.id_supervisor = @id_supervisor
     ORDER BY e.nombres
     """
     
     params = [{"name": "id_supervisor", "type": "STRING", "value": id_supervisor}]
     df = ejecutar_query(query, params)
+    
+    # Asegurar que la columna 'cargo' exista
+    if 'cargo' not in df.columns:
+        df['cargo'] = 'Sin cargo'
+    
     return df.to_dict('records')

@@ -1,13 +1,13 @@
 # app.py
 import streamlit as st
 from modulos.core import login
-from modulos.hexagon_panama.consultas import consultas
-from modulos.hexagon_panama.hopsa import hopsa
-from modulos.hexagon_panama.hopsa import control_almuerzos
-from modulos.crm import carga_documentos
-from modulos.inventarios import inventario
-from modulos.farmazone import carga_reportes
-from modulos.hexagon_colombia import nexo_people
+from modulos.empresas.hexagon_panama.consultas import consultas
+from modulos.empresas.hexagon_panama.hopsa import hopsa
+from modulos.empresas.hexagon_panama.hopsa import control_almuerzos
+from modulos.productos.crm import carga_documentos
+from modulos.productos.inventarios import inventario
+from modulos.empresas.farmazone import carga_reportes
+from modulos.productos.nexo_people import nexo_people
 
 # =====================
 # CONFIGURACIÓN

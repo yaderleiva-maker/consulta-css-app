@@ -216,7 +216,8 @@ def mostrar_ficha_empleado(id_empleado):
         "📞 Contactos",
         "👨‍👩‍👧 Dependientes",
         "📂 Documentos",
-        "📈 Historial"
+        "📈 Historial",
+        "🏖️ Vacaciones"
     ])
     
     # ============================================================
@@ -298,5 +299,57 @@ def mostrar_ficha_empleado(id_empleado):
     with tabs[5]:
         st.info("📈 Historial laboral - Próximamente")
 
-
+    with tabs[6]:  # 🏖️ Vacaciones
+    st.markdown("### 🏖️ Vacaciones")
+    
+    # ============================================================
+    # 1. TARJETAS DE TOTALES (Estilo métricas)
+    # ============================================================
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric(
+            label="📅 Saldo Disponible",
+            value=f"{saldo_actual} días"
+        )
+    
+    with col2:
+        st.metric(
+            label="✅ Días Usados (2026)",
+            value=f"{dias_usados} días"
+        )
+    
+    with col3:
+        st.metric(
+            label="📈 Próximas Vacaciones",
+            value=proximas_vacaciones
+        )
+    
+    st.markdown("---")
+    
+    # ============================================================
+    # 2. HISTORIAL DE VACACIONES (Tabla)
+    # ============================================================
+    st.markdown("#### 📋 Historial de Vacaciones")
+    
+    # Obtener historial del empleado
+    historial = obtener_historial_vacaciones(id_empleado)
+    
+    if historial:
+        df_historial = pd.DataFrame(historial)
+        st.dataframe(
+            df_historial[['fecha_inicio', 'fecha_fin', 'dias_calculados', 'estado']],
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No hay vacaciones registradas para este empleado")
+    
+    # ============================================================
+    # 3. BOTÓN PARA DESCARGAR REPORTE (Solo RRHH)
+    # ============================================================
+    if usuario_rol == "RRHH":
+        if st.button("📥 Descargar historial de vacaciones"):
+            # Generar Excel con el historial
+            generar_excel_vacaciones_empleado(id_empleado)
 

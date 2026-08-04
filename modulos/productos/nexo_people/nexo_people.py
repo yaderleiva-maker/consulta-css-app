@@ -165,18 +165,6 @@ def run_ficha(usuario):
 def mostrar_ficha_empleado(id_empleado):
     """
     Mostrar la ficha completa de un empleado.
-    Sin restricciones de rol (acceso público dentro de la empresa).
-    """
-    empleado = obtener_empleado(id_empleado)
-    
-    if not empleado:
-        st.error("❌ Empleado no encontrado")
-        return
-    # modulos/hexagon_colombia/nexo_people.py (al inicio de mostrar_ficha_empleado)
-
-def mostrar_ficha_empleado(id_empleado):
-    """
-    Mostrar la ficha completa de un empleado.
     """
     empleado = obtener_empleado(id_empleado)
     
@@ -225,7 +213,48 @@ def mostrar_ficha_empleado(id_empleado):
         .metric-card.success .value { color: #2E7D32; }
         .metric-card.warning .value { color: #F57C00; }
         .metric-card.danger .value { color: #C62828; }
+
+        /* Tarjeta de resumen de vacaciones */
+        .vacation-summary {
+            background-color: #FFFFFF;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border: 1px solid #EEEEEE;
+            margin-bottom: 20px;
+        }
+        .vacation-summary .title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1D3557;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #E63946;
+            display: inline-block;
+        }
+        .vacation-summary .next {
+            font-size: 14px;
+            color: #457B9D;
+            margin-top: 10px;
+            text-align: center;
+        }
         
+        /* Barra de progreso */
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #EEEEEE;
+            border-radius: 4px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background-color: #E63946;
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
         /* Título de sección */
         .section-title {
             font-size: 18px;
@@ -236,25 +265,16 @@ def mostrar_ficha_empleado(id_empleado):
             border-bottom: 2px solid #E63946;
             display: inline-block;
         }
-        
-        /* Botones */
-        .btn-download {
-            background-color: #E63946;
-            color: white;
-            border: none;
-            padding: 8px 20px;
-            border-radius: 6px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .btn-download:hover {
-            background-color: #C62828;
+
+        /* Filtros */
+        .filters {
+            margin: 16px 0;
+            padding: 8px 0;
+            border-bottom: 1px solid #EEEEEE;
         }
     </style>
     """, unsafe_allow_html=True)
     
-
     # ============================================================
     # BOTÓN PARA VOLVER
     # ============================================================
@@ -386,20 +406,74 @@ def mostrar_ficha_empleado(id_empleado):
         st.info("📈 Historial laboral - Próximamente")
 
     # ============================================================
-    # TAB 7: Incidencias (VERSIÓN PROFESIONAL)
+    # TAB 7: Incidencias (CON RESUMEN DE VACACIONES SIEMPRE VISIBLE)
     # ============================================================
     with tabs[6]:
+        # Título de la sección
         st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
 
-        # 1. FILTROS DE TIPO (SIN EMOJIS)
+        # ============================================================
+        # 1. RESUMEN DE VACACIONES (SIEMPRE VISIBLE)
+        # ============================================================
+        saldo_data = obtener_saldo_vacaciones(id_empleado)
+        
+        # Calcular porcentaje usado
+        total_anual = 15
+        usado = saldo_data['dias_usados']
+        porcentaje = min((usado / total_anual) * 100, 100) if total_anual > 0 else 0
+        
+        # Color del estado
+        if saldo_data['saldo_actual'] >= 5:
+            estado_color = "success"
+            estado_texto = "🟢 Buen saldo"
+        elif saldo_data['saldo_actual'] >= 1:
+            estado_color = "warning"
+            estado_texto = "🟡 Saldo bajo"
+        else:
+            estado_color = "danger"
+            estado_texto = "🔴 Sin saldo disponible"
+        
+        st.markdown(f"""
+        <div class="vacation-summary">
+            <div class="title">🏖️ Resumen de Vacaciones</div>
+            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 120px; text-align: center;">
+                    <div style="font-size: 14px; color: #6C757D;">Disponibles</div>
+                    <div style="font-size: 32px; font-weight: 700; color: #1D3557;">{saldo_data['saldo_actual']}</div>
+                    <div style="font-size: 12px; color: {estado_color};">{estado_texto}</div>
+                </div>
+                <div style="flex: 1; min-width: 120px; text-align: center;">
+                    <div style="font-size: 14px; color: #6C757D;">Acumuladas</div>
+                    <div style="font-size: 32px; font-weight: 700; color: #2E7D32;">15</div>
+                    <div style="font-size: 12px; color: #6C757D;">días al año</div>
+                </div>
+                <div style="flex: 1; min-width: 120px; text-align: center;">
+                    <div style="font-size: 14px; color: #6C757D;">Usadas</div>
+                    <div style="font-size: 32px; font-weight: 700; color: #F57C00;">{usado}</div>
+                    <div style="font-size: 12px; color: #6C757D;">{porcentaje:.0f}% utilizado</div>
+                </div>
+            </div>
+            <!-- Barra de progreso -->
+            <div class="progress-bar">
+                <div class="fill" style="width: {porcentaje:.0f}%;"></div>
+            </div>
+            <div class="next">📅 Próximas vacaciones: {saldo_data['proximas_vacaciones']}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # ============================================================
+        # 2. FILTROS DE INCIDENCIAS
+        # ============================================================
+        st.markdown('<div class="filters">', unsafe_allow_html=True)
+        
         tipos = obtener_tipos_incidencia()
         opciones = ["Todas"] + [t['nombre'] for t in tipos]
-
+        
         # Vacaciones siempre primero
         if "Vacaciones" in opciones:
             opciones.remove("Vacaciones")
             opciones.insert(0, "Vacaciones")
-
+        
         filtro_seleccionado = st.radio(
             "",
             options=opciones,
@@ -407,70 +481,14 @@ def mostrar_ficha_empleado(id_empleado):
             key=f"filtro_incidencias_{id_empleado}",
             label_visibility="collapsed"
         )
-
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
         tipo_filtro = filtro_seleccionado
 
-        # 2. TARJETAS DE RESUMEN (SIN EMOJIS)
-        resumen = obtener_resumen_incidencias(id_empleado)
-
-        if resumen:
-            st.markdown("### Resumen")
-            cols = st.columns(min(len(resumen), 4))
-            for idx, item in enumerate(resumen):
-                col_idx = idx % len(cols)
-                with cols[col_idx]:
-                    # Clase CSS según el tipo
-                    if item['tipo'] == 'Vacaciones':
-                        color_class = "primary"
-                    elif item['tipo'] == 'Incapacidad':
-                        color_class = "danger"
-                    elif item['tipo'] == 'Permiso':
-                        color_class = "success"
-                    else:
-                        color_class = "warning"
-
-                    st.markdown(f"""
-                    <div class="metric-card {color_class}">
-                        <div class="label">{item['tipo']}</div>
-                        <div class="value">{item['total']}</div>
-                        <div class="sub">{item['aprobadas']} aprobadas • {item['pendientes']} pendientes</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            st.markdown("---")
-
-        # 3. RESUMEN ESPECIAL DE VACACIONES (si aplica)
-        if tipo_filtro == "Vacaciones":
-            saldo_data = obtener_saldo_vacaciones(id_empleado)
-
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.markdown(f"""
-                <div class="metric-card primary">
-                    <div class="label">Disponibles</div>
-                    <div class="value">{saldo_data['saldo_actual']}</div>
-                    <div class="sub">días</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col2:
-                st.markdown(f"""
-                <div class="metric-card warning">
-                    <div class="label">Acumuladas</div>
-                    <div class="value">15</div>
-                    <div class="sub">días al año</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with col3:
-                st.markdown(f"""
-                <div class="metric-card success">
-                    <div class="label">Usadas</div>
-                    <div class="value">{saldo_data['dias_usados']}</div>
-                    <div class="sub">días</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            st.markdown("---")
-
-        # 4. HISTORIAL DE INCIDENCIAS (TABLA LIMPIA)
+        # ============================================================
+        # 3. HISTORIAL DE INCIDENCIAS
+        # ============================================================
         st.markdown("### Historial")
 
         incidencias = obtener_incidencias_empleado(id_empleado, tipo_filtro)
@@ -492,7 +510,9 @@ def mostrar_ficha_empleado(id_empleado):
         else:
             st.info(f"No hay incidencias de tipo '{tipo_filtro}' registradas")
 
-        # 5. BOTÓN DE DESCARGA
+        # ============================================================
+        # 4. BOTÓN DE DESCARGA
+        # ============================================================
         if st.button("📄 Descargar historial", key=f"descargar_{id_empleado}"):
             excel_data = generar_excel_vacaciones_empleado(id_empleado)
             if excel_data:

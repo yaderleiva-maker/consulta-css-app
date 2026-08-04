@@ -1,17 +1,22 @@
-# services/vacaciones.py
-"""
-Servicio de Vacaciones
-Cálculo de saldos, historial y gestión de vacaciones.
-"""
+# services/vacaciones.py (agregar)
 
-import pandas as pd
-from services.bigquery import ejecutar_query
-from datetime import date, datetime
-
-
-def obtener_historial_vacaciones(id_empleado):
+def obtener_tipos_incidencia():
     """
-    Obtener el historial de vacaciones de un empleado.
+    Obtener la lista de tipos de incidencia para los filtros.
+    """
+    query = """
+    SELECT id_tipo_incidencia, nombre
+    FROM `nexo_people.catalogo_tipos_incidencia`
+    WHERE estado = 'ACTIVO'
+    ORDER BY nombre
+    """
+    df = ejecutar_query(query)
+    return df.to_dict('records')
+
+
+def obtener_incidencias_empleado(id_empleado, tipo_filtro=None):
+    """
+    Obtener incidencias de un empleado con filtro opcional por tipo.
     """
     query = """
     SELECT 
@@ -21,85 +26,44 @@ def obtener_historial_vacaciones(id_empleado):
       i.dias_calculados,
       i.estado,
       i.observacion,
-      i.fecha_creacion
+      i.fecha_creacion,
+      t.nombre AS tipo
     FROM `nexo_people.incidencias` i
+    JOIN `nexo_people.catalogo_tipos_incidencia` t ON i.id_tipo_incidencia = t.id_tipo_incidencia
     WHERE i.id_empleado = @id_empleado
-      AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'Vacaciones')
-    ORDER BY i.fecha_inicio DESC
     """
     
-    params = [{"name": "id_empleado", "type": "STRING", "value": id_empleado}]
-    df = ejecutar_query(query, params)
+    if tipo_filtro and tipo_filtro != 'Todas':
+        query += " AND t.nombre = @tipo_filtro"
     
+    query += " ORDER BY i.fecha_inicio DESC"
+    
+    params = [{"name": "id_empleado", "type": "STRING", "value": id_empleado}]
+    if tipo_filtro and tipo_filtro != 'Todas':
+        params.append({"name": "tipo_filtro", "type": "STRING", "value": tipo_filtro})
+    
+    df = ejecutar_query(query, params)
     return df.to_dict('records')
 
 
-def obtener_saldo_vacaciones(id_empleado):
+def obtener_resumen_incidencias(id_empleado):
     """
-    Calcular el saldo de vacaciones de un empleado.
+    Obtener resumen de todas las incidencias de un empleado.
     """
     query = """
     SELECT 
-      COALESCE(SUM(dias_calculados), 0) AS dias_usados
+      t.nombre AS tipo,
+      COUNT(*) AS total,
+      SUM(i.dias_calculados) AS total_dias,
+      COUNTIF(i.estado = 'Aprobado') AS aprobadas,
+      COUNTIF(i.estado = 'Pendiente') AS pendientes
     FROM `nexo_people.incidencias` i
+    JOIN `nexo_people.catalogo_tipos_incidencia` t ON i.id_tipo_incidencia = t.id_tipo_incidencia
     WHERE i.id_empleado = @id_empleado
-      AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'Vacaciones')
-      AND i.estado = 'Aprobado'
-      AND i.fecha_inicio >= '2026-01-01'
-      AND i.fecha_inicio <= '2026-12-31'
+    GROUP BY t.nombre
+    ORDER BY t.nombre
     """
     
     params = [{"name": "id_empleado", "type": "STRING", "value": id_empleado}]
     df = ejecutar_query(query, params)
-    
-    dias_usados = df.iloc[0]['dias_usados'] if not df.empty else 0
-    
-    # Calcular saldo: 15 días al año - días usados
-    saldo_actual = 15 - dias_usados
-    
-    # Calcular próximas vacaciones (buscar la próxima incidencia con fecha futura)
-    query_proximas = """
-    SELECT 
-      fecha_inicio,
-      fecha_fin
-    FROM `nexo_people.incidencias` i
-    WHERE i.id_empleado = @id_empleado
-      AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'Vacaciones')
-      AND i.estado = 'Aprobado'
-      AND i.fecha_inicio >= CURRENT_DATE()
-    ORDER BY i.fecha_inicio ASC
-    LIMIT 1
-    """
-    
-    df_proximas = ejecutar_query(query_proximas, params)
-    
-    if not df_proximas.empty:
-        proximas_vacaciones = f"{df_proximas.iloc[0]['fecha_inicio']} al {df_proximas.iloc[0]['fecha_fin']}"
-    else:
-        proximas_vacaciones = "No hay próximas vacaciones"
-    
-    return {
-        "saldo_actual": max(saldo_actual, 0),  # No puede ser negativo
-        "dias_usados": dias_usados,
-        "proximas_vacaciones": proximas_vacaciones
-    }
-
-
-def generar_excel_vacaciones_empleado(id_empleado):
-    """
-    Generar Excel con el historial de vacaciones de un empleado.
-    """
-    from io import BytesIO
-    import pandas as pd
-    
-    historial = obtener_historial_vacaciones(id_empleado)
-    if not historial:
-        return None
-    
-    df = pd.DataFrame(historial)
-    
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='Vacaciones', index=False)
-    
-    return output.getvalue()
+    return df.to_dict('records')

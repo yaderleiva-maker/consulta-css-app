@@ -385,89 +385,132 @@ def mostrar_ficha_empleado(id_empleado):
     with tabs[5]:
         st.info("📈 Historial laboral - Próximamente")
 
+# ============================================================
+# TAB 7: Incidencias (VERSIÓN PROFESIONAL)
+# ============================================================
+with tabs[6]:
+    st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
+    
     # ============================================================
-    # TAB 7: Incidencias
+    # 1. FILTROS DE TIPO (SIN EMOJIS)
     # ============================================================
-    with tabs[6]:
-        st.markdown("### 📝 Incidencias")
+    tipos = obtener_tipos_incidencia()
+    opciones = ["Todas"] + [t['nombre'] for t in tipos]
+    
+    # Vacaciones siempre primero
+    if "Vacaciones" in opciones:
+        opciones.remove("Vacaciones")
+        opciones.insert(0, "Vacaciones")
+    
+    filtro_seleccionado = st.radio(
+        "",
+        options=opciones,
+        horizontal=True,
+        key=f"filtro_incidencias_{id_empleado}",
+        label_visibility="collapsed"
+    )
+    
+    tipo_filtro = filtro_seleccionado
+    
+    # ============================================================
+    # 2. TARJETAS DE RESUMEN (SIN EMOJIS)
+    # ============================================================
+    resumen = obtener_resumen_incidencias(id_empleado)
+    
+    if resumen:
+        st.markdown("### Resumen")
+        cols = st.columns(min(len(resumen), 4))
+        for idx, item in enumerate(resumen):
+            col_idx = idx % len(cols)
+            with cols[col_idx]:
+                # Clase CSS según el tipo
+                if item['tipo'] == 'Vacaciones':
+                    color_class = "primary"
+                elif item['tipo'] == 'Incapacidad':
+                    color_class = "danger"
+                elif item['tipo'] == 'Permiso':
+                    color_class = "success"
+                else:
+                    color_class = "warning"
+                
+                st.markdown(f"""
+                <div class="metric-card {color_class}">
+                    <div class="label">{item['tipo']}</div>
+                    <div class="value">{item['total']}</div>
+                    <div class="sub">{item['aprobadas']} aprobadas • {item['pendientes']} pendientes</div>
+                </div>
+                """, unsafe_allow_html=True)
+        st.markdown("---")
+    
+    # ============================================================
+    # 3. RESUMEN ESPECIAL DE VACACIONES (si aplica)
+    # ============================================================
+    if tipo_filtro == "Vacaciones":
+        saldo_data = obtener_saldo_vacaciones(id_empleado)
         
-        # ============================================================
-        # 1. FILTROS DE TIPO
-        # ============================================================
-        tipos = obtener_tipos_incidencia()
-        opciones = ["📋 Todas"] + [f"🏖️ {t['nombre']}" for t in tipos if t['nombre'] != 'Vacaciones']
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card primary">
+                <div class="label">Disponibles</div>
+                <div class="value">{saldo_data['saldo_actual']}</div>
+                <div class="sub">días</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card warning">
+                <div class="label">Acumuladas</div>
+                <div class="value">15</div>
+                <div class="sub">días al año</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card success">
+                <div class="label">Usadas</div>
+                <div class="value">{saldo_data['dias_usados']}</div>
+                <div class="sub">días</div>
+            </div>
+            """, unsafe_allow_html=True)
         
-        # Vacaciones siempre primero
-        opciones.insert(1, "🏖️ Vacaciones")
+        st.markdown("---")
+    
+    # ============================================================
+    # 4. HISTORIAL DE INCIDENCIAS (TABLA LIMPIA)
+    # ============================================================
+    st.markdown("### Historial")
+    
+    incidencias = obtener_incidencias_empleado(id_empleado, tipo_filtro)
+    
+    if incidencias:
+        df_incidencias = pd.DataFrame(incidencias)
         
-        filtro_seleccionado = st.radio(
-            "Selecciona el tipo de incidencia",
-            options=opciones,
-            horizontal=True,
-            key=f"filtro_incidencias_{id_empleado}"
-        )
+        columnas = ['fecha_inicio', 'fecha_fin', 'tipo', 'dias_calculados', 'estado']
+        columnas_existentes = [col for col in columnas if col in df_incidencias.columns]
         
-        # Limpiar el nombre del filtro
-        if filtro_seleccionado == "📋 Todas":
-            tipo_filtro = "Todas"
+        if columnas_existentes:
+            st.dataframe(
+                df_incidencias[columnas_existentes],
+                use_container_width=True,
+                hide_index=True
+            )
         else:
-            # Quitar el emoji y el espacio
-            tipo_filtro = filtro_seleccionado.split(" ")[1] if " " in filtro_seleccionado else filtro_seleccionado
-        
-        # ============================================================
-        # 2. RESUMEN DE INCIDENCIAS
-        # ============================================================
-        resumen = obtener_resumen_incidencias(id_empleado)
-        
-        if resumen:
-            # Mostrar tarjetas de resumen
-            cols = st.columns(min(len(resumen), 4))
-            for idx, item in enumerate(resumen):
-                col_idx = idx % len(cols)
-                with cols[col_idx]:
-                    st.metric(
-                        label=f"{item['tipo']}",
-                        value=f"{item['total']} casos",
-                        delta=f"{item['aprobadas']} aprobadas"
-                    )
-            st.markdown("---")
-        
-        # ============================================================
-        # 3. HISTORIAL DE INCIDENCIAS
-        # ============================================================
-        st.markdown("#### 📋 Historial de Incidencias")
-        
-        incidencias = obtener_incidencias_empleado(id_empleado, tipo_filtro)
-        
-        if incidencias:
-            df_incidencias = pd.DataFrame(incidencias)
-            
-            # Seleccionar columnas a mostrar
-            columnas = ['fecha_inicio', 'fecha_fin', 'tipo', 'dias_calculados', 'estado']
-            columnas_existentes = [col for col in columnas if col in df_incidencias.columns]
-            
-            if columnas_existentes:
-                st.dataframe(
-                    df_incidencias[columnas_existentes],
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.info("No hay datos para mostrar")
+            st.info("No hay datos para mostrar")
+    else:
+        st.info(f"No hay incidencias de tipo '{tipo_filtro}' registradas")
+    
+    # ============================================================
+    # 5. BOTÓN DE DESCARGA (CON ESTILO)
+    # ============================================================
+    if st.button("📄 Descargar historial", key=f"descargar_{id_empleado}"):
+        excel_data = generar_excel_vacaciones_empleado(id_empleado)
+        if excel_data:
+            st.download_button(
+                label="✅ Descargar Excel",
+                data=excel_data,
+                file_name=f"incidencias_{empleado['nombre_completo']}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
         else:
-            st.info(f"No hay incidencias de tipo '{tipo_filtro}' registradas para este empleado")
-        
-        # ============================================================
-        # 4. BOTÓN PARA DESCARGAR REPORTE
-        # ============================================================
-        if st.button("📥 Descargar historial de incidencias", key=f"descargar_incidencias_{id_empleado}"):
-            excel_data = generar_excel_vacaciones_empleado(id_empleado)
-            if excel_data:
-                st.download_button(
-                    label="✅ Descargar Excel",
-                    data=excel_data,
-                    file_name=f"incidencias_{empleado['nombre_completo']}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            else:
-                st.warning("No hay datos para descargar")
+            st.warning("No hay datos para descargar")

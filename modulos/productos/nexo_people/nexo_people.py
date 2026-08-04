@@ -32,7 +32,6 @@ def run_in_out(usuario):
     st.markdown("## 📊 In & Out - Personal Activo / Inactivo")
     st.caption("Lista de empleados activos e inactivos. Ordenados de más antiguos a más recientes.")
     
-    # Usar el mismo código que antes (sin el sidebar de búsqueda)
     empleados = obtener_activos_inactivos()
     
     if not empleados:
@@ -119,7 +118,7 @@ def run_ficha(usuario):
         st.session_state['empleado_seleccionado_ficha'] = None
     
     # ============================================================
-    # SIDEBAR: Buscador de empleados (dentro del módulo)
+    # SIDEBAR: Buscador de empleados
     # ============================================================
     with st.sidebar:
         st.markdown("### 🔍 Buscar Colaborador")
@@ -390,54 +389,3 @@ def mostrar_ficha_empleado(id_empleado):
                 )
             else:
                 st.warning("No hay datos para descargar")
-
-def run_ficha(usuario):
-    """
-    Módulo Ficha de Empleados (con buscador y ficha)
-    """
-    st.markdown("## 👤 Ficha de Empleados")
-    st.caption("Busca un colaborador para ver su información completa.")
-    
-    # Inicializar estado
-    if 'empleado_seleccionado_ficha' not in st.session_state:
-        st.session_state['empleado_seleccionado_ficha'] = None
-    
-    # ============================================================
-    # SIDEBAR: Buscador de empleados
-    # ============================================================
-    with st.sidebar:
-        st.markdown("### 🔍 Buscar Colaborador")
-        termino = st.text_input("Nombre o cédula", placeholder="Ej: Juan Pérez", key="busqueda_ficha")
-        
-        if termino and len(termino) >= 2:
-            resultados = buscar_empleados(termino)
-            if resultados:
-                for emp in resultados:
-                    with st.container():
-                        col1, col2 = st.columns([1, 3])
-                        with col1:
-                            mostrar_foto_sidebar(emp.get('foto'), emp['nombre_completo'], size=50)
-                        with col2:
-                            st.markdown(f"**{emp['nombre_completo']}**")
-                            st.caption(f"📌 {emp.get('cargo', 'Sin cargo')}")
-                            estado = emp.get('estado', 'Desconocido')
-                            color = {'Activo': '🟢', 'Inactivo': '🔴'}.get(estado, '⚪')
-                            st.caption(f"{color} {estado}")
-                        
-                        if st.button(f"Ver ficha", key=f"btn_ficha_{emp['id_empleado']}"):
-                            st.session_state['empleado_seleccionado_ficha'] = emp['id_empleado']
-                            st.rerun()
-                        
-                        st.markdown("---")
-            else:
-                st.info("No se encontraron empleados")
-        else:
-            st.info("Escribe al menos 2 caracteres")
-    
-    # ============================================================
-    # CONTENIDO PRINCIPAL
-    # ============================================================
-    if st.session_state['empleado_seleccionado_ficha']:
-        mostrar_ficha_empleado(st.session_state['empleado_seleccionado_ficha'])
-    else:
-        st.info("🔍 Busca un colaborador en el panel izquierdo para ver su ficha.")

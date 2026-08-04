@@ -389,7 +389,19 @@ def mostrar_ficha_empleado(id_empleado):
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
             else:
-                st.warning("No hay datos para descargar")    
+                st.warning("No hay datos para descargar")
+
+def run_ficha(usuario):
+    """
+    Módulo Ficha de Empleados (con buscador y ficha)
+    """
+    st.markdown("## 👤 Ficha de Empleados")
+    st.caption("Busca un colaborador para ver su información completa.")
+    
+    # Inicializar estado
+    if 'empleado_seleccionado_ficha' not in st.session_state:
+        st.session_state['empleado_seleccionado_ficha'] = None
+    
     # ============================================================
     # SIDEBAR: Buscador de empleados
     # ============================================================
@@ -426,6 +438,6 @@ def mostrar_ficha_empleado(id_empleado):
     # CONTENIDO PRINCIPAL
     # ============================================================
     if st.session_state['empleado_seleccionado_ficha']:
-        mostrar_ficha_empleado(st.session_state['empleado_seleccionado_ficha'])  # 🔥 Sin parámetro de rol
+        mostrar_ficha_empleado(st.session_state['empleado_seleccionado_ficha'])
     else:
         st.info("🔍 Busca un colaborador en el panel izquierdo para ver su ficha.")

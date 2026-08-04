@@ -11,6 +11,12 @@ from services.empleados import (
 )
 from services.fotos import mostrar_foto_sidebar, mostrar_foto_ficha
 from services.bigquery import probar_conexion
+from services.vacaciones import (  # 🔥 IMPORTAR LAS FUNCIONES DE VACACIONES
+    obtener_historial_vacaciones,
+    obtener_saldo_vacaciones,
+    generar_excel_vacaciones_empleado
+)
+from datetime import date, datetime
 
 
 # ============================================================

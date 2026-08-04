@@ -229,9 +229,8 @@ def mostrar_ficha_empleado(id_empleado):
         "📝 Incidencias"
     ])
 
-    
     # ============================================================
-    # TAB 1: Personal (con manejo de fechas nulas)
+    # TAB 1: Personal
     # ============================================================
     with tabs[0]:
         st.markdown("### Información Personal")
@@ -239,11 +238,9 @@ def mostrar_ficha_empleado(id_empleado):
         with col1:
             st.markdown(f"**Cédula:** {empleado.get('cedula', '-')}")
             
-            # Fecha de nacimiento (manejo de NaT)
             fecha_nac = empleado.get('fecha_nacimiento')
-            if fecha_nac and str(fecha_nac) != 'NaT' and str(fecha_nac) != 'NaT':
+            if fecha_nac and str(fecha_nac) != 'NaT':
                 st.markdown(f"**Fecha Nacimiento:** {fecha_nac}")
-                # Calcular edad
                 from datetime import date
                 if isinstance(fecha_nac, str):
                     from datetime import datetime
@@ -265,11 +262,9 @@ def mostrar_ficha_empleado(id_empleado):
     with tabs[1]:
         st.markdown("### Información Laboral")
         
-        # Fecha de ingreso (manejo de nulos)
         fecha_ingreso = empleado.get('fecha_ingreso_empresa')
         if fecha_ingreso and str(fecha_ingreso) != 'NaT':
             st.markdown(f"**Ingreso a la empresa:** {fecha_ingreso}")
-            # Calcular antigüedad
             from datetime import date
             if isinstance(fecha_ingreso, str):
                 from datetime import datetime
@@ -304,95 +299,97 @@ def mostrar_ficha_empleado(id_empleado):
         st.info("📂 Documentos - Próximamente")
     
     # ============================================================
-    # TAB 6: Vacaciones (sin restricción de rol)
+    # TAB 6: Historial (Próximamente)
     # ============================================================
-# ============================================================
-# TAB 7: Incidencias
-# ============================================================
-with tabs[6]:
-    st.markdown("### 📝 Incidencias")
-    
+    with tabs[5]:
+        st.info("📈 Historial laboral - Próximamente")
+
     # ============================================================
-    # 1. FILTROS DE TIPO
+    # TAB 7: Incidencias
     # ============================================================
-    tipos = obtener_tipos_incidencia()
-    opciones = ["📋 Todas"] + [f"🏖️ {t['nombre']}" for t in tipos if t['nombre'] != 'Vacaciones']
-    
-    # Vacaciones siempre primero
-    opciones.insert(1, "🏖️ Vacaciones")
-    
-    filtro_seleccionado = st.radio(
-        "Selecciona el tipo de incidencia",
-        options=opciones,
-        horizontal=True,
-        key=f"filtro_incidencias_{id_empleado}"
-    )
-    
-    # Limpiar el nombre del filtro
-    if filtro_seleccionado == "📋 Todas":
-        tipo_filtro = "Todas"
-    else:
-        # Quitar el emoji y el espacio
-        tipo_filtro = filtro_seleccionado.split(" ")[1] if " " in filtro_seleccionado else filtro_seleccionado
-    
-    # ============================================================
-    # 2. RESUMEN DE INCIDENCIAS
-    # ============================================================
-    resumen = obtener_resumen_incidencias(id_empleado)
-    
-    if resumen:
-        # Mostrar tarjetas de resumen
-        cols = st.columns(min(len(resumen), 4))
-        for idx, item in enumerate(resumen):
-            col_idx = idx % len(cols)
-            with cols[col_idx]:
-                st.metric(
-                    label=f"{item['tipo']}",
-                    value=f"{item['total']} casos",
-                    delta=f"{item['aprobadas']} aprobadas"
+    with tabs[6]:
+        st.markdown("### 📝 Incidencias")
+        
+        # ============================================================
+        # 1. FILTROS DE TIPO
+        # ============================================================
+        tipos = obtener_tipos_incidencia()
+        opciones = ["📋 Todas"] + [f"🏖️ {t['nombre']}" for t in tipos if t['nombre'] != 'Vacaciones']
+        
+        # Vacaciones siempre primero
+        opciones.insert(1, "🏖️ Vacaciones")
+        
+        filtro_seleccionado = st.radio(
+            "Selecciona el tipo de incidencia",
+            options=opciones,
+            horizontal=True,
+            key=f"filtro_incidencias_{id_empleado}"
+        )
+        
+        # Limpiar el nombre del filtro
+        if filtro_seleccionado == "📋 Todas":
+            tipo_filtro = "Todas"
+        else:
+            # Quitar el emoji y el espacio
+            tipo_filtro = filtro_seleccionado.split(" ")[1] if " " in filtro_seleccionado else filtro_seleccionado
+        
+        # ============================================================
+        # 2. RESUMEN DE INCIDENCIAS
+        # ============================================================
+        resumen = obtener_resumen_incidencias(id_empleado)
+        
+        if resumen:
+            # Mostrar tarjetas de resumen
+            cols = st.columns(min(len(resumen), 4))
+            for idx, item in enumerate(resumen):
+                col_idx = idx % len(cols)
+                with cols[col_idx]:
+                    st.metric(
+                        label=f"{item['tipo']}",
+                        value=f"{item['total']} casos",
+                        delta=f"{item['aprobadas']} aprobadas"
+                    )
+            st.markdown("---")
+        
+        # ============================================================
+        # 3. HISTORIAL DE INCIDENCIAS
+        # ============================================================
+        st.markdown("#### 📋 Historial de Incidencias")
+        
+        incidencias = obtener_incidencias_empleado(id_empleado, tipo_filtro)
+        
+        if incidencias:
+            df_incidencias = pd.DataFrame(incidencias)
+            
+            # Seleccionar columnas a mostrar
+            columnas = ['fecha_inicio', 'fecha_fin', 'tipo', 'dias_calculados', 'estado']
+            columnas_existentes = [col for col in columnas if col in df_incidencias.columns]
+            
+            if columnas_existentes:
+                st.dataframe(
+                    df_incidencias[columnas_existentes],
+                    use_container_width=True,
+                    hide_index=True
                 )
-        st.markdown("---")
-    
-    # ============================================================
-    # 3. HISTORIAL DE INCIDENCIAS
-    # ============================================================
-    st.markdown("#### 📋 Historial de Incidencias")
-    
-    incidencias = obtener_incidencias_empleado(id_empleado, tipo_filtro)
-    
-    if incidencias:
-        df_incidencias = pd.DataFrame(incidencias)
-        
-        # Seleccionar columnas a mostrar
-        columnas = ['fecha_inicio', 'fecha_fin', 'tipo', 'dias_calculados', 'estado']
-        columnas_existentes = [col for col in columnas if col in df_incidencias.columns]
-        
-        if columnas_existentes:
-            st.dataframe(
-                df_incidencias[columnas_existentes],
-                use_container_width=True,
-                hide_index=True
-            )
+            else:
+                st.info("No hay datos para mostrar")
         else:
-            st.info("No hay datos para mostrar")
-    else:
-        st.info(f"No hay incidencias de tipo '{tipo_filtro}' registradas para este empleado")
-    
-    # ============================================================
-    # 4. BOTÓN PARA DESCARGAR REPORTE
-    # ============================================================
-    if st.button("📥 Descargar historial de incidencias", key=f"descargar_incidencias_{id_empleado}"):
-        excel_data = generar_excel_incidencias_empleado(id_empleado, tipo_filtro)
-        if excel_data:
-            st.download_button(
-                label="✅ Descargar Excel",
-                data=excel_data,
-                file_name=f"incidencias_{empleado['nombre_completo']}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        else:
-            st.warning("No hay datos para descargar")
-    
+            st.info(f"No hay incidencias de tipo '{tipo_filtro}' registradas para este empleado")
+        
+        # ============================================================
+        # 4. BOTÓN PARA DESCARGAR REPORTE
+        # ============================================================
+        if st.button("📥 Descargar historial de incidencias", key=f"descargar_incidencias_{id_empleado}"):
+            excel_data = generar_excel_vacaciones_empleado(id_empleado)
+            if excel_data:
+                st.download_button(
+                    label="✅ Descargar Excel",
+                    data=excel_data,
+                    file_name=f"incidencias_{empleado['nombre_completo']}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.warning("No hay datos para descargar")    
     # ============================================================
     # SIDEBAR: Buscador de empleados
     # ============================================================

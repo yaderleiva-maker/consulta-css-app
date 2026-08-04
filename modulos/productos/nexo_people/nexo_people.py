@@ -158,6 +158,7 @@ def run_ficha(usuario):
 def mostrar_ficha_empleado(id_empleado):
     """
     Mostrar la ficha completa de un empleado.
+    Sin restricciones de rol (acceso público dentro de la empresa).
     """
     empleado = obtener_empleado(id_empleado)
     
@@ -219,6 +220,7 @@ def mostrar_ficha_empleado(id_empleado):
         "📈 Historial",
         "🏖️ Vacaciones"
     ])
+
     
     # ============================================================
     # TAB 1: Personal (con manejo de fechas nulas)
@@ -294,62 +296,125 @@ def mostrar_ficha_empleado(id_empleado):
         st.info("📂 Documentos - Próximamente")
     
     # ============================================================
-    # TAB 6: Historial (Próximamente)
+    # TAB 6: Vacaciones (sin restricción de rol)
     # ============================================================
-    with tabs[5]:
-        st.info("📈 Historial laboral - Próximamente")
+    with tabs[6]:
+        st.markdown("### 🏖️ Vacaciones")
+        
+        # Obtener datos de vacaciones
+        saldo_data = obtener_saldo_vacaciones(id_empleado)
+        historial = obtener_historial_vacaciones(id_empleado)
+        
+        # ============================================================
+        # 1. TARJETAS DE TOTALES
+        # ============================================================
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric(
+                label="📅 Saldo Disponible",
+                value=f"{saldo_data['saldo_actual']} días"
+            )
+        
+        with col2:
+            st.metric(
+                label="✅ Días Usados (2026)",
+                value=f"{saldo_data['dias_usados']} días"
+            )
+        
+        with col3:
+            st.metric(
+                label="📈 Próximas Vacaciones",
+                value=saldo_data['proximas_vacaciones']
+            )
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # 2. HISTORIAL DE VACACIONES
+        # ============================================================
+        st.markdown("#### 📋 Historial de Vacaciones")
+        
+        if historial:
+            df_historial = pd.DataFrame(historial)
+            
+            # Seleccionar columnas a mostrar
+            columnas = ['fecha_inicio', 'fecha_fin', 'dias_calculados', 'estado']
+            columnas_existentes = [col for col in columnas if col in df_historial.columns]
+            
+            if columnas_existentes:
+                st.dataframe(
+                    df_historial[columnas_existentes],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("No hay datos para mostrar")
+        else:
+            st.info("No hay vacaciones registradas para este empleado")
+        
+        # ============================================================
+        # 3. BOTÓN PARA DESCARGAR HISTORIAL (Siempre visible)
+        # ============================================================
+        if st.button("📥 Descargar historial de vacaciones", key=f"descargar_vacaciones_{id_empleado}"):
+            excel_data = generar_excel_vacaciones_empleado(id_empleado)
+            if excel_data:
+                st.download_button(
+                    label="✅ Descargar Excel",
+                    data=excel_data,
+                    file_name=f"vacaciones_{empleado['nombre_completo']}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.warning("No hay datos para descargar")
 
-    with tabs[6]:  # 🏖️ Vacaciones
-    st.markdown("### 🏖️ Vacaciones")
+def run_ficha(usuario):
+    """
+    Módulo Ficha de Empleados (con buscador y ficha)
+    """
+    st.markdown("## 👤 Ficha de Empleados")
+    st.caption("Busca un colaborador para ver su información completa.")
+    
+    # Inicializar estado
+    if 'empleado_seleccionado_ficha' not in st.session_state:
+        st.session_state['empleado_seleccionado_ficha'] = None
     
     # ============================================================
-    # 1. TARJETAS DE TOTALES (Estilo métricas)
+    # SIDEBAR: Buscador de empleados
     # ============================================================
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric(
-            label="📅 Saldo Disponible",
-            value=f"{saldo_actual} días"
-        )
-    
-    with col2:
-        st.metric(
-            label="✅ Días Usados (2026)",
-            value=f"{dias_usados} días"
-        )
-    
-    with col3:
-        st.metric(
-            label="📈 Próximas Vacaciones",
-            value=proximas_vacaciones
-        )
-    
-    st.markdown("---")
+    with st.sidebar:
+        st.markdown("### 🔍 Buscar Colaborador")
+        termino = st.text_input("Nombre o cédula", placeholder="Ej: Juan Pérez", key="busqueda_ficha")
+        
+        if termino and len(termino) >= 2:
+            resultados = buscar_empleados(termino)
+            if resultados:
+                for emp in resultados:
+                    with st.container():
+                        col1, col2 = st.columns([1, 3])
+                        with col1:
+                            mostrar_foto_sidebar(emp.get('foto'), emp['nombre_completo'], size=50)
+                        with col2:
+                            st.markdown(f"**{emp['nombre_completo']}**")
+                            st.caption(f"📌 {emp.get('cargo', 'Sin cargo')}")
+                            estado = emp.get('estado', 'Desconocido')
+                            color = {'Activo': '🟢', 'Inactivo': '🔴'}.get(estado, '⚪')
+                            st.caption(f"{color} {estado}")
+                        
+                        if st.button(f"Ver ficha", key=f"btn_ficha_{emp['id_empleado']}"):
+                            st.session_state['empleado_seleccionado_ficha'] = emp['id_empleado']
+                            st.rerun()
+                        
+                        st.markdown("---")
+            else:
+                st.info("No se encontraron empleados")
+        else:
+            st.info("Escribe al menos 2 caracteres")
     
     # ============================================================
-    # 2. HISTORIAL DE VACACIONES (Tabla)
+    # CONTENIDO PRINCIPAL
     # ============================================================
-    st.markdown("#### 📋 Historial de Vacaciones")
-    
-    # Obtener historial del empleado
-    historial = obtener_historial_vacaciones(id_empleado)
-    
-    if historial:
-        df_historial = pd.DataFrame(historial)
-        st.dataframe(
-            df_historial[['fecha_inicio', 'fecha_fin', 'dias_calculados', 'estado']],
-            use_container_width=True,
-            hide_index=True
-        )
+    if st.session_state['empleado_seleccionado_ficha']:
+        mostrar_ficha_empleado(st.session_state['empleado_seleccionado_ficha'])  # 🔥 Sin parámetro de rol
     else:
-        st.info("No hay vacaciones registradas para este empleado")
-    
-    # ============================================================
-    # 3. BOTÓN PARA DESCARGAR REPORTE (Solo RRHH)
-    # ============================================================
-    if usuario_rol == "RRHH":
-        if st.button("📥 Descargar historial de vacaciones"):
-            # Generar Excel con el historial
-            generar_excel_vacaciones_empleado(id_empleado)
-
+        st.info("🔍 Busca un colaborador en el panel izquierdo para ver su ficha.")

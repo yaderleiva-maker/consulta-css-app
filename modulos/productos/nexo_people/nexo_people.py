@@ -172,7 +172,89 @@ def mostrar_ficha_empleado(id_empleado):
     if not empleado:
         st.error("❌ Empleado no encontrado")
         return
+    # modulos/hexagon_colombia/nexo_people.py (al inicio de mostrar_ficha_empleado)
+
+def mostrar_ficha_empleado(id_empleado):
+    """
+    Mostrar la ficha completa de un empleado.
+    """
+    empleado = obtener_empleado(id_empleado)
     
+    if not empleado:
+        st.error("❌ Empleado no encontrado")
+        return
+    
+    # ============================================================
+    # CSS PERSONALIZADO (DISEÑO PROFESIONAL)
+    # ============================================================
+    st.markdown("""
+    <style>
+        /* Tarjetas de métricas */
+        .metric-card {
+            background-color: #F8F9FA;
+            border-radius: 12px;
+            padding: 20px 15px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border: 1px solid #EEEEEE;
+            transition: all 0.2s ease;
+        }
+        .metric-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            border-color: #E63946;
+        }
+        .metric-card .value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1D3557;
+            margin: 5px 0;
+        }
+        .metric-card .label {
+            font-size: 14px;
+            color: #6C757D;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .metric-card .sub {
+            font-size: 12px;
+            color: #6C757D;
+            margin-top: 4px;
+        }
+        .metric-card.primary .value { color: #1D3557; }
+        .metric-card.success .value { color: #2E7D32; }
+        .metric-card.warning .value { color: #F57C00; }
+        .metric-card.danger .value { color: #C62828; }
+        
+        /* Título de sección */
+        .section-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1D3557;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #E63946;
+            display: inline-block;
+        }
+        
+        /* Botones */
+        .btn-download {
+            background-color: #E63946;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn-download:hover {
+            background-color: #C62828;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+
     # ============================================================
     # BOTÓN PARA VOLVER
     # ============================================================

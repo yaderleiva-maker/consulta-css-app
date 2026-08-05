@@ -267,9 +267,28 @@ def ejecutar_merge_calculo():
           i.id_incidencia,
           i.fecha_inicio,
           i.fecha_fin,
-          i.dias_libres_sql,  -- 🔥 Usamos la columna normalizada
+          i.dias_libres_sql,
           i.id_pais,
-          p.descuenta_festivos
+          p.descuenta_festivos,
+          SPLIT(
+            REPLACE(
+              REPLACE(
+                REPLACE(
+                  REPLACE(
+                    REPLACE(
+                      REPLACE(
+                        REPLACE(
+                          REPLACE(
+                            UPPER(i.dias_libres_sql),
+                          'Á', 'A'),
+                        'É', 'E'),
+                      'Í', 'I'),
+                    'Ó', 'O'),
+                  'Ú', 'U'),
+                ' ', ''),
+              ',,', ','),
+            ','
+          ) AS dias_libres_normalizados
         FROM `nexo_people.incidencias` i
         JOIN `nexo_people.politicas_vacaciones` p ON i.id_pais = p.id_pais
           AND p.estado = 'ACTIVO'
@@ -278,37 +297,35 @@ def ejecutar_merge_calculo():
         WHERE i.estado_calculo = 'PENDIENTE'
       ),
       
-      festivos AS (
-        SELECT f.fecha
-        FROM `nexo_people.calendario_festivos` f
-        WHERE f.id_pais IN (SELECT DISTINCT id_pais FROM incidencias_base)
-      ),
-      
       resultado_calculo AS (
         SELECT 
           ib.id_incidencia,
           COUNT(*) AS dias_calculados,
+          -- 🔥 Quincena 1 (días 1-15 del mes)
           COUNTIF(EXTRACT(DAY FROM fecha) BETWEEN 1 AND 15) AS quincena1,
+          -- 🔥 Quincena 2 (días 16-31 del mes)
           COUNTIF(EXTRACT(DAY FROM fecha) BETWEEN 16 AND 31) AS quincena2
         FROM incidencias_base ib
         CROSS JOIN UNNEST(GENERATE_DATE_ARRAY(ib.fecha_inicio, ib.fecha_fin)) AS fecha
         WHERE 
-          -- El día NO es un día libre del empleado (usando la columna normalizada)
           NOT (
             CASE EXTRACT(DAYOFWEEK FROM fecha)
               WHEN 1 THEN 'DOMINGO'
               WHEN 2 THEN 'LUNES'
               WHEN 3 THEN 'MARTES'
-              WHEN 4 THEN 'MIÉRCOLES'
+              WHEN 4 THEN 'MIERCOLES'
               WHEN 5 THEN 'JUEVES'
               WHEN 6 THEN 'VIERNES'
-              WHEN 7 THEN 'SÁBADO'
-            END IN UNNEST(SPLIT(ib.dias_libres_sql, ','))
+              WHEN 7 THEN 'SABADO'
+            END IN UNNEST(ib.dias_libres_normalizados)
           )
-          -- El día NO es un festivo (si aplica según política)
           AND (
             ib.descuenta_festivos = FALSE
-            OR fecha NOT IN (SELECT fecha FROM festivos)
+            OR fecha NOT IN (
+              SELECT f.fecha
+              FROM `nexo_people.calendario_festivos` f
+              WHERE f.id_pais = ib.id_pais
+            )
           )
         GROUP BY ib.id_incidencia
       )
@@ -331,10 +348,8 @@ def ejecutar_merge_calculo():
     
     from services.bigquery import ejecutar_query
     df = ejecutar_query(query)
-    
-    # Si no hubo error, asumimos que funcionó
     return True
-
+    
 # services/vacaciones.py
 
 def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=None):

@@ -494,7 +494,7 @@ def generar_excel_vacaciones_empleado(id_empleado):
             except Exception as e:
                 st.error(f"Error actualizando cálculos: {e}")    
             # Título de la sección
-            st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
+        st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
 
         # ============================================================
         # 1. RESUMEN DE VACACIONES (SIEMPRE VISIBLE)

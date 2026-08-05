@@ -195,55 +195,57 @@ class ReportesIFX:
                     df.to_excel(writer, index=False, sheet_name=sheet_name)
         return output.getvalue()
     
-def render(self, df: pd.DataFrame):
-    """Renderiza la sección de reportes"""
+    # ============================================================
+    # MÉTODOS DE UI - DENTRO DE LA CLASE (CON INDENTACIÓN CORRECTA)
+    # ============================================================
     
-    # Título
-    st.markdown("### 📥 Reportes IFX")
-    
-    # Botón principal de descarga
-    col1, col2 = st.columns([2, 1])
-    with col2:
-        if st.button("📥 Descargar Excel", use_container_width=True, type="primary"):
-            self._generar_descarga(df)
-    
-    st.divider()
-    
-    # ============================================
-    # SELECCIÓN DE REPORTES - ¡AQUÍ ESTÁ LA LISTA!
-    # ============================================
-    st.markdown("### 📋 Selecciona los reportes a generar")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        reportes_seleccionados = []
-        for i, (nombre, config) in enumerate(list(self.REPORTES_CONFIG.items())[:4]):
-            if st.checkbox(f"{nombre}", key=f"reporte_{i}", value=True):
-                reportes_seleccionados.append(nombre)
-    
-    with col2:
-        for i, (nombre, config) in enumerate(list(self.REPORTES_CONFIG.items())[4:]):
-            if st.checkbox(f"{nombre}", key=f"reporte_{i+4}", value=True):
-                reportes_seleccionados.append(nombre)
-    
-    # Vista previa del primer reporte seleccionado
-    if reportes_seleccionados:
-        st.divider()
-        st.markdown(f"**📋 Vista previa: {reportes_seleccionados[0]}**")
+    def render(self, df: pd.DataFrame):
+        """Renderiza la sección de reportes"""
         
-        df_reporte = self.generar_reporte(df, reportes_seleccionados[0])
-        st.dataframe(
-            df_reporte.head(20),
-            use_container_width=True,
-            hide_index=True
-        )
+        st.markdown("### 📥 Reportes IFX")
+        
+        # Botón principal de descarga
+        col1, col2 = st.columns([2, 1])
+        with col2:
+            if st.button("📥 Descargar Excel", use_container_width=True, type="primary"):
+                self._generar_descarga(df)
+        
+        st.divider()
+        
+        # SELECCIÓN DE REPORTES
+        st.markdown("### 📋 Selecciona los reportes a generar")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            reportes_seleccionados = []
+            for i, (nombre, config) in enumerate(list(self.REPORTES_CONFIG.items())[:4]):
+                if st.checkbox(f"{nombre}", key=f"reporte_{i}", value=True):
+                    reportes_seleccionados.append(nombre)
+        
+        with col2:
+            for i, (nombre, config) in enumerate(list(self.REPORTES_CONFIG.items())[4:]):
+                if st.checkbox(f"{nombre}", key=f"reporte_{i+4}", value=True):
+                    reportes_seleccionados.append(nombre)
+        
+        # Vista previa del primer reporte seleccionado
+        if reportes_seleccionados:
+            st.divider()
+            st.markdown(f"**📋 Vista previa: {reportes_seleccionados[0]}**")
+            
+            df_reporte = self.generar_reporte(df, reportes_seleccionados[0])
+            st.dataframe(
+                df_reporte.head(20),
+                use_container_width=True,
+                hide_index=True
+            )
     
     def _generar_descarga(self, df: pd.DataFrame):
         """Genera y descarga los reportes seleccionados"""
         # Obtener reportes seleccionados
         reportes_seleccionados = []
         for i, nombre in enumerate(self.REPORTES_CONFIG.keys()):
+            # Verificar ambos posibles keys
             if st.session_state.get(f"reporte_{i}", False) or st.session_state.get(f"reporte_{i+4}", False):
                 reportes_seleccionados.append(nombre)
         

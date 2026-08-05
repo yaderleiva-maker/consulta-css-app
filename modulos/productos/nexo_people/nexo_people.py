@@ -167,15 +167,18 @@ def run_ficha(usuario):
         st.info("🔍 Busca un colaborador en el panel izquierdo para ver su ficha.")
 
 
-# ============================================================
-# FUNCIÓN PARA MOSTRAR LA FICHA DEL EMPLEADO
-# ============================================================
-
-# def generar_excel_vacaciones_empleado(id_empleado):
-
-        
+def mostrar_ficha_empleado(id_empleado):
+    """
+    Mostrar la ficha completa de un empleado.
+    """
+    empleado = obtener_empleado(id_empleado)
+    
+    if not empleado:
+        st.error("❌ Empleado no encontrado")
+        return
+    
     # ============================================================
-    # DISEÑO DE TARJETAS
+    # CSS PERSONALIZADO (DISEÑO CORPORATIVO CON TARJETAS)
     # ============================================================
     st.markdown("""
     <style>
@@ -337,6 +340,7 @@ def run_ficha(usuario):
         }
     </style>
     """, unsafe_allow_html=True)
+    
     # ============================================================
     # BOTÓN PARA VOLVER
     # ============================================================
@@ -476,8 +480,9 @@ def run_ficha(usuario):
             try:
                 ejecutar_merge_calculo()
             except Exception as e:
-                st.error(f"Error actualizando cálculos: {e}")    
-            # Título de la sección
+                st.error(f"Error actualizando cálculos: {e}")
+        
+        # Título de la sección
         st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
 
         # ============================================================

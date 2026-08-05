@@ -96,6 +96,7 @@ def generar_excel_vacaciones_empleado(id_empleado):
     Generar Excel con el historial de vacaciones de un empleado.
     """
     from io import BytesIO
+    import pandas as pd
     
     historial = obtener_historial_vacaciones(id_empleado)
     if not historial:
@@ -103,12 +104,16 @@ def generar_excel_vacaciones_empleado(id_empleado):
     
     df = pd.DataFrame(historial)
     
+    # 🔥 CONVERTIR FECHAS A STRING ANTES DE EXPORTAR
+    for col in ['fecha_inicio', 'fecha_fin', 'fecha_creacion']:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '')
+    
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, sheet_name='Vacaciones', index=False)
     
     return output.getvalue()
-
 
 # ============================================================
 # FUNCIONES PARA INCIDENCIAS

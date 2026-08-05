@@ -248,19 +248,30 @@ def mostrar_menu(modulos_dict, nivel=0):
 # SIDEBAR
 # =====================
 with st.sidebar:
-    # Logo
+    # ============================================================
+    # 1. LOGO Y TÍTULO
+    # ============================================================
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.image("assets/NEXO.jpeg", width=120)
     st.markdown("---")
     
-    # Mostrar menú jerárquico
+    # ============================================================
+    # 2. MENÚ PRINCIPAL (TODOS LOS MÓDULOS)
+    # ============================================================
     mostrar_menu(MODULOS)
     
+    # ============================================================
+    # 3. SEPARADOR Y USUARIO
+    # ============================================================
     st.markdown("---")
     st.caption(f"👤 {usuario}")
-    st.caption("🤝 NEXO CRM | by DolaAI")
+    st.caption("🏢 NEXO SUITE")  # 👈 Cambiado de NEXO CRM a NEXO SUITE
     
+    # ============================================================
+    # 4. CERRAR SESIÓN (SIEMPRE AL FINAL)
+    # ============================================================
+    st.markdown("---")
     if st.button("🚪 Cerrar sesión", use_container_width=True):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
@@ -269,14 +280,11 @@ with st.sidebar:
 # =====================
 # CONTENIDO PRINCIPAL
 # =====================
-# =====================
-# CONTENIDO PRINCIPAL
-# =====================
 if "modulo_activo" in st.session_state:
     st.session_state["modulo_activo"]()
 else:
     # Pantalla de bienvenida
-    st.title("🤝 NEXO CRM")
+    st.title("🏢 NEXO SUITE")  # 👈 Cambiado de NEXO CRM a NEXO SUITE
     st.markdown("---")
     
     st.markdown(f"### ¡Bienvenido, {usuario}! 👋")
@@ -286,11 +294,9 @@ else:
     # Recorrer módulos de primer nivel
     for categoria_nombre, categoria_contenido in MODULOS.items():
         if categoria_contenido.get("tipo") == "categoria" and categoria_contenido.get("modulos"):
-            # Verificar si la categoría tiene módulos visibles
             if tiene_modulos_visibles(categoria_contenido["modulos"]):
                 st.subheader(f"{categoria_contenido.get('icono', '📁')} {categoria_nombre}")
                 
-                # Mostrar módulos de esta categoría en filas de 3
                 modulos_visibles = []
                 for modulo_nombre, modulo_contenido in categoria_contenido["modulos"].items():
                     if modulo_contenido.get("tipo") == "modulo":

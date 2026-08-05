@@ -338,6 +338,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
         params.append({"name": "id_empleado", "type": "STRING", "value": id_empleado})
     
     if fecha_inicio:
+        # 🔥 Asegurar formato YYYY-MM-DD
         fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
         query += " AND i.fecha_inicio >= @fecha_inicio"
         params.append({"name": "fecha_inicio", "type": "DATE", "value": fecha_inicio_str})

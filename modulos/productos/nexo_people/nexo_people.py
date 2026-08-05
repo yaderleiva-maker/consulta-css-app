@@ -11,7 +11,6 @@ from services.empleados import (
 )
 from services.fotos import mostrar_foto_sidebar, mostrar_foto_ficha
 from services.bigquery import probar_conexion
-from services.helpers import formatear_numero
 from services.vacaciones import (
     obtener_historial_vacaciones,
     obtener_saldo_vacaciones,
@@ -20,7 +19,7 @@ from services.vacaciones import (
     obtener_incidencias_empleado,
     obtener_resumen_incidencias
 )
-
+from services.helpers import formatear_numero
 
 # ============================================================
 # MÓDULO 1: IN & OUT
@@ -421,7 +420,8 @@ def mostrar_ficha_empleado(id_empleado):
         # Calcular porcentaje usado
         saldo_disponible = formatear_numero(saldo_data['saldo_actual'])
         dias_usados = formatear_numero(saldo_data['dias_usados'])
-        porcentaje = min((saldo_data['dias_usados'] / 15) * 100, 100) if 15 > 0 else 0
+        porcentaje = (saldo_data['dias_usados'] / 15) * 100 if 15 > 0 else 0
+        porcentaje = min(porcentaje, 100)
         
         # Color del estado
         if saldo_data['saldo_actual'] >= 5:

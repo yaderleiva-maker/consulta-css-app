@@ -22,7 +22,7 @@ from services.vacaciones import (
     obtener_incidencias_empleado,
     obtener_resumen_incidencias,
     ejecutar_merge_calculo,
-    contar_incidencias_pendiente
+    contar_incidencias_pendientes
 )
 from services.helpers import formatear_numero
 from services.vacaciones import obtener_reporte_vacaciones, generar_excel_reporte_vacaciones

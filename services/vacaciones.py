@@ -63,7 +63,7 @@ def obtener_saldo_vacaciones(id_empleado):
         p.dias_por_anio,
         ROUND(p.dias_por_anio / 12, 2) AS dias_por_mes
       FROM `nexo_people.politicas_vacaciones` p
-      JOIN empleado_data e ON p.id_empresa = e.id_empresa
+      JOIN empleado_data ed ON p.id_empresa = ed.id_empresa
       WHERE p.estado = 'ACTIVO'
         AND p.fecha_inicio_vigencia <= CURRENT_DATE()
         AND (p.fecha_fin_vigencia IS NULL OR p.fecha_fin_vigencia >= CURRENT_DATE())
@@ -90,15 +90,15 @@ def obtener_saldo_vacaciones(id_empleado):
       LIMIT 1
     )
     SELECT 
-      e.meses_trabajados,
+      ed.meses_trabajados,
       p.dias_por_mes,
       p.dias_por_anio,
-      ROUND(e.meses_trabajados * p.dias_por_mes, 2) AS dias_ganados,
+      ROUND(ed.meses_trabajados * p.dias_por_mes, 2) AS dias_ganados,
       v.total_usados,
-      ROUND((e.meses_trabajados * p.dias_por_mes) - v.total_usados, 2) AS saldo_actual,
+      ROUND((ed.meses_trabajados * p.dias_por_mes) - v.total_usados, 2) AS saldo_actual,
       pv.fecha_inicio AS proxima_fecha_inicio,
       pv.fecha_fin AS proxima_fecha_fin
-    FROM empleado_data e
+    FROM empleado_data ed
     CROSS JOIN politica p
     CROSS JOIN vacaciones_usadas v
     LEFT JOIN proximas_vacaciones pv ON 1=1
@@ -119,13 +119,12 @@ def obtener_saldo_vacaciones(id_empleado):
     
     row = df.iloc[0]
     
-    # 🔥 CORRECCIÓN: Verificar si la fecha es NaT antes de formatear
+    # 🔥 Formatear próximas vacaciones (con verificación de NaT)
     proximas_vacaciones = "No hay próximas vacaciones"
     if row.get('proxima_fecha_inicio') and row.get('proxima_fecha_fin'):
         fecha_inicio = row['proxima_fecha_inicio']
         fecha_fin = row['proxima_fecha_fin']
         
-        # Verificar que no sean NaT (Not a Time)
         import pandas as pd
         if not pd.isna(fecha_inicio) and not pd.isna(fecha_fin):
             if hasattr(fecha_inicio, 'strftime'):

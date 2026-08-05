@@ -631,6 +631,7 @@ def run_reporte_vacaciones(usuario):
                 fecha_inicio=fecha_inicio,
                 fecha_fin=fecha_fin,
                 id_empleado=id_empleado
+                quincena=quincena_opcion
             )
             
             if df.empty:

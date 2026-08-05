@@ -171,22 +171,31 @@ def run_ficha(usuario):
 # FUNCIÓN PARA MOSTRAR LA FICHA DEL EMPLEADO
 # ============================================================
 
-def mostrar_ficha_empleado(id_empleado):
+def generar_excel_vacaciones_empleado(id_empleado):
     """
-    Mostrar la ficha completa de un empleado.
+    Generar Excel con el historial de vacaciones de un empleado.
     """
-    empleado = obtener_empleado(id_empleado)
+    from io import BytesIO
     
-    if not empleado:
-        st.error("❌ Empleado no encontrado")
-        return
+    historial = obtener_historial_vacaciones(id_empleado)
+    if not historial:
+        return None
     
-
+    df = pd.DataFrame(historial)
+    
+    # 🔥 CONVERTIR FECHAS A STRING PARA EVITAR ERROR DE TIMEZONE
+    for col in ['fecha_inicio', 'fecha_fin', 'fecha_creacion']:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '')
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='Vacaciones', index=False)
+    
+    return output.getvalue()    
+    
     # ============================================================
-    # CSS PERSONALIZADO (DISEÑO PROFESIONAL CON SOMBRAS)
-    # ============================================================
-    # ============================================================
-    # CSS PERSONALIZADO (DISEÑO CORPORATIVO CON TARJETAS)
+    # DISEÑO DE TARJETAS
     # ============================================================
     st.markdown("""
     <style>

@@ -80,6 +80,11 @@ MODULOS = {
                 "tipo": "modulo",
                 "funcion": lambda: nexo_people.run_ficha(usuario),
                 "permiso": "NEXO_PEOPLE"
+            },
+            "📋 Reporte de Vacaciones": {  # 👈 NUEVO
+                "tipo": "modulo",
+                "funcion": lambda: nexo_people.run_reporte_vacaciones(usuario),
+                "permiso": "NEXO_PEOPLE"
             }
         }
     },

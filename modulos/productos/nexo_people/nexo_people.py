@@ -747,7 +747,7 @@ def run_reporte_vacaciones(usuario):
                 
                 excel_data = generar_excel_reporte_vacaciones(df)
                 if excel_data:
-                    nombre_archivo = f"reporte_vacaciones_{año}_{mes:02d}_{quincena_opcion.replace(' ', '_')}.xlsx"
+                    nombre_archivo = f"reporte_vacaciones_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}_{quincena_opcion.replace(' ', '_')}.xlsx"
                     st.download_button(
                         label="📥 Descargar Excel",
                         data=excel_data,

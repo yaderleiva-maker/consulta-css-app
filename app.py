@@ -4,6 +4,7 @@ from modulos.core import login
 from modulos.empresas.hexagon_panama.consultas import consultas
 from modulos.empresas.hexagon_panama.hopsa import hopsa
 from modulos.empresas.hexagon_panama.hopsa import control_almuerzos
+from modulos.empresas.hexagon_panama.ifx import main as ifx  # 🆕 NUEVO IMPORT
 from modulos.productos.crm import carga_documentos
 from modulos.productos.inventarios import inventario
 from modulos.empresas.farmazone import carga_reportes
@@ -12,7 +13,7 @@ from modulos.productos.nexo_people import nexo_people
 # =====================
 # CONFIGURACIÓN
 # =====================
-st.set_page_config(page_title="NEXO CRM", page_icon="💻", layout="wide")
+st.set_page_config(page_title="NEXO SUITE", page_icon="💻", layout="wide")
 
 # =====================
 # LOGIN
@@ -27,7 +28,6 @@ usuario = st.session_state.get("usuario")
 # CONFIGURACIÓN DE ROLES Y MÓDULOS
 # =====================
 
-# Estructura jerárquica de módulos
 MODULOS = {
     "🤝 NEXO CRM": {
         "icono": "🤝",
@@ -49,6 +49,12 @@ MODULOS = {
                 "funcion": lambda: ejecutar_consultas(),
                 "permiso": "CONSULTAS"
             },
+            "📈 IFX Network": {  # 🆕 NUEVO MÓDULO
+                "tipo": "modulo",
+                "funcion": lambda: ifx.run(usuario),
+                "permiso": "IFX",
+                "icono": "📈"
+            },
             "🏥 HOPSA": {
                 "tipo": "categoria",
                 "icono": "🏥",
@@ -67,21 +73,21 @@ MODULOS = {
             }
         }
     },
-"🏢 Hexagon Colombia": {
+    "🏢 Hexagon Colombia": {
         "icono": "🏢",
         "tipo": "categoria",
         "modulos": {
-            "📊 In & Out": {  # 👈 NUEVO
+            "📊 In & Out": {
                 "tipo": "modulo",
                 "funcion": lambda: nexo_people.run_in_out(usuario),
                 "permiso": "NEXO_PEOPLE"
             },
-            "👤 Ficha de Empleados": {  # 👈 NUEVO
+            "👤 Ficha de Empleados": {
                 "tipo": "modulo",
                 "funcion": lambda: nexo_people.run_ficha(usuario),
                 "permiso": "NEXO_PEOPLE"
             },
-            "📋 Reporte de Vacaciones": {  # 👈 NUEVO
+            "📋 Reporte de Vacaciones": {
                 "tipo": "modulo",
                 "funcion": lambda: nexo_people.run_reporte_vacaciones(usuario),
                 "permiso": "NEXO_PEOPLE"
@@ -112,7 +118,10 @@ MODULOS = {
     }
 }
 
-# Permisos por usuario
+# =====================
+# PERMISOS POR USUARIO
+# =====================
+
 ROLES = {
     "yaderleiva@gmail.com": {
         "CONSULTAS": True,
@@ -121,14 +130,16 @@ ROLES = {
         "CONTROL_ALMUERZOS": True,
         "INVENTARIO": True,
         "CARGA_REPORTES": True,
-        "NEXO_PEOPLE": True
+        "NEXO_PEOPLE": True,
+        "IFX": True  # 🆕 PERMISO PARA IFX
     },
     "mariachacon@hopsa.com": {
         "HOPSA": True,
         "CONTROL_ALMUERZOS": True
     },
     "arismaytte@gmail.com": {
-        "CONSULTAS": True
+        "CONSULTAS": True,
+        "IFX": True  # 🆕 Acceso a IFX
     },
     "condadodelreyfarmazone@gmail.com": {
         "CARGA_REPORTES": True
@@ -140,30 +151,36 @@ ROLES = {
         "CARGA_REPORTES": True
     },
     "contenalfa@gmail.com": {
-        "NEXO_PEOPLE": True
+        "NEXO_PEOPLE": True,
+        "IFX": True  # 🆕 Acceso a IFX
     },
     "contenbeta@gmail.com": {
         "CARGA_REPORTES": True
     },
     "yfalconhexagon@gmail.com": {
-        "CONSULTAS": True
+        "CONSULTAS": True,
+        "IFX": True  # 🆕 Acceso a IFX
     },
     "yesturainhexagon@gmail.com": {
-        "CONSULTAS": True
+        "CONSULTAS": True,
+        "IFX": True  # 🆕 Acceso a IFX
     },
     "sgonzalez.hex@gmail.com": {
-        "CONSULTAS": True
+        "CONSULTAS": True,
+        "IFX": True  # 🆕 Acceso a IFX
     },
     "nalvaradohexagon@gmail.com": {
-        "CONSULTAS": True
+        "CONSULTAS": True,
+        "IFX": True  # 🆕 Acceso a IFX
     },
-     "hexagonclaudia@gmail.com": {
-        "CONSULTAS": True
+    "hexagonclaudia@gmail.com": {
+        "CONSULTAS": True,
+        "IFX": True  # 🆕 Acceso a IFX
     },
-     "clautotini1224@gmail.com": {
-         "NEXO_PEOPLE": True
+    "clautotini1224@gmail.com": {
+        "NEXO_PEOPLE": True,
+        "IFX": True  # 🆕 Acceso a IFX
     },
-    # Agrega más usuarios aquí
 }
 
 # =====================
@@ -186,53 +203,41 @@ def ejecutar_consultas():
             st.error("❌ No tienes permisos para consultas")
             return
         
-        # Mostrar el radio button de forma prominente
         st.markdown("**Selecciona el tipo de consulta:**")
         tipo = st.radio(
             "",
             opciones,
             key="tipo_consulta",
-            index=0,  # Por defecto la primera opción
-            horizontal=True  # Opcional: mostrarlo horizontal
+            index=0,
+            horizontal=True
         )
         
         st.markdown("---")
     
     consultas.run(usuario, tipo)
 
-    
 def tiene_modulos_visibles(modulos_dict):
     """Verifica si existe al menos un módulo visible para el usuario"""
     for nombre, contenido in modulos_dict.items():
-        # Si es un módulo hoja (tiene función)
         if contenido.get("tipo") == "modulo":
             permiso = contenido.get("permiso")
             if permiso and ROLES.get(usuario, {}).get(permiso, False):
                 return True
-            # Si no tiene permiso explícito, se asume visible (módulo público)
             elif not permiso:
                 return True
-        
-        # Si es una categoría con submódulos
         elif contenido.get("tipo") == "categoria" and contenido.get("modulos"):
             if tiene_modulos_visibles(contenido["modulos"]):
                 return True
-    
     return False
 
 def mostrar_menu(modulos_dict, nivel=0):
     """Muestra menú jerárquico recursivo - SOLO módulos visibles"""
     for nombre, contenido in modulos_dict.items():
-        # Si es categoría con submódulos
         if contenido.get("tipo") == "categoria" and contenido.get("modulos"):
-            # Solo mostrar categoría si tiene al menos un módulo visible
             if tiene_modulos_visibles(contenido["modulos"]):
                 with st.expander(f"{contenido.get('icono', '📁')} {nombre}"):
                     mostrar_menu(contenido["modulos"], nivel + 1)
-        
-        # Si es módulo hoja (tiene función)
         elif contenido.get("tipo") == "modulo" and "funcion" in contenido:
-            # Verificar permisos
             tiene_permiso = True
             if "permiso" in contenido:
                 permiso = contenido["permiso"]
@@ -248,25 +253,13 @@ def mostrar_menu(modulos_dict, nivel=0):
 # SIDEBAR
 # =====================
 with st.sidebar:
-    # ============================================================
-    # 1. LOGO Y TÍTULO
-    # ============================================================
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.image("assets/NEXO.jpeg", width=120)
     st.markdown("---")
     
-    # ============================================================
-    # 2. MENÚ PRINCIPAL (TODOS LOS MÓDULOS)
-    # ============================================================
     mostrar_menu(MODULOS)
     
-   
-    # ============================================================
-    # 4. CERRAR SESIÓN (SIEMPRE AL FINAL)
-    # ============================================================
-
-
     if st.button("🚪 Cerrar sesión", use_container_width=True):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
@@ -274,21 +267,20 @@ with st.sidebar:
     st.markdown("---")
     st.caption(f"👤 {usuario}")
     st.caption("🏢 NEXO SUITE")
+
 # =====================
 # CONTENIDO PRINCIPAL
 # =====================
 if "modulo_activo" in st.session_state:
     st.session_state["modulo_activo"]()
 else:
-    # Pantalla de bienvenida
-    st.title("🏢 NEXO SUITE")  # 👈 Cambiado de NEXO CRM a NEXO SUITE
+    st.title("🏢 NEXO SUITE")
     st.markdown("---")
     
     st.markdown(f"### ¡Bienvenido, {usuario}! 👋")
     st.markdown("Selecciona un módulo del menú lateral para comenzar.")
     st.markdown("---")
     
-    # Recorrer módulos de primer nivel
     for categoria_nombre, categoria_contenido in MODULOS.items():
         if categoria_contenido.get("tipo") == "categoria" and categoria_contenido.get("modulos"):
             if tiene_modulos_visibles(categoria_contenido["modulos"]):

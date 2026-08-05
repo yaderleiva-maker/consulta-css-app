@@ -605,8 +605,8 @@ def run_reporte_vacaciones(usuario):
     if st.button("📊 Generar Reporte", use_container_width=True):
         with st.spinner("Generando reporte..."):
             # 🔥 DEPURACIÓN: Mostrar qué valor se está enviando
-            st.write(f"🔍 Valor de quincena seleccionado: '{quincena_opcion}'")
-            st.write(f"🔍 Tipo: {type(quincena_opcion)}")
+            # st.write(f"🔍 Valor de quincena seleccionado: '{quincena_opcion}'")
+            # st.write(f"🔍 Tipo: {type(quincena_opcion)}")
             
             # Calcular fechas del mes
             _, last_day = monthrange(año, mes)

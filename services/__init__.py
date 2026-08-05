@@ -13,3 +13,14 @@ from services.empleados import (
     buscar_empleados,
     obtener_estadisticas_rapidas
 )
+
+# ✅ Agregar esto para compatibilidad
+__all__ = [
+    'get_client',
+    'ejecutar_query',
+    'leer_sql',
+    'probar_conexion',
+    'obtener_empleado',
+    'buscar_empleados',
+    'obtener_estadisticas_rapidas'
+]

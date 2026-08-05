@@ -3,6 +3,8 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
+from datetime import date, datetime
+from calendar import monthrange
 from services.empleados import (
     obtener_empleado,
     buscar_empleados,
@@ -542,10 +544,11 @@ def mostrar_ficha_empleado(id_empleado):
 # MÓDULO 3: REPORTE DE VACACIONES
 # ============================================================
 
+# modulos/hexagon_colombia/nexo_people.py
+
 def run_reporte_vacaciones(usuario):
     """
     Módulo de Reporte de Vacaciones para RRHH.
-    Permite filtrar por período y descargar Excel.
     """
     st.markdown("## 📋 Reporte de Vacaciones")
     st.caption("Genera reportes de vacaciones por período, quincena o empleado.")
@@ -555,18 +558,19 @@ def run_reporte_vacaciones(usuario):
     # ============================================================
     st.markdown("### 🔍 Filtros")
     
+    # Fecha de inicio (default: 1er día del mes)
+    primer_dia_mes = date.today().replace(day=1)
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        # Fecha de inicio
         fecha_inicio = st.date_input(
             "Fecha de inicio",
-            value=pd.Timestamp(date.today().replace(day=1)).date(),
+            value=primer_dia_mes,
             key="reporte_fecha_inicio"
         )
     
     with col2:
-        # Fecha de fin
         fecha_fin = st.date_input(
             "Fecha de fin",
             value=date.today(),
@@ -581,15 +585,14 @@ def run_reporte_vacaciones(usuario):
             key="reporte_quincena"
         )
         
+        # 🔥 Corrección: usar variables locales para no afectar los inputs
         if quincena_opcion == "Quincena 1 (1-15)":
-            fecha_inicio = pd.Timestamp(date.today().replace(day=1)).date()
-            fecha_fin = pd.Timestamp(date.today().replace(day=15)).date()
+            fecha_inicio = date.today().replace(day=1)
+            fecha_fin = date.today().replace(day=15)
         elif quincena_opcion == "Quincena 2 (16-31)":
-            fecha_inicio = pd.Timestamp(date.today().replace(day=16)).date()
-            # Fin de mes
-            from calendar import monthrange
             last_day = monthrange(date.today().year, date.today().month)[1]
-            fecha_fin = pd.Timestamp(date.today().replace(day=last_day)).date()
+            fecha_inicio = date.today().replace(day=16)
+            fecha_fin = date.today().replace(day=last_day)
     
     # Empleado opcional
     empleados_opcion = st.selectbox(
@@ -606,7 +609,6 @@ def run_reporte_vacaciones(usuario):
             # Determinar ID del empleado si se seleccionó uno
             id_empleado = None
             if empleados_opcion != "Todos":
-                # Buscar empleado por nombre
                 empleados = obtener_lista_empleados()
                 for emp in empleados:
                     if f"{emp['nombre_completo']}" == empleados_opcion:
@@ -625,33 +627,27 @@ def run_reporte_vacaciones(usuario):
             else:
                 st.success(f"✅ {len(df)} vacaciones encontradas")
                 
-                # ============================================================
-                # 3. MOSTRAR DATOS
-                # ============================================================
+                # Mostrar datos
                 st.markdown("### 📋 Resultados")
                 st.dataframe(df, use_container_width=True)
                 
-                # ============================================================
-                # 4. RESÚMENES ADICIONALES
-                # ============================================================
+                # Resumen
                 st.markdown("### 📊 Resumen")
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    total_empleados = df['CC'].nunique()
+                    total_empleados = df['CC'].nunique() if 'CC' in df.columns else 0
                     st.metric("👥 Empleados", total_empleados)
                 
                 with col2:
-                    total_dias_habiles = df['DIA HABIL'].sum()
+                    total_dias_habiles = df['DIA HABIL'].sum() if 'DIA HABIL' in df.columns else 0
                     st.metric("📅 Días hábiles totales", total_dias_habiles)
                 
                 with col3:
-                    total_dias_no_habiles = df['DIA NO HABIL'].sum()
+                    total_dias_no_habiles = df['DIA NO HABIL'].sum() if 'DIA NO HABIL' in df.columns else 0
                     st.metric("📅 Días no hábiles", total_dias_no_habiles)
                 
-                # ============================================================
-                # 5. BOTÓN PARA DESCARGAR EXCEL
-                # ============================================================
+                # Botón para descargar Excel
                 st.markdown("### 📥 Descargar Reporte")
                 
                 excel_data = generar_excel_reporte_vacaciones(df)

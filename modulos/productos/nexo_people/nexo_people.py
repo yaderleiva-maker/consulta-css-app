@@ -430,6 +430,18 @@ def mostrar_ficha_empleado(id_empleado):
         # Título de la sección
         st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
 
+    # ============================================================
+    # TAB 7: Incidencias (CON RESUMEN DE VACACIONES SIEMPRE VISIBLE)
+    # ============================================================
+    with tabs[6]:
+        # 🔥 Ejecutar MERGE automáticamente al cargar la pestaña
+        with st.spinner("Actualizando cálculos de incidencias..."):
+            from services.vacaciones import ejecutar_merge_calculo
+            ejecutar_merge_calculo()
+        
+        # Título de la sección
+        st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
+
         # ============================================================
         # 1. RESUMEN DE VACACIONES (SIEMPRE VISIBLE)
         # ============================================================
@@ -447,13 +459,13 @@ def mostrar_ficha_empleado(id_empleado):
         
         # Color del estado según el saldo
         if saldo_data['saldo_actual'] > 0:
-            estado_color = "#2E7D32"  # Verde
+            estado_color = "#2E7D32"
             estado_texto = f"🟢 {saldo_data['saldo_actual']:.1f} días disponibles"
         elif saldo_data['saldo_actual'] == 0:
-            estado_color = "#F57C00"  # Naranja
+            estado_color = "#F57C00"
             estado_texto = "🟡 Saldo en cero"
         else:
-            estado_color = "#C62828"  # Rojo
+            estado_color = "#C62828"
             estado_texto = f"🔴 Saldo negativo: {saldo_data['saldo_actual']:.1f} días"
         
         st.markdown(f"""
@@ -476,7 +488,6 @@ def mostrar_ficha_empleado(id_empleado):
                     <div style="font-size: 12px; color: #6C757D;">{porcentaje:.0f}% utilizado</div>
                 </div>
             </div>
-            <!-- Barra de progreso -->
             <div class="progress-bar">
                 <div class="fill" style="width: {porcentaje:.0f}%;"></div>
             </div>
@@ -485,7 +496,7 @@ def mostrar_ficha_empleado(id_empleado):
         """, unsafe_allow_html=True)
 
         # ============================================================
-        # 2. FILTROS DE INCIDENCIAS
+        # 2. FILTROS DE INCIDENCIAS (SOLO UNO)
         # ============================================================
         st.markdown('<div class="filters">', unsafe_allow_html=True)
         
@@ -547,6 +558,7 @@ def mostrar_ficha_empleado(id_empleado):
                 )
             else:
                 st.warning("No hay datos para descargar")
+        
         # ============================================================
         # 2. FILTROS DE INCIDENCIAS
         # ============================================================

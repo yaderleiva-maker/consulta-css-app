@@ -135,13 +135,14 @@ def obtener_incidencias_empleado(id_empleado, tipo_filtro=None):
     query = """
     SELECT 
       i.id_incidencia,
-      i.fecha_inicio,
-      i.fecha_fin,
-      i.dias_calculados,
-      i.estado,
+      i.fecha_inicio AS Inicio,
+      i.fecha_fin AS Fin,
+      i.dias_calculados AS Calculo,
+      i.estado AS Estado,
       i.observacion,
       i.fecha_creacion,
-      t.nombre AS tipo
+      t.nombre AS tipo,
+      i.dias_libres_sql AS Descansa
     FROM `nexo_people.incidencias` i
     JOIN `nexo_people.catalogo_tipos_incidencia` t ON i.id_tipo_incidencia = t.id_tipo_incidencia
     WHERE i.id_empleado = @id_empleado

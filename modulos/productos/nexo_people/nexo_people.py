@@ -630,7 +630,7 @@ def run_reporte_vacaciones(usuario):
             df = obtener_reporte_vacaciones(
                 fecha_inicio=fecha_inicio,
                 fecha_fin=fecha_fin,
-                id_empleado=id_empleado
+                id_empleado=id_empleado,
                 quincena=quincena_opcion
             )
             

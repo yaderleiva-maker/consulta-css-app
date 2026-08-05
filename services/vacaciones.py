@@ -334,3 +334,76 @@ def ejecutar_merge_calculo():
     
     # Si no hubo error, asumimos que funcionó
     return True
+
+# services/vacaciones.py
+
+def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=None):
+    """
+    Obtener reporte de vacaciones con filtros opcionales por período y empleado.
+    """
+    query = """
+    WITH ultimo_cargo AS (
+      SELECT 
+        h.id_empleado, 
+        h.id_cargo,
+        ROW_NUMBER() OVER (PARTITION BY h.id_empleado ORDER BY h.fecha_inicio DESC) AS rn
+      FROM `nexo_people.historial_laboral` h
+    )
+    SELECT 
+      CONCAT(e.nombres, ' ', e.apellidos) AS NOMBRE,
+      e.cedula AS CC,
+      c.nombre AS CARGO,
+      i.fecha_inicio AS `FECHA INICIO`,
+      i.fecha_fin AS `FECHA FIN`,
+      i.dias_calculados AS `DIA HABIL`,
+      (DATE_DIFF(i.fecha_fin, i.fecha_inicio, DAY) + 1) - i.dias_calculados AS `DIA NO HABIL`,
+      i.dias_libres_sql AS `DIA DE DESCANSO`
+    FROM `nexo_people.incidencias` i
+    JOIN `nexo_people.empleados` e ON i.id_empleado = e.id_empleado
+    LEFT JOIN ultimo_cargo h ON e.id_empleado = h.id_empleado AND h.rn = 1
+    LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
+    WHERE i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
+      AND i.estado = 'Aprobado'
+    """
+    
+    params = []
+    
+    if id_empleado:
+        query += " AND i.id_empleado = @id_empleado"
+        params.append({"name": "id_empleado", "type": "STRING", "value": id_empleado})
+    
+    if fecha_inicio:
+        query += " AND i.fecha_inicio >= @fecha_inicio"
+        params.append({"name": "fecha_inicio", "type": "DATE", "value": fecha_inicio})
+    
+    if fecha_fin:
+        query += " AND i.fecha_fin <= @fecha_fin"
+        params.append({"name": "fecha_fin", "type": "DATE", "value": fecha_fin})
+    
+    query += " ORDER BY i.fecha_inicio DESC"
+    
+    df = ejecutar_query(query, params)
+    return df
+
+
+def generar_excel_reporte_vacaciones(df, nombre_archivo="reporte_vacaciones"):
+    """
+    Generar archivo Excel a partir del DataFrame del reporte.
+    """
+    from io import BytesIO
+    
+    if df.empty:
+        return None
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='Vacaciones', index=False)
+        
+        # Ajustar ancho de columnas
+        workbook = writer.book
+        worksheet = writer.sheets['Vacaciones']
+        for i, col in enumerate(df.columns):
+            max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+            worksheet.set_column(i, i, min(max_len, 50))
+    
+    return output.getvalue()

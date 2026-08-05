@@ -172,11 +172,7 @@ def run_ficha(usuario):
 # ============================================================
 
 def generar_excel_vacaciones_empleado(id_empleado):
-    """
-    Generar Excel con el historial de vacaciones de un empleado.
-    """
-    from io import BytesIO
-    
+
     historial = obtener_historial_vacaciones(id_empleado)
     if not historial:
         return None

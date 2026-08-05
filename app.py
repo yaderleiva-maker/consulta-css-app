@@ -140,7 +140,7 @@ ROLES = {
         "CARGA_REPORTES": True
     },
     "contenalfa@gmail.com": {
-        "NEXO_PEOLPLE": True
+        "NEXO_PEOPLE": True
     },
     "contenbeta@gmail.com": {
         "CARGA_REPORTES": True

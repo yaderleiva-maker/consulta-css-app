@@ -14,6 +14,9 @@ from services.empleados import (
 )
 from services.fotos import mostrar_foto_sidebar, mostrar_foto_ficha
 from services.bigquery import probar_conexion
+from services.helpers import formatear_numero
+
+# 🔥 UNA SOLA IMPORTACIÓN DE VACACIONES
 from services.vacaciones import (
     obtener_historial_vacaciones,
     obtener_saldo_vacaciones,
@@ -22,11 +25,10 @@ from services.vacaciones import (
     obtener_incidencias_empleado,
     obtener_resumen_incidencias,
     ejecutar_merge_calculo,
-    contar_incidencias_pendientes
+    contar_incidencias_pendientes,
+    obtener_reporte_vacaciones,
+    generar_excel_reporte_vacaciones
 )
-from services.helpers import formatear_numero
-from services.vacaciones import obtener_reporte_vacaciones, generar_excel_reporte_vacaciones
-
 
 # ============================================================
 # MÓDULO 1: IN & OUT

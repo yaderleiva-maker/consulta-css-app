@@ -287,11 +287,19 @@ UPDATE SET
         st.code(query, language="sql")
         raise
 
-def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=None):
+def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=None, quincena=None):
     """
-    Obtener reporte de vacaciones dividido por quincenas (SIN SUBQUERIES).
+    Obtener reporte de vacaciones dividido por quincenas.
+    Args:
+        fecha_inicio: Fecha de inicio del período
+        fecha_fin: Fecha de fin del período
+        id_empleado: ID del empleado (opcional)
+        quincena: 'Ambas', 'Quincena 1 (1-15)', 'Quincena 2 (16-31)'
     """
-    query = """
+    # ============================================================
+    # BASE DE LA CONSULTA (compartida por ambas quincenas)
+    # ============================================================
+    base_query = """
     WITH ultimo_cargo AS (
       SELECT 
         h.id_empleado, 
@@ -319,23 +327,31 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     
     params = []
     
+    # ============================================================
+    # FILTROS
+    # ============================================================
     if id_empleado:
-        query += " AND i.id_empleado = @id_empleado"
+        base_query += " AND i.id_empleado = @id_empleado"
         params.append({"name": "id_empleado", "type": "STRING", "value": id_empleado})
     
     if fecha_inicio:
-        # 🔥 Asegurar formato YYYY-MM-DD
         fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
-        query += " AND i.fecha_inicio >= @fecha_inicio"
+        base_query += " AND i.fecha_inicio >= @fecha_inicio"
         params.append({"name": "fecha_inicio", "type": "DATE", "value": fecha_inicio_str})
     
     if fecha_fin:
         fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
-        query += " AND i.fecha_fin <= @fecha_fin"
+        base_query += " AND i.fecha_fin <= @fecha_fin"
         params.append({"name": "fecha_fin", "type": "DATE", "value": fecha_fin_str})
     
-    query += """
+    base_query += """
     )
+    """
+    
+    # ============================================================
+    # QUINCENA 1
+    # ============================================================
+    q1_query = """
     SELECT 
       CONCAT(e.nombres, ' ', e.apellidos) AS NOMBRE,
       e.cedula AS CC,
@@ -355,9 +371,12 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     LEFT JOIN ultimo_cargo h ON e.id_empleado = h.id_empleado AND h.rn = 1
     LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     WHERE i.dias_quincena1 > 0
+    """
     
-    UNION ALL
-    
+    # ============================================================
+    # QUINCENA 2
+    # ============================================================
+    q2_query = """
     SELECT 
       CONCAT(e.nombres, ' ', e.apellidos) AS NOMBRE,
       e.cedula AS CC,
@@ -377,10 +396,23 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     LEFT JOIN ultimo_cargo h ON e.id_empleado = h.id_empleado AND h.rn = 1
     LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     WHERE i.dias_quincena2 > 0
-    
-    ORDER BY NOMBRE, QUINCENA
     """
     
+    # ============================================================
+    # CONSTRUIR LA CONSULTA FINAL SEGÚN EL FILTRO
+    # ============================================================
+    if quincena in ["Quincena 1 (1-15)", "Q1"]:
+        query = base_query + q1_query
+    elif quincena in ["Quincena 2 (16-31)", "Q2"]:
+        query = base_query + q2_query
+    else:  # "Ambas"
+        query = base_query + q1_query + " UNION ALL " + q2_query
+    
+    query += " ORDER BY NOMBRE, QUINCENA"
+    
+    # ============================================================
+    # EJECUTAR
+    # ============================================================
     df = ejecutar_query(query, params)
     
     # Renombrar columnas para mostrar con espacios
@@ -398,6 +430,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
         ]
     
     return df
+    
     
 def generar_excel_reporte_vacaciones(df, nombre_archivo="reporte_vacaciones"):
     """

@@ -539,13 +539,11 @@ def mostrar_ficha_empleado(id_empleado):
             else:
                 st.warning("No hay datos para descargar")
 
-# modulos/hexagon_colombia/nexo_people.py
+
 
 # ============================================================
 # MÓDULO 3: REPORTE DE VACACIONES
 # ============================================================
-
-# modulos/hexagon_colombia/nexo_people.py
 
 def run_reporte_vacaciones(usuario):
     """
@@ -553,6 +551,22 @@ def run_reporte_vacaciones(usuario):
     """
     st.markdown("## 📋 Reporte de Vacaciones")
     st.caption("Genera reportes de vacaciones por período, quincena o empleado.")
+    
+    # ============================================================
+    # 0. BOTÓN PARA ACTUALIZAR CÁLCULOS
+    # ============================================================
+    col_refresh, col_spacer = st.columns([1, 4])
+    with col_refresh:
+        if st.button("🔄 Actualizar cálculos", use_container_width=True, help="Recalcula los días hábiles de incidencias pendientes"):
+            with st.spinner("Calculando días hábiles..."):
+                ejecutar_merge_calculo()
+                st.success("✅ Cálculos actualizados correctamente")
+                st.rerun()
+    
+    # ============================================================
+    # 1. FILTROS
+    # ============================================================
+    # ... (resto del código)
     
     # ============================================================
     # 1. FILTROS

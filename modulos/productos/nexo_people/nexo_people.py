@@ -409,9 +409,15 @@ def mostrar_ficha_empleado(id_empleado):
     # TAB 7: Incidencias (CON RESUMEN DE VACACIONES SIEMPRE VISIBLE)
     # ============================================================
     with tabs[6]:
+
+        # 🔥 Ejecutar MERGE automáticamente al cargar la pestaña
+        with st.spinner("Actualizando cálculos de incidencias..."):
+            from services.vacaciones import ejecutar_merge_calculo
+            ejecutar_merge_calculo()
+            
         # Título de la sección
         st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
-
+        
         # ============================================================
         # 1. RESUMEN DE VACACIONES (SIEMPRE VISIBLE)
         # ============================================================

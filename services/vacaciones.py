@@ -408,7 +408,6 @@ def generar_excel_reporte_vacaciones(df, nombre_archivo="reporte_vacaciones"):
     
     return output.getvalue()
 
-# services/vacaciones.py
 
 def contar_incidencias_pendientes():
     """

@@ -171,25 +171,9 @@ def run_ficha(usuario):
 # FUNCIÓN PARA MOSTRAR LA FICHA DEL EMPLEADO
 # ============================================================
 
-def generar_excel_vacaciones_empleado(id_empleado):
+# def generar_excel_vacaciones_empleado(id_empleado):
 
-    historial = obtener_historial_vacaciones(id_empleado)
-    if not historial:
-        return None
-    
-    df = pd.DataFrame(historial)
-    
-    # 🔥 CONVERTIR FECHAS A STRING PARA EVITAR ERROR DE TIMEZONE
-    for col in ['fecha_inicio', 'fecha_fin', 'fecha_creacion']:
-        if col in df.columns:
-            df[col] = df[col].apply(lambda x: x.strftime('%Y-%m-%d') if pd.notna(x) else '')
-    
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='Vacaciones', index=False)
-    
-    return output.getvalue()    
-    
+        
     # ============================================================
     # DISEÑO DE TARJETAS
     # ============================================================

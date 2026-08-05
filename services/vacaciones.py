@@ -3,7 +3,7 @@
 Servicio de Vacaciones e Incidencias
 Cálculo de saldos, historial, gestión de vacaciones e incidencias.
 """
-
+import streamlit as st
 import pandas as pd
 from services.bigquery import ejecutar_query
 from datetime import date, datetime
@@ -282,7 +282,7 @@ UPDATE SET
         return True
     except Exception as e:
         # Si hay error, mostrar el SQL para depurar
-        import streamlit as st
+        #import streamlit as st
         st.error(f"❌ Error en el MERGE: {e}")
         st.code(query, language="sql")
         raise
@@ -412,7 +412,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     # 🔥 Si no coincide, usar "Ambas" por defecto (o lanzar error)
     if quincena_normalizada not in opciones_quincena:
         # Mostrar advertencia y usar "Ambas"
-        import streamlit as st
+        #import streamlit as st
         st.warning(f"Valor de quincena no reconocido: '{quincena}'. Usando 'Ambas'.")
         query = base_query + opciones_quincena["Ambas"]
     else:

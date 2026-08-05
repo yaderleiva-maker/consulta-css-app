@@ -303,7 +303,7 @@ def ejecutar_merge_calculo():
 
 def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=None):
     """
-    Obtener reporte de vacaciones dividido por quincenas.
+    Obtener reporte de vacaciones dividido por quincenas (SIN SUBQUERIES).
     """
     query = """
     WITH ultimo_cargo AS (
@@ -325,7 +325,8 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
         i.dias_libres_sql,
         i.estado
       FROM `nexo_people.incidencias` i
-      WHERE i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
+      JOIN `nexo_people.catalogo_tipos_incidencia` t ON i.id_tipo_incidencia = t.id_tipo_incidencia
+      WHERE t.nombre = 'VACACIONES'
         AND i.estado = 'Aprobado'
         AND i.dias_calculados IS NOT NULL
     """
@@ -337,12 +338,14 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
         params.append({"name": "id_empleado", "type": "STRING", "value": id_empleado})
     
     if fecha_inicio:
+        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
         query += " AND i.fecha_inicio >= @fecha_inicio"
-        params.append({"name": "fecha_inicio", "type": "DATE", "value": fecha_inicio})
+        params.append({"name": "fecha_inicio", "type": "DATE", "value": fecha_inicio_str})
     
     if fecha_fin:
+        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
         query += " AND i.fecha_fin <= @fecha_fin"
-        params.append({"name": "fecha_fin", "type": "DATE", "value": fecha_fin})
+        params.append({"name": "fecha_fin", "type": "DATE", "value": fecha_fin_str})
     
     query += """
     )
@@ -351,15 +354,15 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
       e.cedula AS CC,
       c.nombre AS CARGO,
       'Q1' AS QUINCENA,
-      GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH)) AS `FECHA INICIO`,
-      LEAST(i.fecha_fin, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 14 DAY)) AS `FECHA FIN`,
-      i.dias_quincena1 AS `DIA HABIL`,
+      GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH)) AS FECHA_INICIO,
+      LEAST(i.fecha_fin, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 14 DAY)) AS FECHA_FIN,
+      i.dias_quincena1 AS DIA_HABIL,
       (DATE_DIFF(
         LEAST(i.fecha_fin, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 14 DAY)),
         GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH)),
         DAY
-      ) + 1) - i.dias_quincena1 AS `DIA NO HABIL`,
-      i.dias_libres_sql AS `DIA DE DESCANSO`
+      ) + 1) - i.dias_quincena1 AS DIA_NO_HABIL,
+      i.dias_libres_sql AS DIA_DESCANSO
     FROM incidencias_base i
     JOIN `nexo_people.empleados` e ON i.id_empleado = e.id_empleado
     LEFT JOIN ultimo_cargo h ON e.id_empleado = h.id_empleado AND h.rn = 1
@@ -373,15 +376,15 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
       e.cedula AS CC,
       c.nombre AS CARGO,
       'Q2' AS QUINCENA,
-      GREATEST(i.fecha_inicio, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 15 DAY)) AS `FECHA INICIO`,
-      LEAST(i.fecha_fin, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 31 DAY)) AS `FECHA FIN`,
-      i.dias_quincena2 AS `DIA HABIL`,
+      GREATEST(i.fecha_inicio, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 15 DAY)) AS FECHA_INICIO,
+      LEAST(i.fecha_fin, LAST_DAY(i.fecha_inicio)) AS FECHA_FIN,
+      i.dias_quincena2 AS DIA_HABIL,
       (DATE_DIFF(
-        LEAST(i.fecha_fin, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 31 DAY)),
+        LEAST(i.fecha_fin, LAST_DAY(i.fecha_inicio)),
         GREATEST(i.fecha_inicio, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 15 DAY)),
         DAY
-      ) + 1) - i.dias_quincena2 AS `DIA NO HABIL`,
-      i.dias_libres_sql AS `DIA DE DESCANSO`
+      ) + 1) - i.dias_quincena2 AS DIA_NO_HABIL,
+      i.dias_libres_sql AS DIA_DESCANSO
     FROM incidencias_base i
     JOIN `nexo_people.empleados` e ON i.id_empleado = e.id_empleado
     LEFT JOIN ultimo_cargo h ON e.id_empleado = h.id_empleado AND h.rn = 1
@@ -392,6 +395,21 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     """
     
     df = ejecutar_query(query, params)
+    
+    # Renombrar columnas para mostrar con espacios
+    if not df.empty:
+        df.columns = [
+            "NOMBRE",
+            "CC",
+            "CARGO",
+            "QUINCENA",
+            "FECHA INICIO",
+            "FECHA FIN",
+            "DIA HABIL",
+            "DIA NO HABIL",
+            "DIA DE DESCANSO"
+        ]
+    
     return df
     
 def generar_excel_reporte_vacaciones(df, nombre_archivo="reporte_vacaciones"):

@@ -442,7 +442,7 @@ def mostrar_ficha_empleado(id_empleado):
         if incidencias:
             df_incidencias = pd.DataFrame(incidencias)
 
-            columnas = ['fecha_inicio', 'fecha_fin', 'tipo', 'dias_calculados', 'estado']
+            columnas = ['Inicio', 'Fin', 'tipo', 'Calculo', 'Estado', 'Descansa']
             columnas_existentes = [col for col in columnas if col in df_incidencias.columns]
 
             if columnas_existentes:

@@ -272,6 +272,9 @@ with st.sidebar:
     # 4. CERRAR SESIÓN (SIEMPRE AL FINAL)
     # ============================================================
     st.markdown("---")
+    st.caption(f"👤 {usuario}")
+    st.caption("🏢 NEXO SUITE")
+    st.markdown("---")
     if st.button("🚪 Cerrar sesión", use_container_width=True):
         for key in list(st.session_state.keys()):
             del st.session_state[key]

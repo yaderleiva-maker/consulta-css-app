@@ -555,16 +555,21 @@ def run(usuario: str):
     st.markdown('<div class="spacer-16"></div>', unsafe_allow_html=True)
     
     # ============================================
-    # TABS - ESTILO FLUENT DESIGN
+    # TABS - NUEVO ORDEN: Reportes primero
     # ============================================
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Dashboard",
-        "🔄 Embudo Comercial",
-        "📥 Reportes",
-        "📋 Datos Detallados"
+        "📥 Reportes",           # 👈 1. Reportes (más importante)
+        "📊 Dashboard",          # 👈 2. Dashboard
+        "🔄 Embudo Comercial",   # 👈 3. Embudo
+        "📋 Datos Detallados"    # 👈 4. Datos Detallados
     ])
     
     with tab1:
+        reportes = ReportesIFX()
+        reportes.render(df)
+    
+    with tab2:
+        # Dashboard
         # Gráficos en 2 columnas
         col1, col2 = st.columns(2)
         
@@ -582,13 +587,9 @@ def run(usuario: str):
         st.markdown('<p class="section-title">📈 Evolución Diaria</p>', unsafe_allow_html=True)
         st.session_state.ifx_dashboard.render_chart_evolucion(df)
     
-    with tab2:
+    with tab3:
         embudo = EmbudoIFX()
         embudo.render(df)
-    
-    with tab3:
-        reportes = ReportesIFX()
-        reportes.render(df)  # <- Esta función ya tiene la UI de selección
     
     with tab4:
         # Tabla de datos con estilo

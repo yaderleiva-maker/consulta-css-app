@@ -261,25 +261,19 @@ with st.sidebar:
     # ============================================================
     mostrar_menu(MODULOS)
     
-    # ============================================================
-    # 3. SEPARADOR Y USUARIO
-    # ============================================================
-    st.markdown("---")
-    st.caption(f"👤 {usuario}")
-    st.caption("🏢 NEXO SUITE")  # 👈 Cambiado de NEXO CRM a NEXO SUITE
-    
+   
     # ============================================================
     # 4. CERRAR SESIÓN (SIEMPRE AL FINAL)
     # ============================================================
-    st.markdown("---")
-    st.caption(f"👤 {usuario}")
-    st.caption("🏢 NEXO SUITE")
+
     st.markdown("---")
     if st.button("🚪 Cerrar sesión", use_container_width=True):
         for key in list(st.session_state.keys()):
             del st.session_state[key]
         st.rerun()
-
+    st.markdown("---")
+    st.caption(f"👤 {usuario}")
+    st.caption("🏢 NEXO SUITE")
 # =====================
 # CONTENIDO PRINCIPAL
 # =====================

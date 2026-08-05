@@ -418,44 +418,60 @@ def mostrar_ficha_empleado(id_empleado):
         # Título de la sección
         st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
         
+    # ============================================================
+    # TAB 7: Incidencias (CON RESUMEN DE VACACIONES SIEMPRE VISIBLE)
+    # ============================================================
+    with tabs[6]:
+        # 🔥 Ejecutar MERGE automáticamente al cargar la pestaña
+        with st.spinner("Actualizando cálculos de incidencias..."):
+            from services.vacaciones import ejecutar_merge_calculo
+            ejecutar_merge_calculo()
+        
+        # Título de la sección
+        st.markdown('<p class="section-title">Incidencias</p>', unsafe_allow_html=True)
+
         # ============================================================
         # 1. RESUMEN DE VACACIONES (SIEMPRE VISIBLE)
         # ============================================================
         saldo_data = obtener_saldo_vacaciones(id_empleado)
         
-        # Calcular porcentaje usado
-        saldo_disponible = formatear_numero(saldo_data['saldo_actual'])
+        # Formatear números
+        saldo_actual = formatear_numero(saldo_data['saldo_actual'])
+        dias_ganados = formatear_numero(saldo_data['dias_ganados'])
         dias_usados = formatear_numero(saldo_data['dias_usados'])
-        porcentaje = (saldo_data['dias_usados'] / 15) * 100 if 15 > 0 else 0
+        meses_trabajados = saldo_data['meses_trabajados']
+        
+        # Calcular porcentaje usado
+        porcentaje = (saldo_data['dias_usados'] / saldo_data['dias_ganados']) * 100 if saldo_data['dias_ganados'] > 0 else 0
         porcentaje = min(porcentaje, 100)
         
-        # Color del estado
-        if saldo_data['saldo_actual'] >= 5:
-            estado_color = "success"
-            estado_texto = "🟢 Buen saldo"
-        elif saldo_data['saldo_actual'] >= 1:
-            estado_color = "warning"
-            estado_texto = "🟡 Saldo bajo"
+        # Color del estado según el saldo
+        if saldo_data['saldo_actual'] > 0:
+            estado_color = "#2E7D32"  # Verde
+            estado_texto = f"🟢 {saldo_data['saldo_actual']:.1f} días disponibles"
+        elif saldo_data['saldo_actual'] == 0:
+            estado_color = "#F57C00"  # Naranja
+            estado_texto = "🟡 Saldo en cero"
         else:
-            estado_color = "danger"
-            estado_texto = "🔴 Sin saldo disponible"
+            estado_color = "#C62828"  # Rojo
+            estado_texto = f"🔴 Saldo negativo: {saldo_data['saldo_actual']:.1f} días"
         
         st.markdown(f"""
         <div class="vacation-summary">
             <div class="title">🏖️ Resumen de Vacaciones</div>
             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 120px; text-align: center;">
-                    <div style="font-size: 14px; color: #6C757D;">Disponibles</div>
-                    <div style="font-size: 32px; font-weight: 700; color: #1D3557;">{saldo_disponible}</div>
+                    <div style="font-size: 14px; color: #6C757D;">Saldo Disponible</div>
+                    <div style="font-size: 32px; font-weight: 700; color: {estado_color};">{saldo_actual}</div>
                     <div style="font-size: 12px; color: {estado_color};">{estado_texto}</div>
                 </div>
                 <div style="flex: 1; min-width: 120px; text-align: center;">
-                    <div style="font-size: 14px; color: #6C757D;">Acumuladas</div>
-                    <div style="font-size: 32px; font-weight: 700; color: #2E7D32;">15</div>
-                    <div style="font-size: 12px; color: #6C757D;">días al año</div>
+                    <div style="font-size: 14px; color: #6C757D;">Días Ganados</div>
+                    <div style="font-size: 32px; font-weight: 700; color: #2E7D32;">{dias_ganados}</div>
+                    <div style="font-size: 12px; color: #6C757D;">en {meses_trabajados} meses</div>
                 </div>
                 <div style="flex: 1; min-width: 120px; text-align: center;">
-                    <div style="font-size: 14px; color: #6C757D;">Usadas</div>
+                    <div style="font-size: 14px; color: #6C757D;">Días Usados</div>
                     <div style="font-size: 32px; font-weight: 700; color: #F57C00;">{dias_usados}</div>
                     <div style="font-size: 12px; color: #6C757D;">{porcentaje:.0f}% utilizado</div>
                 </div>
@@ -468,6 +484,69 @@ def mostrar_ficha_empleado(id_empleado):
         </div>
         """, unsafe_allow_html=True)
 
+        # ============================================================
+        # 2. FILTROS DE INCIDENCIAS
+        # ============================================================
+        st.markdown('<div class="filters">', unsafe_allow_html=True)
+        
+        tipos = obtener_tipos_incidencia()
+        opciones = ["Todas"] + [t['nombre'] for t in tipos]
+        
+        # Vacaciones siempre primero
+        if "VACACIONES" in opciones:
+            opciones.remove("VACACIONES")
+            opciones.insert(0, "VACACIONES")
+        
+        filtro_seleccionado = st.radio(
+            "",
+            options=opciones,
+            horizontal=True,
+            key=f"filtro_incidencias_{id_empleado}",
+            label_visibility="collapsed"
+        )
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        tipo_filtro = filtro_seleccionado
+
+        # ============================================================
+        # 3. HISTORIAL DE INCIDENCIAS
+        # ============================================================
+        st.markdown("### Historial")
+
+        incidencias = obtener_incidencias_empleado(id_empleado, tipo_filtro)
+
+        if incidencias:
+            df_incidencias = pd.DataFrame(incidencias)
+
+            columnas = ['fecha_inicio', 'fecha_fin', 'tipo', 'dias_calculados', 'estado']
+            columnas_existentes = [col for col in columnas if col in df_incidencias.columns]
+
+            if columnas_existentes:
+                st.dataframe(
+                    df_incidencias[columnas_existentes],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            else:
+                st.info("No hay datos para mostrar")
+        else:
+            st.info(f"No hay incidencias de tipo '{tipo_filtro}' registradas")
+
+        # ============================================================
+        # 4. BOTÓN DE DESCARGA
+        # ============================================================
+        if st.button("📄 Descargar historial", key=f"descargar_{id_empleado}"):
+            excel_data = generar_excel_vacaciones_empleado(id_empleado)
+            if excel_data:
+                st.download_button(
+                    label="✅ Descargar Excel",
+                    data=excel_data,
+                    file_name=f"incidencias_{empleado['nombre_completo']}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.warning("No hay datos para descargar")
         # ============================================================
         # 2. FILTROS DE INCIDENCIAS
         # ============================================================

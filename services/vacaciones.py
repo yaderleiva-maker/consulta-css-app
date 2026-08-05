@@ -40,99 +40,55 @@ def obtener_historial_vacaciones(id_empleado):
 
 def obtener_saldo_vacaciones(id_empleado):
     """
-    Calcular el saldo de vacaciones de un empleado en tiempo real.
+    Calcular el saldo de vacaciones de un empleado en tiempo real (VERSIÓN SIMPLIFICADA).
     """
     query = """
-    WITH empleado_data AS (
-      SELECT 
-        e.id_empleado,
-        e.fecha_ingreso_empresa,
-        DATE_DIFF(CURRENT_DATE(), e.fecha_ingreso_empresa, MONTH) AS meses_trabajados,
-        e.id_empresa
-      FROM `nexo_people.empleados` e
-      WHERE e.id_empleado = @id_empleado
-    ),
-    politica AS (
-      SELECT 
-        p.dias_por_anio,
-        ROUND(p.dias_por_anio / 12, 2) AS dias_por_mes
-      FROM `nexo_people.politicas_vacaciones` p
-      JOIN empleado_data ed ON p.id_empresa = ed.id_empresa
-      WHERE p.estado = 'ACTIVO'
-        AND p.fecha_inicio_vigencia <= CURRENT_DATE()
-        AND (p.fecha_fin_vigencia IS NULL OR p.fecha_fin_vigencia >= CURRENT_DATE())
-      LIMIT 1
-    ),
-    vacaciones_usadas AS (
-      SELECT 
-        COALESCE(SUM(i.dias_calculados), 0) AS total_usados
-      FROM `nexo_people.incidencias` i
-      WHERE i.id_empleado = @id_empleado
-        AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
-        AND i.estado = 'Aprobado'
-    ),
-    proximas_vacaciones AS (
-      SELECT 
-        fecha_inicio,
-        fecha_fin
-      FROM `nexo_people.incidencias` i
-      WHERE i.id_empleado = @id_empleado
-        AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
-        AND i.estado = 'Aprobado'
-        AND i.fecha_inicio >= CURRENT_DATE()
-      ORDER BY i.fecha_inicio ASC
-      LIMIT 1
-    )
     SELECT 
-      ed.meses_trabajados,
-      p.dias_por_mes,
-      p.dias_por_anio,
-      ROUND(ed.meses_trabajados * p.dias_por_mes, 2) AS dias_ganados,
-      v.total_usados,
-      ROUND((ed.meses_trabajados * p.dias_por_mes) - v.total_usados, 2) AS saldo_actual,
-      pv.fecha_inicio AS proxima_fecha_inicio,
-      pv.fecha_fin AS proxima_fecha_fin
-    FROM empleado_data ed
-    CROSS JOIN politica p
-    CROSS JOIN vacaciones_usadas v
-    LEFT JOIN proximas_vacaciones pv ON 1=1
+      COALESCE(SUM(i.dias_calculados), 0) AS dias_usados
+    FROM `nexo_people.incidencias` i
+    WHERE i.id_empleado = @id_empleado
+      AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
+      AND i.estado = 'Aprobado'
     """
     
     params = [{"name": "id_empleado", "type": "STRING", "value": id_empleado}]
     df = ejecutar_query(query, params)
     
-    if df.empty:
-        return {
-            "dias_ganados": 0,
-            "dias_usados": 0,
-            "saldo_actual": 0,
-            "meses_trabajados": 0,
-            "dias_por_mes": 0,
-            "proximas_vacaciones": "No hay próximas vacaciones"
-        }
+    dias_usados = df.iloc[0]['dias_usados'] if not df.empty else 0
     
-    row = df.iloc[0]
+    # Obtener meses trabajados
+    query_meses = """
+    SELECT 
+      DATE_DIFF(CURRENT_DATE(), fecha_ingreso_empresa, MONTH) AS meses_trabajados
+    FROM `nexo_people.empleados`
+    WHERE id_empleado = @id_empleado
+    """
+    df_meses = ejecutar_query(query_meses, params)
+    meses_trabajados = df_meses.iloc[0]['meses_trabajados'] if not df_meses.empty else 0
     
-    # Formatear próximas vacaciones (con verificación de NaT)
-    proximas_vacaciones = "No hay próximas vacaciones"
-    if row.get('proxima_fecha_inicio') and row.get('proxima_fecha_fin'):
-        fecha_inicio = row['proxima_fecha_inicio']
-        fecha_fin = row['proxima_fecha_fin']
-        
-        import pandas as pd
-        if not pd.isna(fecha_inicio) and not pd.isna(fecha_fin):
-            if hasattr(fecha_inicio, 'strftime'):
-                fecha_inicio = fecha_inicio.strftime('%Y-%m-%d')
-                fecha_fin = fecha_fin.strftime('%Y-%m-%d')
-            proximas_vacaciones = f"{fecha_inicio} al {fecha_fin}"
+    # Obtener política
+    query_politica = """
+    SELECT 
+      ROUND(dias_por_anio / 12, 2) AS dias_por_mes
+    FROM `nexo_people.politicas_vacaciones` p
+    JOIN `nexo_people.empleados` e ON p.id_empresa = e.id_empresa
+    WHERE e.id_empleado = @id_empleado
+      AND p.estado = 'ACTIVO'
+    LIMIT 1
+    """
+    df_politica = ejecutar_query(query_politica, params)
+    dias_por_mes = df_politica.iloc[0]['dias_por_mes'] if not df_politica.empty else 1.25
+    
+    dias_ganados = meses_trabajados * dias_por_mes
+    saldo_actual = dias_ganados - dias_usados
     
     return {
-        "dias_ganados": float(row.get('dias_ganados', 0)),
-        "dias_usados": float(row.get('total_usados', 0)),
-        "saldo_actual": float(row.get('saldo_actual', 0)),
-        "meses_trabajados": int(row.get('meses_trabajados', 0)),
-        "dias_por_mes": float(row.get('dias_por_mes', 1.25)),
-        "proximas_vacaciones": proximas_vacaciones
+        "dias_ganados": round(dias_ganados, 2),
+        "dias_usados": round(dias_usados, 2),
+        "saldo_actual": round(saldo_actual, 2),
+        "meses_trabajados": meses_trabajados,
+        "dias_por_mes": dias_por_mes,
+        "proximas_vacaciones": "No hay próximas vacaciones"  # Simplificado por ahora
     }
     
 def generar_excel_vacaciones_empleado(id_empleado):

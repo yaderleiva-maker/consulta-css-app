@@ -42,6 +42,8 @@ def obtener_historial_vacaciones(id_empleado):
 
 # services/vacaciones.py
 
+# services/vacaciones.py
+
 def obtener_saldo_vacaciones(id_empleado):
     """
     Calcular el saldo de vacaciones de un empleado en tiempo real.
@@ -59,7 +61,6 @@ def obtener_saldo_vacaciones(id_empleado):
     politica AS (
       SELECT 
         p.dias_por_anio,
-        -- 🔥 Calcular dias_por_mes a partir de dias_por_anio
         ROUND(p.dias_por_anio / 12, 2) AS dias_por_mes
       FROM `nexo_people.politicas_vacaciones` p
       JOIN empleado_data e ON p.id_empresa = e.id_empresa
@@ -118,15 +119,19 @@ def obtener_saldo_vacaciones(id_empleado):
     
     row = df.iloc[0]
     
+    # 🔥 CORRECCIÓN: Verificar si la fecha es NaT antes de formatear
+    proximas_vacaciones = "No hay próximas vacaciones"
     if row.get('proxima_fecha_inicio') and row.get('proxima_fecha_fin'):
         fecha_inicio = row['proxima_fecha_inicio']
         fecha_fin = row['proxima_fecha_fin']
-        if hasattr(fecha_inicio, 'strftime'):
-            fecha_inicio = fecha_inicio.strftime('%Y-%m-%d')
-            fecha_fin = fecha_fin.strftime('%Y-%m-%d')
-        proximas_vacaciones = f"{fecha_inicio} al {fecha_fin}"
-    else:
-        proximas_vacaciones = "No hay próximas vacaciones"
+        
+        # Verificar que no sean NaT (Not a Time)
+        import pandas as pd
+        if not pd.isna(fecha_inicio) and not pd.isna(fecha_fin):
+            if hasattr(fecha_inicio, 'strftime'):
+                fecha_inicio = fecha_inicio.strftime('%Y-%m-%d')
+                fecha_fin = fecha_fin.strftime('%Y-%m-%d')
+            proximas_vacaciones = f"{fecha_inicio} al {fecha_fin}"
     
     return {
         "dias_ganados": float(row.get('dias_ganados', 0)),
@@ -136,7 +141,7 @@ def obtener_saldo_vacaciones(id_empleado):
         "dias_por_mes": float(row.get('dias_por_mes', 1.25)),
         "proximas_vacaciones": proximas_vacaciones
     }
-
+    
 def generar_excel_vacaciones_empleado(id_empleado):
     """
     Generar Excel con el historial de vacaciones de un empleado.

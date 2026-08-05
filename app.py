@@ -138,8 +138,7 @@ ROLES = {
         "CONTROL_ALMUERZOS": True
     },
     "arismaytte@gmail.com": {
-        "CONSULTAS": True,
-        "IFX": True  # 🆕 Acceso a IFX
+        "CONSULTAS": True
     },
     "condadodelreyfarmazone@gmail.com": {
         "CARGA_REPORTES": True
@@ -158,28 +157,23 @@ ROLES = {
         "CARGA_REPORTES": True
     },
     "yfalconhexagon@gmail.com": {
-        "CONSULTAS": True,
-        "IFX": True  # 🆕 Acceso a IFX
+        "CONSULTAS": True
     },
     "yesturainhexagon@gmail.com": {
-        "CONSULTAS": True,
-        "IFX": True  # 🆕 Acceso a IFX
+        "CONSULTAS": True
     },
     "sgonzalez.hex@gmail.com": {
-        "CONSULTAS": True,
-        "IFX": True  # 🆕 Acceso a IFX
+        "CONSULTAS": True
     },
     "nalvaradohexagon@gmail.com": {
-        "CONSULTAS": True,
-        "IFX": True  # 🆕 Acceso a IFX
+        "CONSULTAS": True
     },
     "hexagonclaudia@gmail.com": {
         "CONSULTAS": True,
         "IFX": True  # 🆕 Acceso a IFX
     },
     "clautotini1224@gmail.com": {
-        "NEXO_PEOPLE": True,
-        "IFX": True  # 🆕 Acceso a IFX
+        "NEXO_PEOPLE": True
     },
 }
 

@@ -212,20 +212,39 @@ class ReportesIFX:
         
         st.divider()
         
+        # ============================================
         # SELECCIÓN DE REPORTES
+        # ============================================
         st.markdown("### 📋 Selecciona los reportes a generar")
+        
+        # Botones rápidos: Seleccionar / Deseleccionar todos
+        col_btns1, col_btns2 = st.columns([1, 1])
+        with col_btns1:
+            if st.button("✅ Seleccionar todos", use_container_width=True):
+                for i in range(len(self.REPORTES_CONFIG)):
+                    st.session_state[f"reporte_{i}"] = True
+                st.rerun()
+        with col_btns2:
+            if st.button("❌ Deseleccionar todos", use_container_width=True):
+                for i in range(len(self.REPORTES_CONFIG)):
+                    st.session_state[f"reporte_{i}"] = False
+                st.rerun()
+        
+        st.markdown("---")
         
         col1, col2 = st.columns(2)
         
         with col1:
             reportes_seleccionados = []
             for i, (nombre, config) in enumerate(list(self.REPORTES_CONFIG.items())[:4]):
-                if st.checkbox(f"{nombre}", key=f"reporte_{i}", value=True):
+                valor_inicial = st.session_state.get(f"reporte_{i}", False)
+                if st.checkbox(f"{nombre}", key=f"reporte_{i}", value=valor_inicial):
                     reportes_seleccionados.append(nombre)
         
         with col2:
             for i, (nombre, config) in enumerate(list(self.REPORTES_CONFIG.items())[4:]):
-                if st.checkbox(f"{nombre}", key=f"reporte_{i+4}", value=True):
+                valor_inicial = st.session_state.get(f"reporte_{i+4}", False)
+                if st.checkbox(f"{nombre}", key=f"reporte_{i+4}", value=valor_inicial):
                     reportes_seleccionados.append(nombre)
         
         # Vista previa del primer reporte seleccionado
@@ -239,6 +258,8 @@ class ReportesIFX:
                 use_container_width=True,
                 hide_index=True
             )
+        else:
+            st.info("💡 Selecciona al menos un reporte para ver una vista previa.")
     
     def _generar_descarga(self, df: pd.DataFrame):
         """Genera y descarga los reportes seleccionados"""

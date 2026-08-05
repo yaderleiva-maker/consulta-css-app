@@ -407,3 +407,27 @@ def generar_excel_reporte_vacaciones(df, nombre_archivo="reporte_vacaciones"):
             worksheet.set_column(i, i, min(max_len, 50))
     
     return output.getvalue()
+
+# services/vacaciones.py
+
+def contar_incidencias_pendientes():
+    """
+    Contar incidencias pendientes de aprobación.
+    """
+    query = """
+    SELECT 
+      COUNT(*) AS total_pendientes,
+      COUNT(DISTINCT id_empleado) AS empleados_afectados
+    FROM `nexo_people.incidencias`
+    WHERE estado = 'Pendiente'
+    """
+    
+    df = ejecutar_query(query)
+    
+    if df.empty:
+        return {"total_pendientes": 0, "empleados_afectados": 0}
+    
+    return {
+        "total_pendientes": int(df.iloc[0]['total_pendientes']),
+        "empleados_afectados": int(df.iloc[0]['empleados_afectados'])
+    }

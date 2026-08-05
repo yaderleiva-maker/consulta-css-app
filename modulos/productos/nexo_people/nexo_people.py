@@ -21,6 +21,7 @@ from services.vacaciones import (
     ejecutar_merge_calculo
 )
 from services.helpers import formatear_numero
+from services.vacaciones import obtener_reporte_vacaciones, generar_excel_reporte_vacaciones
 
 
 # ============================================================
@@ -534,3 +535,131 @@ def mostrar_ficha_empleado(id_empleado):
                 )
             else:
                 st.warning("No hay datos para descargar")
+
+# modulos/hexagon_colombia/nexo_people.py
+
+# ============================================================
+# MÓDULO 3: REPORTE DE VACACIONES
+# ============================================================
+
+def run_reporte_vacaciones(usuario):
+    """
+    Módulo de Reporte de Vacaciones para RRHH.
+    Permite filtrar por período y descargar Excel.
+    """
+    st.markdown("## 📋 Reporte de Vacaciones")
+    st.caption("Genera reportes de vacaciones por período, quincena o empleado.")
+    
+    # ============================================================
+    # 1. FILTROS
+    # ============================================================
+    st.markdown("### 🔍 Filtros")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Fecha de inicio
+        fecha_inicio = st.date_input(
+            "Fecha de inicio",
+            value=pd.Timestamp(date.today().replace(day=1)).date(),
+            key="reporte_fecha_inicio"
+        )
+    
+    with col2:
+        # Fecha de fin
+        fecha_fin = st.date_input(
+            "Fecha de fin",
+            value=date.today(),
+            key="reporte_fecha_fin"
+        )
+    
+    with col3:
+        # Opción rápida por quincena
+        quincena_opcion = st.selectbox(
+            "O selecciona una quincena",
+            options=["Personalizado", "Quincena 1 (1-15)", "Quincena 2 (16-31)"],
+            key="reporte_quincena"
+        )
+        
+        if quincena_opcion == "Quincena 1 (1-15)":
+            fecha_inicio = pd.Timestamp(date.today().replace(day=1)).date()
+            fecha_fin = pd.Timestamp(date.today().replace(day=15)).date()
+        elif quincena_opcion == "Quincena 2 (16-31)":
+            fecha_inicio = pd.Timestamp(date.today().replace(day=16)).date()
+            # Fin de mes
+            from calendar import monthrange
+            last_day = monthrange(date.today().year, date.today().month)[1]
+            fecha_fin = pd.Timestamp(date.today().replace(day=last_day)).date()
+    
+    # Empleado opcional
+    empleados_opcion = st.selectbox(
+        "Empleado (opcional)",
+        options=["Todos"] + [f"{e['nombre_completo']}" for e in obtener_lista_empleados()],
+        key="reporte_empleado"
+    )
+    
+    # ============================================================
+    # 2. BOTÓN PARA GENERAR REPORTE
+    # ============================================================
+    if st.button("📊 Generar Reporte", use_container_width=True):
+        with st.spinner("Generando reporte..."):
+            # Determinar ID del empleado si se seleccionó uno
+            id_empleado = None
+            if empleados_opcion != "Todos":
+                # Buscar empleado por nombre
+                empleados = obtener_lista_empleados()
+                for emp in empleados:
+                    if f"{emp['nombre_completo']}" == empleados_opcion:
+                        id_empleado = emp['id_empleado']
+                        break
+            
+            # Obtener datos del reporte
+            df = obtener_reporte_vacaciones(
+                fecha_inicio=fecha_inicio,
+                fecha_fin=fecha_fin,
+                id_empleado=id_empleado
+            )
+            
+            if df.empty:
+                st.warning("No hay vacaciones registradas para los filtros seleccionados")
+            else:
+                st.success(f"✅ {len(df)} vacaciones encontradas")
+                
+                # ============================================================
+                # 3. MOSTRAR DATOS
+                # ============================================================
+                st.markdown("### 📋 Resultados")
+                st.dataframe(df, use_container_width=True)
+                
+                # ============================================================
+                # 4. RESÚMENES ADICIONALES
+                # ============================================================
+                st.markdown("### 📊 Resumen")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    total_empleados = df['CC'].nunique()
+                    st.metric("👥 Empleados", total_empleados)
+                
+                with col2:
+                    total_dias_habiles = df['DIA HABIL'].sum()
+                    st.metric("📅 Días hábiles totales", total_dias_habiles)
+                
+                with col3:
+                    total_dias_no_habiles = df['DIA NO HABIL'].sum()
+                    st.metric("📅 Días no hábiles", total_dias_no_habiles)
+                
+                # ============================================================
+                # 5. BOTÓN PARA DESCARGAR EXCEL
+                # ============================================================
+                st.markdown("### 📥 Descargar Reporte")
+                
+                excel_data = generar_excel_reporte_vacaciones(df)
+                if excel_data:
+                    nombre_archivo = f"reporte_vacaciones_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.xlsx"
+                    st.download_button(
+                        label="📥 Descargar Excel",
+                        data=excel_data,
+                        file_name=nombre_archivo,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )

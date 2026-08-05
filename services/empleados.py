@@ -221,3 +221,27 @@ def obtener_empleados_por_supervisor(id_supervisor):
         df['cargo'] = 'Sin cargo'
     
     return df.to_dict('records')
+
+# services/empleados.py
+
+def obtener_lista_empleados(estado=None):
+    """
+    Obtener lista de empleados (básica) para el buscador.
+    Si se pasa estado, filtra por ese estado.
+    """
+    query = """
+    SELECT 
+      id_empleado,
+      CONCAT(nombres, ' ', apellidos) AS nombre_completo,
+      cedula,
+      id_estado_empleado AS estado
+    FROM `nexo_people.empleados`
+    """
+    
+    if estado:
+        query += f" WHERE id_estado_empleado = '{estado}'"
+    
+    query += " ORDER BY nombre_completo"
+    
+    df = ejecutar_query(query)
+    return df.to_dict('records')

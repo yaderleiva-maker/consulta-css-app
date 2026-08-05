@@ -205,7 +205,7 @@ def generar_excel_incidencias_empleado(id_empleado, tipo_filtro=None):
 
 def ejecutar_merge_calculo():
     """
-    Ejecuta el MERGE para calcular todas las incidencias pendientes.
+    Ejecuta el MERGE para calcular todas las incidencias pendientes (VERSIÓN SIMPLIFICADA).
     """
     query = """
     MERGE `nexo_people.incidencias` T
@@ -221,21 +221,9 @@ def ejecutar_merge_calculo():
           p.descuenta_festivos,
           SPLIT(
             REPLACE(
-              REPLACE(
-                REPLACE(
-                  REPLACE(
-                    REPLACE(
-                      REPLACE(
-                        REPLACE(
-                          REPLACE(
-                            UPPER(i.dias_libres_sql),
-                          'Á', 'A'),
-                        'É', 'E'),
-                      'Í', 'I'),
-                    'Ó', 'O'),
-                  'Ú', 'U'),
-                ' ', ''),
-              ',,', ','),
+              UPPER(i.dias_libres_sql), 
+              ' ', ''
+            ), 
             ','
           ) AS dias_libres_normalizados
         FROM `nexo_people.incidencias` i
@@ -250,9 +238,7 @@ def ejecutar_merge_calculo():
         SELECT 
           ib.id_incidencia,
           COUNT(*) AS dias_calculados,
-          -- 🔥 Quincena 1 (días 1-15 del mes)
           COUNTIF(EXTRACT(DAY FROM fecha) BETWEEN 1 AND 15) AS quincena1,
-          -- 🔥 Quincena 2 (días 16-31 del mes)
           COUNTIF(EXTRACT(DAY FROM fecha) BETWEEN 16 AND 31) AS quincena2
         FROM incidencias_base ib
         CROSS JOIN UNNEST(GENERATE_DATE_ARRAY(ib.fecha_inicio, ib.fecha_fin)) AS fecha
@@ -295,11 +281,16 @@ def ejecutar_merge_calculo():
       T.estado_calculo = 'CALCULADO';
     """
     
-    from services.bigquery import ejecutar_query
-    df = ejecutar_query(query)
-    return True
-    
-# services/vacaciones.py
+    try:
+        from services.bigquery import ejecutar_query
+        ejecutar_query(query)
+        return True
+    except Exception as e:
+        # Si hay error, mostrar el SQL para depurar
+        import streamlit as st
+        st.error(f"❌ Error en el MERGE: {e}")
+        st.code(query, language="sql")
+        raise
 
 def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=None):
     """

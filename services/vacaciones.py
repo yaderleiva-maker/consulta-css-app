@@ -38,12 +38,6 @@ def obtener_historial_vacaciones(id_empleado):
     return df.to_dict('records')
 
 
-# services/vacaciones.py
-
-# services/vacaciones.py
-
-# services/vacaciones.py
-
 def obtener_saldo_vacaciones(id_empleado):
     """
     Calcular el saldo de vacaciones de un empleado en tiempo real.
@@ -119,7 +113,7 @@ def obtener_saldo_vacaciones(id_empleado):
     
     row = df.iloc[0]
     
-    # 🔥 Formatear próximas vacaciones (con verificación de NaT)
+    # Formatear próximas vacaciones (con verificación de NaT)
     proximas_vacaciones = "No hay próximas vacaciones"
     if row.get('proxima_fecha_inicio') and row.get('proxima_fecha_fin'):
         fecha_inicio = row['proxima_fecha_inicio']

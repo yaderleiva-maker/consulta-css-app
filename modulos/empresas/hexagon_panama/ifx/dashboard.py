@@ -8,19 +8,25 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 
-from services.bigquery import BigQueryService
-from .models import ResumenKPI, EmbudoEtapa
+# 🆕 Importar desde services (sin crear BigQueryService)
+from services import ejecutar_query, get_client, probar_conexion
+
+# Configuración
+PROJECT_ID = "proyecto-css-panama"
+DATASET = "ifx"
+TABLE = "tabla_dashboard_ifx"
+VIEW = "vw_dashboard_ifx"
 
 
 class DashboardIFX:
     """Panel de control para IFX"""
     
     def __init__(self):
-        self.bq = BigQueryService()
-        self.project = "proyecto-css-panama"
-        self.dataset = "ifx"
-        self.table = "tabla_dashboard_ifx"
-        self.view = "vw_dashboard_ifx"
+        self.project = PROJECT_ID
+        self.dataset = DATASET
+        self.table = TABLE
+        self.view = VIEW
+        self.client = get_client()
     
     def get_data(self, filters: Dict[str, Any]) -> pd.DataFrame:
         """Obtiene datos de la tabla materializada"""
@@ -38,11 +44,26 @@ class DashboardIFX:
         if filters.get('resultado') and filters['resultado'] != 'Todos':
             query += f" AND Resultado = '{filters['resultado']}'"
         
-        return self.bq.execute_query(query)
+        # Usar ejecutar_query de services
+        return ejecutar_query(query)
     
-    def get_kpis(self, df: pd.DataFrame) -> ResumenKPI:
+    def actualizar_tabla(self) -> str:
+        """Ejecuta la actualización de la tabla materializada"""
+        query = f"""
+        CREATE OR REPLACE TABLE `{self.project}.{self.dataset}.{self.table}` AS
+        SELECT * FROM `{self.project}.{self.dataset}.{self.view}`
+        """
+        try:
+            job = self.client.query(query)
+            job.result()  # Espera a que termine
+            return "✅ Datos actualizados correctamente"
+        except Exception as e:
+            return f"❌ Error al actualizar: {e}"
+    
+    def get_kpis(self, df: pd.DataFrame):
         """Calcula los KPIs principales"""
         if df.empty:
+            from .models import ResumenKPI
             return ResumenKPI()
         
         total_gestiones = len(df)
@@ -55,6 +76,7 @@ class DashboardIFX:
         agentes_activos = df['Nombre_Agente'].nunique() if 'Nombre_Agente' in df else 0
         clientes_unicos = df['Cliente'].nunique() if 'Cliente' in df else 0
         
+        from .models import ResumenKPI
         return ResumenKPI(
             total_gestiones=total_gestiones,
             total_contactos=total_contactos,
@@ -75,7 +97,7 @@ class DashboardIFX:
         WHERE Nombre_Agente IS NOT NULL
         ORDER BY Nombre_Agente
         """
-        df = self.bq.execute_query(query)
+        df = ejecutar_query(query)
         return df['Nombre_Agente'].tolist() if not df.empty else []
     
     def get_resultados(self) -> List[str]:
@@ -86,17 +108,8 @@ class DashboardIFX:
         WHERE Resultado IS NOT NULL
         ORDER BY Resultado
         """
-        df = self.bq.execute_query(query)
+        df = ejecutar_query(query)
         return df['Resultado'].tolist() if not df.empty else []
-    
-    def actualizar_tabla(self) -> str:
-        """Ejecuta la actualización de la tabla materializada"""
-        query = f"""
-        CREATE OR REPLACE TABLE `{self.project}.{self.dataset}.{self.table}` AS
-        SELECT * FROM `{self.project}.{self.dataset}.{self.view}`
-        """
-        self.bq.execute_query(query)
-        return "✅ Datos actualizados correctamente"
     
     def render_chart_agentes(self, df: pd.DataFrame):
         """Renderiza gráfico de agentes"""
@@ -183,7 +196,3 @@ class DashboardIFX:
         fig.update_xaxes(gridcolor='#f3f4f6', showgrid=True)
         fig.update_yaxes(gridcolor='#f3f4f6', showgrid=True)
         st.plotly_chart(fig, use_container_width=True)
-    
-    def render_kpi_cards(self, kpi: ResumenKPI):
-        """Renderiza tarjetas de KPIs - VERSIÓN CON ESTILOS MANUALES (ya no se usa porque main.py maneja los KPIs)"""
-        pass

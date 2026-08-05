@@ -1,4 +1,7 @@
-# services/helpers.py (nuevo archivo)
+# services/helpers.py
+"""
+Funciones auxiliares para el sistema NEXO People.
+"""
 
 def formatear_numero(valor):
     """

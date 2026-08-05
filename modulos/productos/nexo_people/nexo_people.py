@@ -21,7 +21,8 @@ from services.vacaciones import (
     obtener_tipos_incidencia,
     obtener_incidencias_empleado,
     obtener_resumen_incidencias,
-    ejecutar_merge_calculo
+    ejecutar_merge_calculo,
+    contar_incidencias_pendiente
 )
 from services.helpers import formatear_numero
 from services.vacaciones import obtener_reporte_vacaciones, generar_excel_reporte_vacaciones
@@ -553,7 +554,18 @@ def run_reporte_vacaciones(usuario):
     st.caption("Genera reportes de vacaciones por período, quincena o empleado.")
     
     # ============================================================
-    # 0. BOTÓN PARA ACTUALIZAR CÁLCULOS
+    # 0. ALERTA DE INCIDENCIAS PENDIENTES
+    # ============================================================
+    pendientes = contar_incidencias_pendientes()
+    if pendientes['total_pendientes'] > 0:
+        st.warning(
+            f"⚠️ Hay **{pendientes['total_pendientes']}** incidencias pendientes de aprobación "
+            f"que afectan a **{pendientes['empleados_afectados']}** empleados. "
+            "Revisa y aprueba antes de generar el reporte de vacaciones."
+        )
+    
+    # ============================================================
+    # 0.5 BOTÓN PARA ACTUALIZAR CÁLCULOS
     # ============================================================
     col_refresh, col_spacer = st.columns([1, 4])
     with col_refresh:
@@ -562,11 +574,6 @@ def run_reporte_vacaciones(usuario):
                 ejecutar_merge_calculo()
                 st.success("✅ Cálculos actualizados correctamente")
                 st.rerun()
-    
-    # ============================================================
-    # 1. FILTROS
-    # ============================================================
-    # ... (resto del código)
     
     # ============================================================
     # 1. FILTROS

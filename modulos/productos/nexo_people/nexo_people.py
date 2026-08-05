@@ -184,106 +184,114 @@ def mostrar_ficha_empleado(id_empleado):
     # ============================================================
     # CSS PERSONALIZADO (DISEÑO PROFESIONAL)
     # ============================================================
-    st.markdown("""
-    <style>
-        /* Tarjetas de métricas */
-        .metric-card {
-            background-color: #F8F9FA;
-            border-radius: 12px;
-            padding: 20px 15px;
-            text-align: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-            border: 1px solid #EEEEEE;
-            transition: all 0.2s ease;
-        }
-        .metric-card:hover {
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            border-color: #E63946;
-        }
-        .metric-card .value {
-            font-size: 28px;
-            font-weight: 700;
-            color: #1D3557;
-            margin: 5px 0;
-        }
-        .metric-card .label {
-            font-size: 14px;
-            color: #6C757D;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        .metric-card .sub {
-            font-size: 12px;
-            color: #6C757D;
-            margin-top: 4px;
-        }
-        .metric-card.primary .value { color: #1D3557; }
-        .metric-card.success .value { color: #2E7D32; }
-        .metric-card.warning .value { color: #F57C00; }
-        .metric-card.danger .value { color: #C62828; }
+# ============================================================
+# CSS PERSONALIZADO (DISEÑO PROFESIONAL CON SOMBRAS)
+# ============================================================
+st.markdown("""
+<style>
+    /* Tarjetas de métricas (con sombras y hover) */
+    .metric-card {
+        background-color: #FFFFFF;
+        border-radius: 16px;
+        padding: 20px 15px;
+        text-align: center;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        border: 1px solid #F0F0F0;
+        transition: all 0.3s ease;
+    }
+    .metric-card:hover {
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        transform: translateY(-2px);
+        border-color: #E63946;
+    }
+    .metric-card .value {
+        font-size: 28px;
+        font-weight: 700;
+        color: #1D3557;
+        margin: 5px 0;
+    }
+    .metric-card .label {
+        font-size: 14px;
+        color: #6C757D;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .metric-card .sub {
+        font-size: 12px;
+        color: #6C757D;
+        margin-top: 4px;
+    }
+    .metric-card.primary .value { color: #1D3557; }
+    .metric-card.success .value { color: #2E7D32; }
+    .metric-card.warning .value { color: #F57C00; }
+    .metric-card.danger .value { color: #C62828; }
 
-        /* Tarjeta de resumen de vacaciones */
-        .vacation-summary {
-            background-color: #FFFFFF;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-            border: 1px solid #EEEEEE;
-            margin-bottom: 20px;
-        }
-        .vacation-summary .title {
-            font-size: 16px;
-            font-weight: 600;
-            color: #1D3557;
-            margin-bottom: 15px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #E63946;
-            display: inline-block;
-        }
-        .vacation-summary .next {
-            font-size: 14px;
-            color: #457B9D;
-            margin-top: 10px;
-            text-align: center;
-        }
-        
-        /* Barra de progreso */
-        .progress-bar {
-            width: 100%;
-            height: 8px;
-            background-color: #EEEEEE;
-            border-radius: 4px;
-            margin-top: 10px;
-            overflow: hidden;
-        }
-        .progress-bar .fill {
-            height: 100%;
-            background-color: #E63946;
-            border-radius: 4px;
-            transition: width 0.3s ease;
-        }
-
-        /* Título de sección */
-        .section-title {
-            font-size: 18px;
-            font-weight: 600;
-            color: #1D3557;
-            margin-bottom: 16px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #E63946;
-            display: inline-block;
-        }
-
-        /* Filtros */
-        .filters {
-            margin: 16px 0;
-            padding: 8px 0;
-            border-bottom: 1px solid #EEEEEE;
-        }
-    </style>
-    """, unsafe_allow_html=True)
+    /* Tarjeta de resumen de vacaciones */
+    .vacation-summary {
+        background-color: #FFFFFF;
+        border-radius: 16px;
+        padding: 24px 20px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        border: 1px solid #F0F0F0;
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+    }
+    .vacation-summary:hover {
+        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+    .vacation-summary .title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1D3557;
+        margin-bottom: 15px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid #E63946;
+        display: inline-block;
+    }
+    .vacation-summary .next {
+        font-size: 14px;
+        color: #457B9D;
+        margin-top: 10px;
+        text-align: center;
+    }
     
+    /* Barra de progreso */
+    .progress-bar {
+        width: 100%;
+        height: 10px;
+        background-color: #EEEEEE;
+        border-radius: 6px;
+        margin-top: 12px;
+        overflow: hidden;
+    }
+    .progress-bar .fill {
+        height: 100%;
+        background: linear-gradient(90deg, #E63946, #C62828);
+        border-radius: 6px;
+        transition: width 0.5s ease;
+    }
+
+    /* Título de sección */
+    .section-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #1D3557;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 3px solid #E63946;
+        display: inline-block;
+    }
+
+    /* Filtros */
+    .filters {
+        margin: 16px 0;
+        padding: 8px 0;
+        border-bottom: 1px solid #EEEEEE;
+    }
+</style>
+""", unsafe_allow_html=True)
+
     # ============================================================
     # BOTÓN PARA VOLVER
     # ============================================================

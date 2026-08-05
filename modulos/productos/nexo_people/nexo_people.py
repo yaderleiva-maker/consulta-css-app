@@ -440,7 +440,7 @@ def mostrar_ficha_empleado(id_empleado):
             <div style="display: flex; gap: 20px; flex-wrap: wrap;">
                 <div style="flex: 1; min-width: 120px; text-align: center;">
                     <div style="font-size: 14px; color: #6C757D;">Disponibles</div>
-                    <div style="font-size: 32px; font-weight: 700; color: #1D3557;">{saldo_data['saldo_actual']}</div>
+                    <div style="font-size: 32px; font-weight: 700; color: #1D3557;">{saldo_disponible}</div>
                     <div style="font-size: 12px; color: {estado_color};">{estado_texto}</div>
                 </div>
                 <div style="flex: 1; min-width: 120px; text-align: center;">
@@ -450,7 +450,7 @@ def mostrar_ficha_empleado(id_empleado):
                 </div>
                 <div style="flex: 1; min-width: 120px; text-align: center;">
                     <div style="font-size: 14px; color: #6C757D;">Usadas</div>
-                    <div style="font-size: 32px; font-weight: 700; color: #F57C00;">{usado}</div>
+                    <div style="font-size: 32px; font-weight: 700; color: #F57C00;">{dias_usados}</div>
                     <div style="font-size: 12px; color: #6C757D;">{porcentaje:.0f}% utilizado</div>
                 </div>
             </div>

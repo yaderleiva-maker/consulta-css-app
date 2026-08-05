@@ -554,71 +554,45 @@ def run_reporte_vacaciones(usuario):
     st.caption("Genera reportes de vacaciones por período, quincena o empleado.")
     
     # ============================================================
-    # 0. ALERTA DE INCIDENCIAS PENDIENTES
+    # ALERTA DE INCIDENCIAS PENDIENTES
     # ============================================================
     pendientes = contar_incidencias_pendientes()
     if pendientes['total_pendientes'] > 0:
         st.warning(
             f"⚠️ Hay **{pendientes['total_pendientes']}** incidencias pendientes de aprobación "
-            f"que afectan a **{pendientes['empleados_afectados']}** empleados. "
-            "Revisa y aprueba antes de generar el reporte de vacaciones."
+            f"que afectan a **{pendientes['empleados_afectados']}** empleados."
         )
     
     # ============================================================
-    # 0.5 BOTÓN PARA ACTUALIZAR CÁLCULOS
+    # BOTÓN PARA ACTUALIZAR CÁLCULOS
     # ============================================================
     col_refresh, col_spacer = st.columns([1, 4])
     with col_refresh:
-        if st.button("🔄 Actualizar cálculos", use_container_width=True, help="Recalcula los días hábiles de incidencias pendientes"):
+        if st.button("🔄 Actualizar cálculos", use_container_width=True):
             with st.spinner("Calculando días hábiles..."):
                 ejecutar_merge_calculo()
                 st.success("✅ Cálculos actualizados correctamente")
                 st.rerun()
     
     # ============================================================
-    # 1. FILTROS
+    # FILTROS
     # ============================================================
     st.markdown("### 🔍 Filtros")
     
-    # Fecha de inicio (default: 1er día del mes)
-    primer_dia_mes = date.today().replace(day=1)
-    
+    # --- Filtro por año y mes ---
     col1, col2, col3 = st.columns(3)
-    
     with col1:
-        fecha_inicio = st.date_input(
-            "Fecha de inicio",
-            value=primer_dia_mes,
-            key="reporte_fecha_inicio"
-        )
-    
+        año = st.selectbox("Año", options=[2024, 2025, 2026, 2027], index=2, key="reporte_año")
     with col2:
-        fecha_fin = st.date_input(
-            "Fecha de fin",
-            value=date.today(),
-            key="reporte_fecha_fin"
-        )
-    
+        mes = st.selectbox("Mes", options=range(1, 13), format_func=lambda x: f"{x:02d}", key="reporte_mes")
     with col3:
-        # Opción rápida por quincena
         quincena_opcion = st.selectbox(
-            "O selecciona una quincena",
-            options=["Personalizado", "Quincena 1 (1-15)", "Quincena 2 (16-31)"],
+            "Quincena",
+            options=["Ambas", "Quincena 1 (1-15)", "Quincena 2 (16-31)"],
             key="reporte_quincena"
         )
-        
-        # 🔥 CORREGIDO: Aplicar el filtro de quincena a las fechas
-        if quincena_opcion == "Quincena 1 (1-15)":
-            fecha_inicio = date.today().replace(day=1)
-            # Fin de quincena: día 15
-            fecha_fin = date.today().replace(day=15)
-        elif quincena_opcion == "Quincena 2 (16-31)":
-            from calendar import monthrange
-            last_day = monthrange(date.today().year, date.today().month)[1]
-            fecha_inicio = date.today().replace(day=16)
-            fecha_fin = date.today().replace(day=last_day)
     
-    # Empleado opcional
+    # --- Filtro por empleado (opcional) ---
     empleados_opcion = st.selectbox(
         "Empleado (opcional)",
         options=["Todos"] + [f"{e['nombre_completo']}" for e in obtener_lista_empleados()],
@@ -626,11 +600,24 @@ def run_reporte_vacaciones(usuario):
     )
     
     # ============================================================
-    # 2. BOTÓN PARA GENERAR REPORTE
+    # BOTÓN PARA GENERAR REPORTE
     # ============================================================
     if st.button("📊 Generar Reporte", use_container_width=True):
         with st.spinner("Generando reporte..."):
-            # Determinar ID del empleado si se seleccionó uno
+            from calendar import monthrange
+            
+            # Calcular fechas del mes
+            _, last_day = monthrange(año, mes)
+            fecha_inicio = date(año, mes, 1)
+            fecha_fin = date(año, mes, last_day)
+            
+            # 🔥 Ajustar por quincena
+            if quincena_opcion == "Quincena 1 (1-15)":
+                fecha_fin = date(año, mes, 15)
+            elif quincena_opcion == "Quincena 2 (16-31)":
+                fecha_inicio = date(año, mes, 16)
+            
+            # Determinar ID del empleado
             id_empleado = None
             if empleados_opcion != "Todos":
                 empleados = obtener_lista_empleados()
@@ -638,16 +625,6 @@ def run_reporte_vacaciones(usuario):
                     if f"{emp['nombre_completo']}" == empleados_opcion:
                         id_empleado = emp['id_empleado']
                         break
-            
-            # 🔥 Si se seleccionó una quincena, forzar las fechas en la consulta
-            if quincena_opcion == "Quincena 1 (1-15)":
-                fecha_inicio = date.today().replace(day=1)
-                fecha_fin = date.today().replace(day=15)
-            elif quincena_opcion == "Quincena 2 (16-31)":
-                from calendar import monthrange
-                last_day = monthrange(date.today().year, date.today().month)[1]
-                fecha_inicio = date.today().replace(day=16)
-                fecha_fin = date.today().replace(day=last_day)
             
             # Obtener datos del reporte
             df = obtener_reporte_vacaciones(
@@ -659,7 +636,10 @@ def run_reporte_vacaciones(usuario):
             if df.empty:
                 st.warning("No hay vacaciones registradas para los filtros seleccionados")
             else:
-                st.success(f"✅ {len(df)} vacaciones encontradas")
+                st.success(f"✅ {len(df)} registros encontrados")
+                
+                # 🔥 Mostrar el filtro aplicado
+                st.caption(f"📅 Período: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}")
                 
                 # Mostrar datos
                 st.markdown("### 📋 Resultados")
@@ -670,7 +650,7 @@ def run_reporte_vacaciones(usuario):
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-                    total_empleados = df['CC'].nunique() if 'CC' in df.columns else 0
+                    total_empleados = df['NOMBRE'].nunique() if 'NOMBRE' in df.columns else 0
                     st.metric("👥 Empleados", total_empleados)
                 
                 with col2:
@@ -686,7 +666,7 @@ def run_reporte_vacaciones(usuario):
                 
                 excel_data = generar_excel_reporte_vacaciones(df)
                 if excel_data:
-                    nombre_archivo = f"reporte_vacaciones_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}.xlsx"
+                    nombre_archivo = f"reporte_vacaciones_{año}_{mes:02d}_{quincena_opcion.replace(' ', '_')}.xlsx"
                     st.download_button(
                         label="📥 Descargar Excel",
                         data=excel_data,

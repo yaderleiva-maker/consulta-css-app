@@ -290,14 +290,9 @@ UPDATE SET
 def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=None, quincena=None):
     """
     Obtener reporte de vacaciones dividido por quincenas.
-    Args:
-        fecha_inicio: Fecha de inicio del período (filtro de traslape)
-        fecha_fin: Fecha de fin del período (filtro de traslape)
-        id_empleado: ID del empleado (opcional)
-        quincena: 'Quincena 1 (1-15)', 'Quincena 2 (16-31)', 'Ambas'
     """
     # ============================================================
-    # BASE DE LA CONSULTA (compartida por ambas quincenas)
+    # BASE DE LA CONSULTA
     # ============================================================
     base_query = """
     WITH ultimo_cargo AS (
@@ -335,7 +330,6 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
         params.append({"name": "id_empleado", "type": "STRING", "value": id_empleado})
     
     if fecha_inicio and fecha_fin:
-        # 🔥 CORRECCIÓN: Filtrar por traslape de fechas
         base_query += """
             AND i.fecha_inicio <= @fecha_fin
             AND i.fecha_fin >= @fecha_inicio
@@ -398,14 +392,31 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     """
     
     # ============================================================
-    # CONSTRUIR LA CONSULTA FINAL SEGÚN EL FILTRO
+    # CONSTRUIR LA CONSULTA FINAL (ROBUSTA)
     # ============================================================
-    if quincena in ["Quincena 1 (1-15)", "Q1"]:
-        query = base_query + q1_query
-    elif quincena in ["Quincena 2 (16-31)", "Q2"]:
-        query = base_query + q2_query
-    else:  # "Ambas"
-        query = base_query + q1_query + " UNION ALL " + q2_query
+    # Normalizar el valor de quincena
+    quincena_normalizada = quincena or "Ambas"
+    
+    opciones_quincena = {
+        "Quincena 1 (1-15)": q1_query,
+        "Q1": q1_query,
+        "1": q1_query,
+        "Quincena 2 (16-31)": q2_query,
+        "Q2": q2_query,
+        "2": q2_query,
+        "Ambas": q1_query + " UNION ALL " + q2_query,
+        "Todas": q1_query + " UNION ALL " + q2_query,
+        "Ambas quincenas": q1_query + " UNION ALL " + q2_query,
+    }
+    
+    # 🔥 Si no coincide, usar "Ambas" por defecto (o lanzar error)
+    if quincena_normalizada not in opciones_quincena:
+        # Mostrar advertencia y usar "Ambas"
+        import streamlit as st
+        st.warning(f"Valor de quincena no reconocido: '{quincena}'. Usando 'Ambas'.")
+        query = base_query + opciones_quincena["Ambas"]
+    else:
+        query = base_query + opciones_quincena[quincena_normalizada]
     
     query += " ORDER BY NOMBRE, QUINCENA"
     
@@ -414,7 +425,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     # ============================================================
     df = ejecutar_query(query, params)
     
-    # Renombrar columnas para mostrar con espacios
+    # Renombrar columnas
     if not df.empty:
         df.columns = [
             "NOMBRE",
@@ -428,8 +439,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
             "DIA DE DESCANSO"
         ]
     
-    return df
-    
+    return df    
     
 def generar_excel_reporte_vacaciones(df, nombre_archivo="reporte_vacaciones"):
     """

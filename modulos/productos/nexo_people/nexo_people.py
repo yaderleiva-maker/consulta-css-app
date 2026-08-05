@@ -185,38 +185,169 @@ def mostrar_ficha_empleado(id_empleado):
     # ============================================================
     # CSS PERSONALIZADO (DISEÑO PROFESIONAL CON SOMBRAS)
     # ============================================================
+    # ============================================================
+    # CSS PERSONALIZADO (DISEÑO CORPORATIVO CON TARJETAS)
+    # ============================================================
     st.markdown("""
     <style>
-        /* Estilo de pestañas tipo carpetas */
+        /* ESTILO GENERAL DE TARJETAS (ERP CORPORATIVO) */
+        .section-card {
+            background-color: #FFFFFF;
+            border-radius: 14px;
+            padding: 24px 24px 20px 24px;
+            border: 1px solid #EAEAEA;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            margin: 20px 0;
+            transition: all 0.3s ease;
+        }
+        .section-card:hover {
+            box-shadow: 0 8px 22px rgba(0,0,0,0.08);
+            transform: translateY(-2px);
+        }
+        
+        /* TÍTULO DE SECCIÓN CON LÍNEA ROJA */
+        .section-title-card {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1D3557;
+            margin-bottom: 16px;
+            padding-bottom: 10px;
+            border-bottom: 3px solid #E63946;
+            display: inline-block;
+        }
+        
+        /* ESTILO DE PESTAÑAS TIPO CARPETAS (MODERNAS) */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 2px;
-            background-color: #F0F0F0;
-            border-radius: 8px 8px 0 0;
-            padding: 6px 6px 0 6px;
+            gap: 4px;
+            background-color: #F7F9FC;
+            border-radius: 10px 10px 0 0;
+            padding: 8px 8px 0 8px;
+            border-bottom: 2px solid #EAEAEA;
         }
         .stTabs [data-baseweb="tab"] {
-            background-color: #E8E8E8;
+            background-color: transparent;
             border-radius: 8px 8px 0 0;
-            padding: 8px 16px;
+            padding: 10px 20px;
             font-weight: 500;
             color: #6C757D;
             transition: all 0.2s ease;
-            border: 1px solid #DDDDDD;
-            border-bottom: none;
+            border: none;
+            border-bottom: 3px solid transparent;
         }
         .stTabs [data-baseweb="tab"]:hover {
             background-color: #FFFFFF;
             color: #1D3557;
+            border-bottom: 3px solid #E63946;
         }
         .stTabs [aria-selected="true"] {
             background-color: #FFFFFF !important;
             color: #E63946 !important;
             border-bottom: 3px solid #E63946;
             font-weight: 600;
+            box-shadow: 0 -2px 8px rgba(0,0,0,0.04);
+        }
+        
+        /* CONTENEDOR DE PESTAÑAS CON BORDE Y SOMBRA */
+        .stTabs [data-baseweb="tab-panel"] {
+            background-color: #FFFFFF;
+            border-radius: 0 0 12px 12px;
+            padding: 20px 8px 8px 8px;
+            border: 1px solid #EAEAEA;
+            border-top: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        }
+        
+        /* MÉTRICAS CORPORATIVAS */
+        .metric-card {
+            background-color: #FFFFFF;
+            border-radius: 12px;
+            padding: 20px 15px;
+            text-align: center;
+            border: 1px solid #EAEAEA;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+            transition: all 0.3s ease;
+        }
+        .metric-card:hover {
+            box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+            transform: translateY(-2px);
+            border-color: #E63946;
+        }
+        .metric-card .value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1D3557;
+            margin: 5px 0;
+        }
+        .metric-card .label {
+            font-size: 13px;
+            color: #6C757D;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .metric-card .sub {
+            font-size: 12px;
+            color: #6C757D;
+            margin-top: 4px;
+        }
+        .metric-card.primary .value { color: #1D3557; }
+        .metric-card.success .value { color: #2E7D32; }
+        .metric-card.warning .value { color: #F57C00; }
+        .metric-card.danger .value { color: #C62828; }
+
+        /* RESUMEN DE VACACIONES CORPORATIVO */
+        .vacation-summary {
+            background-color: #FFFFFF;
+            border-radius: 14px;
+            padding: 24px 24px 20px 24px;
+            border: 1px solid #EAEAEA;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+        .vacation-summary:hover {
+            box-shadow: 0 8px 22px rgba(0,0,0,0.08);
+        }
+        .vacation-summary .title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #1D3557;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 3px solid #E63946;
+            display: inline-block;
+        }
+        .vacation-summary .next {
+            font-size: 14px;
+            color: #457B9D;
+            margin-top: 10px;
+            text-align: center;
+        }
+        
+        /* BARRA DE PROGRESO */
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #EEEEEE;
+            border-radius: 6px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: linear-gradient(90deg, #E63946, #C62828);
+            border-radius: 6px;
+            transition: width 0.5s ease;
+        }
+
+        /* FILTROS */
+        .filters {
+            margin: 16px 0;
+            padding: 8px 0;
+            border-bottom: 2px solid #EAEAEA;
         }
     </style>
     """, unsafe_allow_html=True)
-
     # ============================================================
     # BOTÓN PARA VOLVER
     # ============================================================
@@ -516,20 +647,27 @@ def run_reporte_vacaciones(usuario):
     # ============================================================
     st.markdown("### 🔍 Filtros")
     
-    # --- Filtro por año y mes ---
-    col1, col2, col3 = st.columns(3)
+    # ============================================================
+    # FILTRO POR FECHAS (RANGO)
+    # ============================================================
+    col1, col2 = st.columns(2)
     with col1:
-        año = st.selectbox("Año", options=[2024, 2025, 2026, 2027], index=2, key="reporte_año")
+        fecha_inicio = st.date_input("Fecha de inicio", value=date(2026, 1, 1), key="reporte_fecha_inicio")
     with col2:
-        mes = st.selectbox("Mes", options=range(1, 13), format_func=lambda x: f"{x:02d}", key="reporte_mes")
-    with col3:
-        quincena_opcion = st.selectbox(
-            "Quincena",
-            options=["Ambas", "Quincena 1 (1-15)", "Quincena 2 (16-31)"],
-            key="reporte_quincena"
-        )
+        fecha_fin = st.date_input("Fecha de fin", value=date.today(), key="reporte_fecha_fin")
     
-    # --- Filtro por empleado (opcional) ---
+    # ============================================================
+    # FILTRO POR QUINCENA (OPCIONAL)
+    # ============================================================
+    quincena_opcion = st.selectbox(
+        "Quincena",
+        options=["Ambas", "Quincena 1 (1-15)", "Quincena 2 (16-31)"],
+        key="reporte_quincena"
+    )
+    
+    # ============================================================
+    # FILTRO POR EMPLEADO
+    # ============================================================
     empleados_opcion = st.selectbox(
         "Empleado (opcional)",
         options=["Todos"] + [f"{e['nombre_completo']}" for e in obtener_lista_empleados()],
@@ -541,21 +679,15 @@ def run_reporte_vacaciones(usuario):
     # ============================================================
     if st.button("📊 Generar Reporte", use_container_width=True):
         with st.spinner("Generando reporte..."):
-            # 🔥 DEPURACIÓN: Mostrar qué valor se está enviando
-            # st.write(f"🔍 Valor de quincena seleccionado: '{quincena_opcion}'")
-            # st.write(f"🔍 Tipo: {type(quincena_opcion)}")
-            
-            # Calcular fechas del mes
-            _, last_day = monthrange(año, mes)
-            fecha_inicio = date(año, mes, 1)
-            fecha_fin = date(año, mes, last_day)
-            
-            # 🔥 Ajustar por quincena
+            # Ajustar por quincena
             if quincena_opcion == "Quincena 1 (1-15)":
-                fecha_fin = date(año, mes, 15)
+                fecha_fin = date(fecha_inicio.year, fecha_inicio.month, 15)
             elif quincena_opcion == "Quincena 2 (16-31)":
-                fecha_inicio = date(año, mes, 16)
-            
+                from calendar import monthrange
+                _, last_day = monthrange(fecha_inicio.year, fecha_inicio.month)
+                fecha_inicio = date(fecha_inicio.year, fecha_inicio.month, 16)
+                fecha_fin = date(fecha_inicio.year, fecha_inicio.month, last_day)
+                
             # Determinar ID del empleado
             id_empleado = None
             if empleados_opcion != "Todos":

@@ -3,7 +3,7 @@
 Servicio de Vacaciones e Incidencias
 Cálculo de saldos, historial, gestión de vacaciones e incidencias.
 """
-import streamlit as st
+#import streamlit as st
 import pandas as pd
 from services.bigquery import ejecutar_query
 from datetime import date, datetime

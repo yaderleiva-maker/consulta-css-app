@@ -360,15 +360,22 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
         i.dias_quincena2,
         i.dias_libres_sql,
         i.estado,
-        -- Calcular días no hábiles por quincena
+        -- 🔥 Fechas de la quincena 1
+        GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH)) AS fecha_q1_inicio,
+        LEAST(i.fecha_fin, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 14 DAY)) AS fecha_q1_fin,
+        -- 🔥 Fechas de la quincena 2
+        GREATEST(i.fecha_inicio, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 15 DAY)) AS fecha_q2_inicio,
+        LEAST(i.fecha_fin, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 31 DAY)) AS fecha_q2_fin,
+        -- 🔥 Días no hábiles Q1 (días totales en la quincena - días hábiles)
         (DATE_DIFF(
-          LEAST(i.fecha_fin, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 14 DAY),
+          LEAST(i.fecha_fin, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 14 DAY)),
           GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH)),
           DAY
         ) + 1) - i.dias_quincena1 AS dias_no_habiles_q1,
+        -- 🔥 Días no hábiles Q2
         (DATE_DIFF(
-          i.fecha_fin,
-          GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 15 DAY),
+          LEAST(i.fecha_fin, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 31 DAY)),
+          GREATEST(i.fecha_inicio, DATE_ADD(DATE_TRUNC(i.fecha_inicio, MONTH), INTERVAL 15 DAY)),
           DAY
         ) + 1) - i.dias_quincena2 AS dias_no_habiles_q2
       FROM `nexo_people.incidencias` i
@@ -380,8 +387,8 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
       e.cedula AS CC,
       c.nombre AS CARGO,
       'Q1' AS QUINCENA,
-      GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH)) AS `FECHA INICIO`,
-      LEAST(i.fecha_fin, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 14 DAY) AS `FECHA FIN`,
+      i.fecha_q1_inicio AS `FECHA INICIO`,
+      i.fecha_q1_fin AS `FECHA FIN`,
       i.dias_quincena1 AS `DIA HABIL`,
       i.dias_no_habiles_q1 AS `DIA NO HABIL`,
       i.dias_libres_sql AS `DIA DE DESCANSO`
@@ -398,8 +405,8 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
       e.cedula AS CC,
       c.nombre AS CARGO,
       'Q2' AS QUINCENA,
-      GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 15 DAY) AS `FECHA INICIO`,
-      LEAST(i.fecha_fin, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 31 DAY) AS `FECHA FIN`,
+      i.fecha_q2_inicio AS `FECHA INICIO`,
+      i.fecha_q2_fin AS `FECHA FIN`,
       i.dias_quincena2 AS `DIA HABIL`,
       i.dias_no_habiles_q2 AS `DIA NO HABIL`,
       i.dias_libres_sql AS `DIA DE DESCANSO`
@@ -411,29 +418,20 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     """
     
     # 🔥 Aplicar filtros
-    filters = []
-    params = []
-    
     if id_empleado:
-        filters.append(" i.id_empleado = @id_empleado")
-        params.append({"name": "id_empleado", "type": "STRING", "value": id_empleado})
+        query += f" AND i.id_empleado = '{id_empleado}'"
     
     if fecha_inicio:
-        filters.append(" i.fecha_inicio >= @fecha_inicio")
-        params.append({"name": "fecha_inicio", "type": "DATE", "value": fecha_inicio})
+        query += f" AND i.fecha_inicio >= '{fecha_inicio}'"
     
     if fecha_fin:
-        filters.append(" i.fecha_fin <= @fecha_fin")
-        params.append({"name": "fecha_fin", "type": "DATE", "value": fecha_fin})
-    
-    if filters:
-        query = query.replace("WHERE", "WHERE " + " AND ".join(filters))
+        query += f" AND i.fecha_fin <= '{fecha_fin}'"
     
     query += " ORDER BY NOMBRE, QUINCENA"
     
-    df = ejecutar_query(query, params)
+    df = ejecutar_query(query)
     return df
-
+    
 def generar_excel_reporte_vacaciones(df, nombre_archivo="reporte_vacaciones"):
     """
     Generar archivo Excel a partir del DataFrame del reporte.

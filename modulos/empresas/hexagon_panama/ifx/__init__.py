@@ -1,3 +1,4 @@
+# modulos/empresas/hexagon_panama/ifx/__init__.py
 """
 Módulo IFX - Dashboard Comercial y Análisis de Gestión
 """

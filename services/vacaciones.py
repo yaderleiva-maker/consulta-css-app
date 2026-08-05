@@ -291,10 +291,10 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     """
     Obtener reporte de vacaciones dividido por quincenas.
     Args:
-        fecha_inicio: Fecha de inicio del período
-        fecha_fin: Fecha de fin del período
+        fecha_inicio: Fecha de inicio del período (filtro de traslape)
+        fecha_fin: Fecha de fin del período (filtro de traslape)
         id_empleado: ID del empleado (opcional)
-        quincena: 'Ambas', 'Quincena 1 (1-15)', 'Quincena 2 (16-31)'
+        quincena: 'Quincena 1 (1-15)', 'Quincena 2 (16-31)', 'Ambas'
     """
     # ============================================================
     # BASE DE LA CONSULTA (compartida por ambas quincenas)
@@ -328,21 +328,20 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     params = []
     
     # ============================================================
-    # FILTROS
+    # FILTRO DE FECHAS (TRASLAPE)
     # ============================================================
     if id_empleado:
         base_query += " AND i.id_empleado = @id_empleado"
         params.append({"name": "id_empleado", "type": "STRING", "value": id_empleado})
     
-    if fecha_inicio:
-        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
-        base_query += " AND i.fecha_inicio >= @fecha_inicio"
-        params.append({"name": "fecha_inicio", "type": "DATE", "value": fecha_inicio_str})
-    
-    if fecha_fin:
-        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
-        base_query += " AND i.fecha_fin <= @fecha_fin"
-        params.append({"name": "fecha_fin", "type": "DATE", "value": fecha_fin_str})
+    if fecha_inicio and fecha_fin:
+        # 🔥 CORRECCIÓN: Filtrar por traslape de fechas
+        base_query += """
+            AND i.fecha_inicio <= @fecha_fin
+            AND i.fecha_fin >= @fecha_inicio
+        """
+        params.append({"name": "fecha_inicio", "type": "DATE", "value": fecha_inicio.strftime("%Y-%m-%d")})
+        params.append({"name": "fecha_fin", "type": "DATE", "value": fecha_fin.strftime("%Y-%m-%d")})
     
     base_query += """
     )

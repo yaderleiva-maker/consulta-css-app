@@ -82,13 +82,38 @@ def obtener_saldo_vacaciones(id_empleado):
     dias_ganados = meses_trabajados * dias_por_mes
     saldo_actual = dias_ganados - dias_usados
     
+    query_proximas = """
+    SELECT 
+      fecha_inicio,
+      fecha_fin
+    FROM `nexo_people.incidencias` i
+    WHERE i.id_empleado = @id_empleado
+      AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
+      AND i.estado = 'Aprobado'
+      AND i.fecha_inicio > CURRENT_DATE()  -- 🔥 Cambiado de >= a >
+    ORDER BY i.fecha_inicio ASC
+    LIMIT 1
+    """
+    
+    df_proximas = ejecutar_query(query_proximas, params)
+    
+    if not df_proximas.empty:
+        fecha_inicio = df_proximas.iloc[0]['fecha_inicio']
+        fecha_fin = df_proximas.iloc[0]['fecha_fin']
+        if hasattr(fecha_inicio, 'strftime'):
+            fecha_inicio = fecha_inicio.strftime('%Y-%m-%d')
+            fecha_fin = fecha_fin.strftime('%Y-%m-%d')
+        proximas_vacaciones = f"{fecha_inicio} al {fecha_fin}"
+    else:
+        proximas_vacaciones = "No hay próximas vacaciones"
+    
     return {
         "dias_ganados": round(dias_ganados, 2),
         "dias_usados": round(dias_usados, 2),
         "saldo_actual": round(saldo_actual, 2),
         "meses_trabajados": meses_trabajados,
         "dias_por_mes": dias_por_mes,
-        "proximas_vacaciones": "No hay próximas vacaciones"  # Simplificado por ahora
+        "proximas_vacaciones": proximas_vacaciones
     }
     
 def generar_excel_vacaciones_empleado(id_empleado):

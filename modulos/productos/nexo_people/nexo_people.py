@@ -185,37 +185,37 @@ def mostrar_ficha_empleado(id_empleado):
     # ============================================================
     # CSS PERSONALIZADO (DISEÑO PROFESIONAL CON SOMBRAS)
     # ============================================================
-st.markdown("""
-<style>
-    /* Estilo de pestañas tipo carpetas */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px;
-        background-color: #F0F0F0;
-        border-radius: 8px 8px 0 0;
-        padding: 6px 6px 0 6px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #E8E8E8;
-        border-radius: 8px 8px 0 0;
-        padding: 8px 16px;
-        font-weight: 500;
-        color: #6C757D;
-        transition: all 0.2s ease;
-        border: 1px solid #DDDDDD;
-        border-bottom: none;
-    }
-    .stTabs [data-baseweb="tab"]:hover {
-        background-color: #FFFFFF;
-        color: #1D3557;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #FFFFFF !important;
-        color: #E63946 !important;
-        border-bottom: 3px solid #E63946;
-        font-weight: 600;
-    }
-</style>
-""", unsafe_allow_html=True)
+    st.markdown("""
+    <style>
+        /* Estilo de pestañas tipo carpetas */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2px;
+            background-color: #F0F0F0;
+            border-radius: 8px 8px 0 0;
+            padding: 6px 6px 0 6px;
+        }
+        .stTabs [data-baseweb="tab"] {
+            background-color: #E8E8E8;
+            border-radius: 8px 8px 0 0;
+            padding: 8px 16px;
+            font-weight: 500;
+            color: #6C757D;
+            transition: all 0.2s ease;
+            border: 1px solid #DDDDDD;
+            border-bottom: none;
+        }
+        .stTabs [data-baseweb="tab"]:hover {
+            background-color: #FFFFFF;
+            color: #1D3557;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: #FFFFFF !important;
+            color: #E63946 !important;
+            border-bottom: 3px solid #E63946;
+            font-weight: 600;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
     # ============================================================
     # BOTÓN PARA VOLVER

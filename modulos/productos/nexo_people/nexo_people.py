@@ -9,7 +9,8 @@ from services.empleados import (
     obtener_empleado,
     buscar_empleados,
     obtener_activos_inactivos,
-    generar_excel_activos_inactivos
+    generar_excel_activos_inactivos,
+    obtener_lista_empleados
 )
 from services.fotos import mostrar_foto_sidebar, mostrar_foto_ficha
 from services.bigquery import probar_conexion

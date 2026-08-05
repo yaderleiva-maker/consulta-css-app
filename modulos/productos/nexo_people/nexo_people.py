@@ -607,11 +607,13 @@ def run_reporte_vacaciones(usuario):
             key="reporte_quincena"
         )
         
-        # 🔥 Corrección: usar variables locales para no afectar los inputs
+        # 🔥 CORREGIDO: Aplicar el filtro de quincena a las fechas
         if quincena_opcion == "Quincena 1 (1-15)":
             fecha_inicio = date.today().replace(day=1)
+            # Fin de quincena: día 15
             fecha_fin = date.today().replace(day=15)
         elif quincena_opcion == "Quincena 2 (16-31)":
+            from calendar import monthrange
             last_day = monthrange(date.today().year, date.today().month)[1]
             fecha_inicio = date.today().replace(day=16)
             fecha_fin = date.today().replace(day=last_day)
@@ -636,6 +638,16 @@ def run_reporte_vacaciones(usuario):
                     if f"{emp['nombre_completo']}" == empleados_opcion:
                         id_empleado = emp['id_empleado']
                         break
+            
+            # 🔥 Si se seleccionó una quincena, forzar las fechas en la consulta
+            if quincena_opcion == "Quincena 1 (1-15)":
+                fecha_inicio = date.today().replace(day=1)
+                fecha_fin = date.today().replace(day=15)
+            elif quincena_opcion == "Quincena 2 (16-31)":
+                from calendar import monthrange
+                last_day = monthrange(date.today().year, date.today().month)[1]
+                fecha_inicio = date.today().replace(day=16)
+                fecha_fin = date.today().replace(day=last_day)
             
             # Obtener datos del reporte
             df = obtener_reporte_vacaciones(

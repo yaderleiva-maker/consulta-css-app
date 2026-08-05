@@ -588,7 +588,7 @@ def run(usuario: str):
     
     with tab3:
         reportes = ReportesIFX()
-        reportes.render(df)
+        reportes.render(df)  # <- Esta función ya tiene la UI de selección
     
     with tab4:
         # Tabla de datos con estilo

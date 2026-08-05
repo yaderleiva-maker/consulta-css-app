@@ -40,10 +40,11 @@ def obtener_historial_vacaciones(id_empleado):
 
 # services/vacaciones.py
 
+# services/vacaciones.py
+
 def obtener_saldo_vacaciones(id_empleado):
     """
     Calcular el saldo de vacaciones de un empleado en tiempo real.
-    Basado en: días ganados (meses trabajados × política) - días usados.
     """
     query = """
     WITH empleado_data AS (
@@ -57,8 +58,9 @@ def obtener_saldo_vacaciones(id_empleado):
     ),
     politica AS (
       SELECT 
-        p.dias_por_mes,
-        p.dias_por_anio
+        p.dias_por_anio,
+        -- 🔥 Calcular dias_por_mes a partir de dias_por_anio
+        ROUND(p.dias_por_anio / 12, 2) AS dias_por_mes
       FROM `nexo_people.politicas_vacaciones` p
       JOIN empleado_data e ON p.id_empresa = e.id_empresa
       WHERE p.estado = 'ACTIVO'
@@ -116,7 +118,6 @@ def obtener_saldo_vacaciones(id_empleado):
     
     row = df.iloc[0]
     
-    # Formatear próximas vacaciones
     if row.get('proxima_fecha_inicio') and row.get('proxima_fecha_fin'):
         fecha_inicio = row['proxima_fecha_inicio']
         fecha_fin = row['proxima_fecha_fin']

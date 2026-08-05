@@ -339,7 +339,7 @@ def ejecutar_merge_calculo():
 
 def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=None):
     """
-    Obtener reporte de vacaciones con filtros opcionales por período y empleado.
+    Obtener reporte de vacaciones dividido por quincenas.
     """
     query = """
     WITH ultimo_cargo AS (
@@ -348,43 +348,91 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
         h.id_cargo,
         ROW_NUMBER() OVER (PARTITION BY h.id_empleado ORDER BY h.fecha_inicio DESC) AS rn
       FROM `nexo_people.historial_laboral` h
+    ),
+    incidencias_con_quincenas AS (
+      SELECT 
+        i.id_incidencia,
+        i.id_empleado,
+        i.fecha_inicio,
+        i.fecha_fin,
+        i.dias_calculados,
+        i.dias_quincena1,
+        i.dias_quincena2,
+        i.dias_libres_sql,
+        i.estado,
+        -- Calcular días no hábiles por quincena
+        (DATE_DIFF(
+          LEAST(i.fecha_fin, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 14 DAY),
+          GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH)),
+          DAY
+        ) + 1) - i.dias_quincena1 AS dias_no_habiles_q1,
+        (DATE_DIFF(
+          i.fecha_fin,
+          GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 15 DAY),
+          DAY
+        ) + 1) - i.dias_quincena2 AS dias_no_habiles_q2
+      FROM `nexo_people.incidencias` i
+      WHERE i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
+        AND i.estado = 'Aprobado'
     )
     SELECT 
       CONCAT(e.nombres, ' ', e.apellidos) AS NOMBRE,
       e.cedula AS CC,
       c.nombre AS CARGO,
-      i.fecha_inicio AS `FECHA INICIO`,
-      i.fecha_fin AS `FECHA FIN`,
-      i.dias_calculados AS `DIA HABIL`,
-      (DATE_DIFF(i.fecha_fin, i.fecha_inicio, DAY) + 1) - i.dias_calculados AS `DIA NO HABIL`,
+      'Q1' AS QUINCENA,
+      GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH)) AS `FECHA INICIO`,
+      LEAST(i.fecha_fin, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 14 DAY) AS `FECHA FIN`,
+      i.dias_quincena1 AS `DIA HABIL`,
+      i.dias_no_habiles_q1 AS `DIA NO HABIL`,
       i.dias_libres_sql AS `DIA DE DESCANSO`
-    FROM `nexo_people.incidencias` i
+    FROM incidencias_con_quincenas i
     JOIN `nexo_people.empleados` e ON i.id_empleado = e.id_empleado
     LEFT JOIN ultimo_cargo h ON e.id_empleado = h.id_empleado AND h.rn = 1
     LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
-    WHERE i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
-      AND i.estado = 'Aprobado'
+    WHERE i.dias_quincena1 > 0
+    
+    UNION ALL
+    
+    SELECT 
+      CONCAT(e.nombres, ' ', e.apellidos) AS NOMBRE,
+      e.cedula AS CC,
+      c.nombre AS CARGO,
+      'Q2' AS QUINCENA,
+      GREATEST(i.fecha_inicio, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 15 DAY) AS `FECHA INICIO`,
+      LEAST(i.fecha_fin, DATE_TRUNC(i.fecha_inicio, MONTH) + INTERVAL 31 DAY) AS `FECHA FIN`,
+      i.dias_quincena2 AS `DIA HABIL`,
+      i.dias_no_habiles_q2 AS `DIA NO HABIL`,
+      i.dias_libres_sql AS `DIA DE DESCANSO`
+    FROM incidencias_con_quincenas i
+    JOIN `nexo_people.empleados` e ON i.id_empleado = e.id_empleado
+    LEFT JOIN ultimo_cargo h ON e.id_empleado = h.id_empleado AND h.rn = 1
+    LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
+    WHERE i.dias_quincena2 > 0
     """
     
+    # 🔥 Aplicar filtros
+    filters = []
     params = []
     
     if id_empleado:
-        query += " AND i.id_empleado = @id_empleado"
+        filters.append(" i.id_empleado = @id_empleado")
         params.append({"name": "id_empleado", "type": "STRING", "value": id_empleado})
     
     if fecha_inicio:
-        query += " AND i.fecha_inicio >= @fecha_inicio"
+        filters.append(" i.fecha_inicio >= @fecha_inicio")
         params.append({"name": "fecha_inicio", "type": "DATE", "value": fecha_inicio})
     
     if fecha_fin:
-        query += " AND i.fecha_fin <= @fecha_fin"
+        filters.append(" i.fecha_fin <= @fecha_fin")
         params.append({"name": "fecha_fin", "type": "DATE", "value": fecha_fin})
     
-    query += " ORDER BY i.fecha_inicio DESC"
+    if filters:
+        query = query.replace("WHERE", "WHERE " + " AND ".join(filters))
+    
+    query += " ORDER BY NOMBRE, QUINCENA"
     
     df = ejecutar_query(query, params)
     return df
-
 
 def generar_excel_reporte_vacaciones(df, nombre_archivo="reporte_vacaciones"):
     """

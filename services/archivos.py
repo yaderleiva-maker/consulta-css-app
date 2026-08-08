@@ -3,7 +3,7 @@
 Servicio de Archivos
 Manejo de archivos desde Google Drive usando la API.
 """
-
+import pandas as pd
 import streamlit as st
 import io
 from googleapiclient.discovery import build
@@ -165,3 +165,53 @@ def listar_archivos():
     except Exception as e:
         st.error(f"❌ Error listando archivos: {e}")
         return []
+
+def leer_excel(archivo):
+    """
+    Lee un archivo Excel o CSV y retorna un DataFrame de pandas.
+    
+    Args:
+        archivo: Archivo subido desde Streamlit (BytesIO o similar)
+    
+    Returns:
+        pd.DataFrame: Datos del archivo
+    """
+    try:
+        if archivo.name.endswith(('.xlsx', '.xls')):
+            return pd.read_excel(archivo)
+        elif archivo.name.endswith('.csv'):
+            return pd.read_csv(archivo)
+        else:
+            raise ValueError(f"Formato no soportado: {archivo.name}")
+    except Exception as e:
+        st.error(f"❌ Error al leer el archivo: {str(e)}")
+        raise
+
+def validar_columnas(df, columnas_requeridas):
+    """
+    Valida que existan las columnas requeridas en el DataFrame.
+    
+    Args:
+        df (pd.DataFrame): DataFrame a validar
+        columnas_requeridas (list): Lista de columnas que deben existir
+    
+    Returns:
+        list: Lista de columnas faltantes (vacía si todas existen)
+    """
+    faltantes = [col for col in columnas_requeridas if col not in df.columns]
+    return faltantes
+
+def normalizar_columnas(df, mapeo_columnas):
+    """
+    Renombra columnas del DataFrame según un mapeo.
+    
+    Args:
+        df (pd.DataFrame): DataFrame original
+        mapeo_columnas (dict): Diccionario {columna_original: columna_nueva}
+    
+    Returns:
+        pd.DataFrame: DataFrame con columnas renombradas
+    """
+    if not mapeo_columnas:
+        return df
+    return df.rename(columns=mapeo_columnas)

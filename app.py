@@ -9,7 +9,7 @@ from modulos.productos.crm import carga_documentos
 from modulos.productos.inventarios import inventario
 from modulos.empresas.farmazone import carga_reportes
 from modulos.productos.nexo_people import nexo_people
-
+from modulos.empresas.hexagon_panama.cobranza.carga_cartera import render as render_carga_cartera
 # =====================
 # CONFIGURACIÓN
 # =====================
@@ -49,7 +49,7 @@ MODULOS = {
                 "funcion": lambda: ejecutar_consultas(),
                 "permiso": "CONSULTAS"
             },
-            "📈 IFX Network": {  # 🆕 NUEVO MÓDULO
+            "📈 IFX Network": {
                 "tipo": "modulo",
                 "funcion": lambda: ifx.run(usuario),
                 "permiso": "IFX",
@@ -70,6 +70,54 @@ MODULOS = {
                         "permiso": "CONTROL_ALMUERZOS"
                     }
                 }
+            }
+        }
+    },
+    "💰 Cobranza": {  # 🆕 NUEVO MÓDULO DE COBRANZA
+        "icono": "💰",
+        "tipo": "categoria",
+        "modulos": {
+            "📥 Carga de Cartera": {
+                "tipo": "modulo",
+                "funcion": lambda: render_carga_cartera(),
+                "permiso": "COBRANZA",
+                "icono": "📥"
+            },
+            "📊 Dashboard Cobranza": {
+                "tipo": "modulo",
+                "funcion": lambda: render_dashboard_cobranza(),
+                "permiso": "COBRANZA",
+                "icono": "📊"
+            },
+            "👥 Clientes": {
+                "tipo": "modulo",
+                "funcion": lambda: render_clientes(),
+                "permiso": "COBRANZA",
+                "icono": "👥"
+            },
+            "📞 Gestión de Cobro": {
+                "tipo": "modulo",
+                "funcion": lambda: render_gestion_cobro(),
+                "permiso": "COBRANZA",
+                "icono": "📞"
+            },
+            "🔍 Investigación": {
+                "tipo": "modulo",
+                "funcion": lambda: render_investigacion(),
+                "permiso": "COBRANZA",
+                "icono": "🔍"
+            },
+            "💰 Descuento Directo": {
+                "tipo": "modulo",
+                "funcion": lambda: render_descuento_directo(),
+                "permiso": "COBRANZA",
+                "icono": "💰"
+            },
+            "📈 Reportes": {
+                "tipo": "modulo",
+                "funcion": lambda: render_reportes(),
+                "permiso": "COBRANZA",
+                "icono": "📈"
             }
         }
     },
@@ -117,7 +165,6 @@ MODULOS = {
         }
     }
 }
-
 # =====================
 # PERMISOS POR USUARIO
 # =====================
@@ -131,7 +178,8 @@ ROLES = {
         "INVENTARIO": True,
         "CARGA_REPORTES": True,
         "NEXO_PEOPLE": True,
-        "IFX": True  # 🆕 PERMISO PARA IFX
+        "IFX": True,
+        "COBRANZA": True
     },
     "mariachacon@hopsa.com": {
         "HOPSA": True,

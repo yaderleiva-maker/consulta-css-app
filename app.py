@@ -82,42 +82,6 @@ MODULOS = {
                 "funcion": lambda: render_carga_cartera(),
                 "permiso": "COBRANZA",
                 "icono": "📥"
-            },
-            "📊 Dashboard Cobranza": {
-                "tipo": "modulo",
-                "funcion": lambda: render_dashboard_cobranza(),
-                "permiso": "COBRANZA",
-                "icono": "📊"
-            },
-            "👥 Clientes": {
-                "tipo": "modulo",
-                "funcion": lambda: render_clientes(),
-                "permiso": "COBRANZA",
-                "icono": "👥"
-            },
-            "📞 Gestión de Cobro": {
-                "tipo": "modulo",
-                "funcion": lambda: render_gestion_cobro(),
-                "permiso": "COBRANZA",
-                "icono": "📞"
-            },
-            "🔍 Investigación": {
-                "tipo": "modulo",
-                "funcion": lambda: render_investigacion(),
-                "permiso": "COBRANZA",
-                "icono": "🔍"
-            },
-            "💰 Descuento Directo": {
-                "tipo": "modulo",
-                "funcion": lambda: render_descuento_directo(),
-                "permiso": "COBRANZA",
-                "icono": "💰"
-            },
-            "📈 Reportes": {
-                "tipo": "modulo",
-                "funcion": lambda: render_reportes(),
-                "permiso": "COBRANZA",
-                "icono": "📈"
             }
         }
     },

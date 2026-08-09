@@ -902,3 +902,29 @@ def render():
 
 if __name__ == "__main__":
     render()
+
+def validar_telefono(numero):
+    """Valida un número de teléfono para Panamá"""
+    if not numero or str(numero).strip() in ['', '0', '000']:
+        return None, 'INVALIDO'
+    
+    # Limpiar: solo dígitos
+    limpio = re.sub(r'[^0-9]', '', str(numero))
+    
+    # Verificar longitud
+    if len(limpio) not in [7, 8]:
+        return None, 'INVALIDO'
+    
+    # Verificar que no sea todo ceros
+    if limpio.count('0') == len(limpio):
+        return None, 'INVALIDO'
+    
+    # Si empieza con 6, debe tener 8 dígitos
+    if limpio.startswith('6') and len(limpio) != 8:
+        return None, 'INVALIDO'
+    
+    # Si empieza con otro dígito, puede tener 7 u 8
+    if not limpio.startswith('6') and len(limpio) not in [7, 8]:
+        return None, 'INVALIDO'
+    
+    return limpio, 'ACTIVO'

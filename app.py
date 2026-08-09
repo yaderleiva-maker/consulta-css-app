@@ -10,6 +10,7 @@ from modulos.productos.inventarios import inventario
 from modulos.empresas.farmazone import carga_reportes
 from modulos.productos.nexo_people import nexo_people
 from modulos.empresas.hexagon_panama.cobranza.carga_cartera import render as render_carga_cartera
+from modulos.empresas.hexagon_panama.cobranza.investigacion import render as render_investigacion
 # =====================
 # CONFIGURACIÓN
 # =====================
@@ -82,7 +83,14 @@ MODULOS = {
                 "funcion": lambda: render_carga_cartera(),
                 "permiso": "COBRANZA",
                 "icono": "📥"
-            }
+            },
+
+    "🔍 Investigación": {
+        "tipo": "modulo",
+        "funcion": lambda: render_investigacion(),
+        "permiso": "COBRANZA",
+        "icono": "🔍"
+            }   
         }
     },
     "🏢 Hexagon Colombia": {

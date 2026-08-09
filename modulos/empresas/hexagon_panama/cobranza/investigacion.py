@@ -17,12 +17,10 @@ PROYECTO_BQ = "proyecto-css-panama.cobranza"
 # ============================================================
 
 def validar_telefono(numero):
-    """Valida un número de teléfono para Panamá"""
-    if not numero or str(numero).strip() in ['', '0', '000', 'nan']:
+    """Valida un número de teléfono para Panamá (7 u 8 dígitos, sin prefijo)."""
+    if not numero or str(numero).strip() in ['', '0', '000', 'nan', 'None']:
         return None
-    
     limpio = re.sub(r'[^0-9]', '', str(numero))
-    
     if len(limpio) not in [7, 8]:
         return None
     if limpio.count('0') == len(limpio):
@@ -31,12 +29,11 @@ def validar_telefono(numero):
         return None
     if not limpio.startswith('6') and len(limpio) not in [7, 8]:
         return None
-    
     return limpio
 
 def validar_correo(correo):
-    """Valida un correo electrónico (formato básico)"""
-    if not correo or str(correo).strip() in ['', 'nan']:
+    """Valida formato básico de correo electrónico."""
+    if not correo or str(correo).strip() in ['', 'nan', 'None']:
         return None
     correo = str(correo).strip().lower()
     if '@' not in correo or '.' not in correo:
@@ -44,8 +41,18 @@ def validar_correo(correo):
     return correo
 
 # ============================================================
-# FUNCIONES DE CONSULTA BIGQUERY
+# FUNCIONES DE BIGQUERY (consultas batch)
 # ============================================================
+
+@st.cache_data(ttl=300)
+def obtener_proyectos_activos():
+    query = f"""
+        SELECT id_proyecto, nombre
+        FROM `{PROYECTO_BQ}.proyectos`
+        WHERE activo = TRUE
+        ORDER BY nombre ASC
+    """
+    return ejecutar_query(query)
 
 def obtener_personas_por_cedula(cedulas):
     if not cedulas:
@@ -59,6 +66,7 @@ def obtener_personas_por_cedula(cedulas):
     return ejecutar_query(query)
 
 def obtener_telefonos_existentes(proyecto_id, cedulas):
+    """Devuelve conjunto de (cedula, numero) que ya existen en telefonos_proyecto para el proyecto."""
     if not cedulas:
         return set()
     cedulas_escapadas = "', '".join([str(c).strip() for c in cedulas if str(c).strip()])
@@ -89,9 +97,10 @@ def obtener_correos_existentes(proyecto_id, cedulas):
     return set(zip(df['identificacion'], df['correo'])) if not df.empty else set()
 
 def obtener_catalogo_telefonos(numeros):
+    """Devuelve dict {numero: id_telefono} para números existentes en catálogo global."""
     if not numeros:
         return {}
-    valores = "', '".join(str(x).replace("'", "''") for x in numeros)
+    valores = "', '".join(str(x).replace("'", "''") for x in numeros if x)
     query = f"""
         SELECT numero, id_telefono
         FROM `{PROYECTO_BQ}.telefonos`
@@ -103,7 +112,7 @@ def obtener_catalogo_telefonos(numeros):
 def obtener_catalogo_correos(correos):
     if not correos:
         return {}
-    valores = "', '".join(str(x).replace("'", "''") for x in correos)
+    valores = "', '".join(str(x).replace("'", "''") for x in correos if x)
     query = f"""
         SELECT correo, id_correo
         FROM `{PROYECTO_BQ}.correos`
@@ -113,7 +122,7 @@ def obtener_catalogo_correos(correos):
     return dict(zip(df['correo'], df['id_correo'])) if not df.empty else {}
 
 # ============================================================
-# FUNCIONES DE INSERCIÓN EN LOTE
+# FUNCIONES DE INSERCIÓN POR LOTE
 # ============================================================
 
 def insertar_telefonos_batch(telefonos_nuevos):
@@ -183,25 +192,31 @@ def anexar_investigacion(df, proyecto_id, tipo):
     """
     import time
     start_time = time.time()
-    
+
+    total = len(df)
+    anexados = 0
+    errores = 0
+    detalles = []
+
+    # Determinar columna de valor
     col_valor = 'numero' if tipo == 'telefonos' else 'correo'
-    
+
     # Validar columnas
     if 'cedula' not in df.columns or col_valor not in df.columns:
-        return 0, 0, 0, f"Faltan columnas: 'cedula' y '{col_valor}'"
-    
-    # Limpiar datos
+        return total, 0, total, f"Faltan columnas: 'cedula' y '{col_valor}'"
+
+    # Normalizar y limpiar datos
     df = df.copy()
     df.columns = df.columns.str.strip().str.lower()
     df['cedula'] = df['cedula'].fillna('').astype(str).str.strip()
     df[col_valor] = df[col_valor].fillna('').astype(str).str.strip()
     cedulas = df.loc[df['cedula'] != '', 'cedula'].unique().tolist()
-    
+
     # Obtener personas existentes
     df_personas = obtener_personas_por_cedula(cedulas)
     map_cedula_a_id = dict(zip(df_personas['identificacion'], df_personas['id_persona']))
-    
-    # Obtener existentes en el proyecto
+
+    # Obtener existentes en el proyecto y catálogo global
     if tipo == 'telefonos':
         existentes_set = obtener_telefonos_existentes(proyecto_id, cedulas)
         validar_valor = validar_telefono
@@ -210,83 +225,74 @@ def anexar_investigacion(df, proyecto_id, tipo):
         existentes_set = obtener_correos_existentes(proyecto_id, cedulas)
         validar_valor = validar_correo
         fuente = 'INVESTIGACION'
-    
-    # Preparar datos para insertar
+
     nuevos_catalogos = []
     nuevas_relaciones = []
-    relaciones_pendientes = set()
-    
-    # Obtener catálogo global de contactos existentes
-    valores_validos = set()
-    for valor in df[col_valor]:
-        valido = validar_valor(valor)
-        if valido:
-            valores_validos.add(valido)
-    
+
+    # Pre-cargar IDs de catálogo global para todos los valores válidos
+    valores_validos = {
+        validar_valor(valor)
+        for valor in df[col_valor]
+        if validar_valor(valor)
+    }
     cache_ids = (
         obtener_catalogo_telefonos(valores_validos)
         if tipo == 'telefonos'
         else obtener_catalogo_correos(valores_validos)
     )
-    
-    total = 0
-    errores = 0
-    detalles = []
-    
+    relaciones_pendientes = set()
+
     for _, row in df.iterrows():
         cedula = str(row['cedula']).strip()
         valor_raw = str(row[col_valor]).strip()
-        
-        if not cedula:
-            continue
-        
+
         valor_limpio = validar_valor(valor_raw)
         if not valor_limpio:
             errores += 1
             detalles.append(f"Cédula {cedula}: {col_valor} inválido '{valor_raw}'")
             continue
-        
+
         if cedula not in map_cedula_a_id:
             errores += 1
             detalles.append(f"Cédula {cedula}: persona no encontrada en Cobranza")
             continue
-        
+
         id_persona = map_cedula_a_id[cedula]
         clave_relacion = (cedula, valor_limpio)
-        
+
         if clave_relacion in existentes_set or clave_relacion in relaciones_pendientes:
             continue
-        
-        # Verificar si el contacto existe en catálogo global
+
+        # Verificar si ya existe en catálogo global (cache)
         if valor_limpio in cache_ids:
             id_valor = cache_ids[valor_limpio]
         else:
+            # Nuevo en catálogo global
             id_valor = str(uuid.uuid4())
             cache_ids[valor_limpio] = id_valor
             nuevos_catalogos.append({
                 'id': id_valor,
                 'valor': valor_limpio
             })
-        
+
         # Crear relación con el proyecto
         nuevas_relaciones.append({
             'id_valor': id_valor,
             'id_persona': id_persona,
             'id_proyecto': proyecto_id,
             'fuente': fuente,
-            'prioridad': 10,
+            'prioridad': 10,  # prioridad más baja que BASE
             'estado': 'ACTIVO'
         })
         relaciones_pendientes.add(clave_relacion)
-        total += 1
-    
+
     # Insertar en BigQuery
     if nuevos_catalogos:
         if tipo == 'telefonos':
             insertar_telefonos_batch([{'id_telefono': c['id'], 'numero': c['valor']} for c in nuevos_catalogos])
         else:
             insertar_correos_batch([{'id_correo': c['id'], 'correo': c['valor']} for c in nuevos_catalogos])
-    
+
     if nuevas_relaciones:
         if tipo == 'telefonos':
             relaciones = [{
@@ -308,21 +314,19 @@ def anexar_investigacion(df, proyecto_id, tipo):
                 'estado': r['estado']
             } for r in nuevas_relaciones]
             insertar_correos_proyecto_batch(relaciones)
-    
+
+    anexados = len(nuevas_relaciones)
     elapsed_time = time.time() - start_time
-    detalle = f"{total} {tipo} anexados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
-    if detalles:
-        detalle += f" | Primeros errores: {', '.join(detalles[:3])}"
-    
-    return total, total, errores, detalle
+    detalle = f"{anexados} {tipo} anexados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
+    return total, anexados, errores, detalle
 
 # ============================================================
-# FUNCIONES PARA GENERAR REPORTE
+# FUNCIONES PARA GENERAR REPORTE EXCEL
 # ============================================================
 
 def generar_reporte_investigacion(proyecto_id):
-    """Genera un DataFrame con el reporte completo del proyecto"""
-    # Personas + Cuentas
+    """Genera un dict con DataFrames para el reporte completo."""
+    # 1. Personas + Cuentas
     query_personas = f"""
         SELECT 
             p.identificacion,
@@ -341,8 +345,8 @@ def generar_reporte_investigacion(proyecto_id):
         ORDER BY p.nombre
     """
     df_personas = ejecutar_query(query_personas)
-    
-    # Teléfonos
+
+    # 2. Teléfonos
     query_telefonos = f"""
         SELECT 
             p.identificacion,
@@ -362,8 +366,8 @@ def generar_reporte_investigacion(proyecto_id):
         ORDER BY p.nombre, tp.prioridad
     """
     df_telefonos = ejecutar_query(query_telefonos)
-    
-    # Correos
+
+    # 3. Correos
     query_correos = f"""
         SELECT 
             p.identificacion,
@@ -379,8 +383,8 @@ def generar_reporte_investigacion(proyecto_id):
         ORDER BY p.nombre, cp.prioridad
     """
     df_correos = ejecutar_query(query_correos)
-    
-    # Resumen
+
+    # 4. Resumen
     resumen = {
         "Proyecto": proyecto_id,
         "Fecha generación": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -392,7 +396,7 @@ def generar_reporte_investigacion(proyecto_id):
         "Teléfonos INACTIVOS": len(df_telefonos[df_telefonos['estado'] == 'INACTIVO']) if not df_telefonos.empty else 0,
     }
     df_resumen = pd.DataFrame([resumen])
-    
+
     return {
         'resumen': df_resumen,
         'personas': df_personas,
@@ -401,7 +405,7 @@ def generar_reporte_investigacion(proyecto_id):
     }
 
 def generar_excel_reporte(data):
-    """Genera un archivo Excel con múltiples hojas a partir del reporte"""
+    """Genera bytes de un archivo Excel con múltiples hojas."""
     import io
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -412,9 +416,8 @@ def generar_excel_reporte(data):
             data['telefonos'].to_excel(writer, sheet_name='Teléfonos', index=False)
         if not data['correos'].empty:
             data['correos'].to_excel(writer, sheet_name='Correos', index=False)
-        
+        # Ajustar anchos
         for sheet_name in writer.sheets:
             worksheet = writer.sheets[sheet_name]
             worksheet.set_column(0, 20, 18)
-    
     return output.getvalue()

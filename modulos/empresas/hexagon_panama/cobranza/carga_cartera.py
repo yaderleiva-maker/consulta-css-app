@@ -158,16 +158,37 @@ def registrar_carga_en_bigquery(proyecto, registros, procesados, errores, estado
 # ============================================================
 
 def procesar_carga(df, proyecto):
-    """Procesa el DataFrame y lo descompone en las tablas de BigQuery"""
+    """
+    Procesa el DataFrame y lo descompone en las tablas de BigQuery.
+    Versión OPTIMIZADA con inserción por lotes (BATCH).
+    """
+    import time
+    start_time = time.time()
+    
     total = len(df)
     procesados = 0
     errores = 0
     detalles = []
 
+    # Validar columnas requeridas
     faltantes = validar_columnas(df, COLUMNAS_REQUERIDAS)
     if faltantes:
         return total, 0, total, f"Faltan columnas: {', '.join(faltantes)}"
 
+    # ============================================================
+    # PASO 1: Preparar datos en memoria
+    # ============================================================
+    
+    personas_data = []
+    cuentas_data = []
+    telefonos_data = []
+    telefonos_proyecto_data = []
+    correos_data = []
+    correos_proyecto_data = []
+    
+    # Diccionario para cachear personas ya creadas en esta carga
+    cache_personas = {}
+    
     for idx, row in df.iterrows():
         try:
             identificacion = normalizar_identificacion(row.get('identificacion'))
@@ -180,32 +201,31 @@ def procesar_carga(df, proyecto):
                 detalles.append(f"Fila {idx+2}: Datos obligatorios incompletos")
                 continue
 
-            # Buscar o crear PERSONA
-            persona_query = f"""
-                SELECT id_persona 
-                FROM `proyecto-css-panama.cobranza.personas`
-                WHERE identificacion = '{identificacion}'
-            """
-            persona_df = ejecutar_query(persona_query)
-            
-            if len(persona_df) == 0:
-                id_persona = str(uuid.uuid4())
-                insert_persona = f"""
-                    INSERT INTO `proyecto-css-panama.cobranza.personas`
-                    (id_persona, identificacion, nombre)
-                    VALUES ('{id_persona}', '{identificacion}', '{nombre}')
-                """
-                ejecutar_query(insert_persona)
+            # Verificar si la persona ya existe (usando cache)
+            if identificacion in cache_personas:
+                id_persona = cache_personas[identificacion]
             else:
-                id_persona = persona_df['id_persona'].iloc[0]
-                update_persona = f"""
-                    UPDATE `proyecto-css-panama.cobranza.personas`
-                    SET nombre = '{nombre}', updated_at = CURRENT_TIMESTAMP()
-                    WHERE id_persona = '{id_persona}'
+                # Buscar en BigQuery (solo si no está en cache)
+                persona_query = f"""
+                    SELECT id_persona 
+                    FROM `proyecto-css-panama.cobranza.personas`
+                    WHERE identificacion = '{identificacion}'
                 """
-                ejecutar_query(update_persona)
+                persona_df = ejecutar_query(persona_query)
+                
+                if len(persona_df) == 0:
+                    id_persona = str(uuid.uuid4())
+                    personas_data.append({
+                        'id_persona': id_persona,
+                        'identificacion': identificacion,
+                        'nombre': nombre
+                    })
+                else:
+                    id_persona = persona_df['id_persona'].iloc[0]
+                    # Si cambió el nombre, actualizar (lo haremos en un UPDATE por lotes después)
+                    cache_personas[identificacion] = id_persona
 
-            # Crear CUENTA
+            # Preparar CUENTA
             id_cuenta = str(uuid.uuid4())
             obligacion = str(row.get('obligacion', '')).strip() if pd.notna(row.get('obligacion')) else None
             empresa = str(row.get('empresa', '')).strip() if pd.notna(row.get('empresa')) else None
@@ -216,31 +236,26 @@ def procesar_carga(df, proyecto):
             observaciones = str(row.get('observaciones', '')).strip() if pd.notna(row.get('observaciones')) else None
             fecha_ultimo_pago = normalizar_fecha(row.get('fecha_ultimo_pago')) if pd.notna(row.get('fecha_ultimo_pago')) else None
             
-            insert_cuenta = f"""
-                INSERT INTO `proyecto-css-panama.cobranza.cuentas`
-                (id_cuenta, id_persona, id_proyecto, cuenta, obligacion, saldo, 
-                 fecha_ultimo_pago, empresa, direccion, ocupacion, dias_mora, cartera, observaciones)
-                VALUES (
-                    '{id_cuenta}',
-                    '{id_persona}',
-                    '{proyecto}',
-                    '{cuenta}',
-                    {f"'{obligacion}'" if obligacion else 'NULL'},
-                    {saldo},
-                    {f"'{fecha_ultimo_pago}'" if fecha_ultimo_pago else 'NULL'},
-                    {f"'{empresa}'" if empresa else 'NULL'},
-                    {f"'{direccion}'" if direccion else 'NULL'},
-                    {f"'{ocupacion}'" if ocupacion else 'NULL'},
-                    {dias_mora if dias_mora is not None else 'NULL'},
-                    {f"'{cartera}'" if cartera else 'NULL'},
-                    {f"'{observaciones}'" if observaciones else 'NULL'}
-                )
-            """
-            ejecutar_query(insert_cuenta)
+            cuentas_data.append({
+                'id_cuenta': id_cuenta,
+                'id_persona': id_persona,
+                'id_proyecto': proyecto,
+                'cuenta': cuenta,
+                'obligacion': obligacion,
+                'saldo': saldo,
+                'fecha_ultimo_pago': fecha_ultimo_pago,
+                'empresa': empresa,
+                'direccion': direccion,
+                'ocupacion': ocupacion,
+                'dias_mora': dias_mora,
+                'cartera': cartera,
+                'observaciones': observaciones
+            })
 
-            # Procesar TELÉFONOS
+            # Preparar TELÉFONOS
             telefonos = normalizar_telefonos(row.get('telefono'))
             for i, telefono in enumerate(telefonos):
+                # Buscar si el teléfono ya existe
                 tel_query = f"""
                     SELECT id_telefono 
                     FROM `proyecto-css-panama.cobranza.telefonos`
@@ -250,31 +265,23 @@ def procesar_carga(df, proyecto):
                 
                 if len(tel_df) == 0:
                     id_telefono = str(uuid.uuid4())
-                    insert_tel = f"""
-                        INSERT INTO `proyecto-css-panama.cobranza.telefonos`
-                        (id_telefono, numero)
-                        VALUES ('{id_telefono}', '{telefono}')
-                    """
-                    ejecutar_query(insert_tel)
+                    telefonos_data.append({
+                        'id_telefono': id_telefono,
+                        'numero': telefono
+                    })
                 else:
                     id_telefono = tel_df['id_telefono'].iloc[0]
 
-                id_rel = str(uuid.uuid4())
-                insert_rel_tel = f"""
-                    INSERT INTO `proyecto-css-panama.cobranza.telefonos_proyecto`
-                    (id_telefono, id_persona, id_proyecto, fuente, prioridad, estado)
-                    VALUES (
-                        '{id_telefono}',
-                        '{id_persona}',
-                        '{proyecto}',
-                        'CARGA_INICIAL',
-                        {i+1},
-                        'ACTIVO'
-                    )
-                """
-                ejecutar_query(insert_rel_tel)
+                telefonos_proyecto_data.append({
+                    'id_telefono': id_telefono,
+                    'id_persona': id_persona,
+                    'id_proyecto': proyecto,
+                    'fuente': 'CARGA_INICIAL',
+                    'prioridad': i + 1,
+                    'estado': 'ACTIVO'
+                })
 
-            # Procesar CORREOS
+            # Preparar CORREOS
             correos = normalizar_correos(row.get('correo'))
             for i, correo in enumerate(correos):
                 corr_query = f"""
@@ -286,29 +293,21 @@ def procesar_carga(df, proyecto):
                 
                 if len(corr_df) == 0:
                     id_correo = str(uuid.uuid4())
-                    insert_corr = f"""
-                        INSERT INTO `proyecto-css-panama.cobranza.correos`
-                        (id_correo, correo)
-                        VALUES ('{id_correo}', '{correo}')
-                    """
-                    ejecutar_query(insert_corr)
+                    correos_data.append({
+                        'id_correo': id_correo,
+                        'correo': correo
+                    })
                 else:
                     id_correo = corr_df['id_correo'].iloc[0]
 
-                id_rel = str(uuid.uuid4())
-                insert_rel_corr = f"""
-                    INSERT INTO `proyecto-css-panama.cobranza.correos_proyecto`
-                    (id_correo, id_persona, id_proyecto, fuente, prioridad, estado)
-                    VALUES (
-                        '{id_correo}',
-                        '{id_persona}',
-                        '{proyecto}',
-                        'CARGA_INICIAL',
-                        {i+1},
-                        'ACTIVO'
-                    )
-                """
-                ejecutar_query(insert_rel_corr)
+                correos_proyecto_data.append({
+                    'id_correo': id_correo,
+                    'id_persona': id_persona,
+                    'id_proyecto': proyecto,
+                    'fuente': 'CARGA_INICIAL',
+                    'prioridad': i + 1,
+                    'estado': 'ACTIVO'
+                })
 
             procesados += 1
 
@@ -316,12 +315,113 @@ def procesar_carga(df, proyecto):
             errores += 1
             detalles.append(f"Fila {idx+2}: {str(e)}")
 
-    detalle = f"{procesados} procesados, {errores} errores"
+    # ============================================================
+    # PASO 2: Insertar por lotes en BigQuery
+    # ============================================================
+    
+    # Convertir a DataFrames para insertar por lotes
+    if personas_data:
+        df_personas = pd.DataFrame(personas_data)
+        # Insertar personas nuevas
+        for _, row in df_personas.iterrows():
+            insert_query = f"""
+                INSERT INTO `proyecto-css-panama.cobranza.personas`
+                (id_persona, identificacion, nombre)
+                VALUES ('{row['id_persona']}', '{row['identificacion']}', '{row['nombre']}')
+            """
+            ejecutar_query(insert_query)
+
+    if cuentas_data:
+        # Insertar cuentas por lotes usando UNNEST (más eficiente)
+        valores_cuentas = []
+        for c in cuentas_data:
+            valores_cuentas.append(f"""(
+                '{c['id_cuenta']}',
+                '{c['id_persona']}',
+                '{c['id_proyecto']}',
+                '{c['cuenta']}',
+                {f"'{c['obligacion']}'" if c['obligacion'] else 'NULL'},
+                {c['saldo']},
+                {f"'{c['fecha_ultimo_pago']}'" if c['fecha_ultimo_pago'] else 'NULL'},
+                {f"'{c['empresa']}'" if c['empresa'] else 'NULL'},
+                {f"'{c['direccion']}'" if c['direccion'] else 'NULL'},
+                {f"'{c['ocupacion']}'" if c['ocupacion'] else 'NULL'},
+                {c['dias_mora'] if c['dias_mora'] is not None else 'NULL'},
+                {f"'{c['cartera']}'" if c['cartera'] else 'NULL'},
+                {f"'{c['observaciones']}'" if c['observaciones'] else 'NULL'}
+            )""")
+        
+        if valores_cuentas:
+            insert_cuentas = f"""
+                INSERT INTO `proyecto-css-panama.cobranza.cuentas`
+                (id_cuenta, id_persona, id_proyecto, cuenta, obligacion, saldo, 
+                 fecha_ultimo_pago, empresa, direccion, ocupacion, dias_mora, cartera, observaciones)
+                VALUES {', '.join(valores_cuentas)}
+            """
+            ejecutar_query(insert_cuentas)
+
+    # Insertar teléfonos nuevos
+    if telefonos_data:
+        valores_telefonos = [f"('{t['id_telefono']}', '{t['numero']}')" for t in telefonos_data]
+        insert_telefonos = f"""
+            INSERT INTO `proyecto-css-panama.cobranza.telefonos`
+            (id_telefono, numero)
+            VALUES {', '.join(valores_telefonos)}
+        """
+        ejecutar_query(insert_telefonos)
+
+    # Insertar relaciones telefonos_proyecto
+    if telefonos_proyecto_data:
+        valores_rel_tel = [f"""(
+            '{t['id_telefono']}',
+            '{t['id_persona']}',
+            '{t['id_proyecto']}',
+            '{t['fuente']}',
+            {t['prioridad']},
+            '{t['estado']}'
+        )""" for t in telefonos_proyecto_data]
+        
+        insert_rel_tel = f"""
+            INSERT INTO `proyecto-css-panama.cobranza.telefonos_proyecto`
+            (id_telefono, id_persona, id_proyecto, fuente, prioridad, estado)
+            VALUES {', '.join(valores_rel_tel)}
+        """
+        ejecutar_query(insert_rel_tel)
+
+    # Insertar correos nuevos
+    if correos_data:
+        valores_correos = [f"('{c['id_correo']}', '{c['correo']}')" for c in correos_data]
+        insert_correos = f"""
+            INSERT INTO `proyecto-css-panama.cobranza.correos`
+            (id_correo, correo)
+            VALUES {', '.join(valores_correos)}
+        """
+        ejecutar_query(insert_correos)
+
+    # Insertar relaciones correos_proyecto
+    if correos_proyecto_data:
+        valores_rel_corr = [f"""(
+            '{c['id_correo']}',
+            '{c['id_persona']}',
+            '{c['id_proyecto']}',
+            '{c['fuente']}',
+            {c['prioridad']},
+            '{c['estado']}'
+        )""" for c in correos_proyecto_data]
+        
+        insert_rel_corr = f"""
+            INSERT INTO `proyecto-css-panama.cobranza.correos_proyecto`
+            (id_correo, id_persona, id_proyecto, fuente, prioridad, estado)
+            VALUES {', '.join(valores_rel_corr)}
+        """
+        ejecutar_query(insert_rel_corr)
+
+    elapsed_time = time.time() - start_time
+    detalle = f"{procesados} procesados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
     if detalles:
         detalle += f" | Primeros errores: {', '.join(detalles[:3])}"
     
     return total, procesados, errores, detalle
-
 # ============================================================
 # GENERAR PLANTILLA
 # ============================================================
@@ -593,13 +693,22 @@ def render():
             use_container_width=True
         )
     
-    # ---- Área de Subida de Archivo ----
+    # ============================================================
+    # ÁREA DE SUBIDA DE ARCHIVO (SIMPLIFICADA)
+    # ============================================================
+    
     st.markdown("""
-    <div class="upload-area">
-        <div class="icon">📤</div>
-        <div class="text-primary">Arrastra tu archivo aquí</div>
-        <div class="text-secondary">o haz clic para seleccionar</div>
-        <div style="margin-top: 8px; font-size: 12px; color: #9ca3af;">
+    <div style="
+        border: 2px dashed #d1d5db;
+        border-radius: 12px;
+        padding: 32px 24px;
+        text-align: center;
+        background-color: #fafafa;
+        margin: 16px 0;
+    ">
+        <div style="font-size: 32px; margin-bottom: 8px;">📤</div>
+        <div style="font-size: 15px; font-weight: 500; color: #1a1a1a;">Arrastra tu archivo aquí o haz clic para seleccionar</div>
+        <div style="font-size: 13px; color: #6b6b6b; margin-top: 4px;">
             .xlsx, .xls, .csv · Máximo 200 MB
         </div>
     </div>

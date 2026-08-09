@@ -763,23 +763,6 @@ def render():
     # ÁREA DE SUBIDA DE ARCHIVO (SIMPLIFICADA)
     # ============================================================
     
-    st.markdown("""
-    <div style="
-        border: 2px dashed #d1d5db;
-        border-radius: 12px;
-        padding: 32px 24px;
-        text-align: center;
-        background-color: #fafafa;
-        margin: 16px 0;
-    ">
-        <div style="font-size: 32px; margin-bottom: 8px;">📤</div>
-        <div style="font-size: 15px; font-weight: 500; color: #1a1a1a;">Arrastra tu archivo aquí o haz clic para seleccionar</div>
-        <div style="font-size: 13px; color: #6b6b6b; margin-top: 4px;">
-            .xlsx, .xls, .csv · Máximo 200 MB
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
     uploaded_file = st.file_uploader(
         "Selecciona un archivo",
         type=["xlsx", "xls", "csv"],

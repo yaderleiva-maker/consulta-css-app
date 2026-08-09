@@ -817,7 +817,7 @@ def render():
                 
                 # Botón Procesar
                 if st.button("🚀 Procesar carga", type="primary", use_container_width=True):
-                    with st.spinner("🔄 Procesando carga en BigQuery..."):
+                    with st.spinner("🔄 Procesando carga..."):
                         total, procesados, errores, detalle = procesar_carga(df, proyecto_seleccionado)
                         
                         estado = "completada" if errores == 0 else "con_errores"

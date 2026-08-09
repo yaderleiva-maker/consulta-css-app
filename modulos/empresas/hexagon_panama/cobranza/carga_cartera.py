@@ -160,34 +160,49 @@ def registrar_carga_en_bigquery(proyecto, registros, procesados, errores, estado
 def procesar_carga(df, proyecto):
     """
     Procesa el DataFrame y lo descompone en las tablas de BigQuery.
-    Versión OPTIMIZADA con inserción por lotes (BATCH).
+    VERSIÓN BATCH - OPTIMIZADA PARA GRANDES VOLÚMENES.
+    
+    Estrategia:
+    1. Normalizar TODO en memoria (Pandas)
+    2. Extraer identificadores únicos
+    3. 3 consultas a BigQuery para obtener existentes
+    4. Match en memoria (sets/dicts)
+    5. Preparar inserts por lote (4-6 consultas de escritura)
     """
     import time
     start_time = time.time()
     
     total = len(df)
-    procesados = 0
     errores = 0
     detalles = []
 
-    # Validar columnas requeridas
+    # ============================================================
+    # PASO 1: Validar columnas requeridas
+    # ============================================================
+    
     faltantes = validar_columnas(df, COLUMNAS_REQUERIDAS)
     if faltantes:
         return total, 0, total, f"Faltan columnas: {', '.join(faltantes)}"
 
     # ============================================================
-    # PASO 1: Preparar datos en memoria
+    # PASO 2: Normalizar TODO en memoria (una sola pasada)
     # ============================================================
     
-    personas_data = []
-    cuentas_data = []
-    telefonos_data = []
-    telefonos_proyecto_data = []
-    correos_data = []
-    correos_proyecto_data = []
+    # Listas para acumular datos
+    personas_para_insertar = []
+    cuentas_para_insertar = []
+    telefonos_para_insertar = []
+    telefonos_proyecto_para_insertar = []
+    correos_para_insertar = []
+    correos_proyecto_para_insertar = []
     
-    # Diccionario para cachear personas ya creadas en esta carga
-    cache_personas = {}
+    # Conjuntos para extraer identificadores únicos
+    ids_personas_unicas = set()
+    telefonos_unicos = set()
+    correos_unicos = set()
+    
+    # Diccionario para mapear identificacion -> id_persona (después de la consulta)
+    # Lo llenaremos después de consultar BigQuery
     
     for idx, row in df.iterrows():
         try:
@@ -201,32 +216,10 @@ def procesar_carga(df, proyecto):
                 detalles.append(f"Fila {idx+2}: Datos obligatorios incompletos")
                 continue
 
-            # Verificar si la persona ya existe (usando cache)
-            if identificacion in cache_personas:
-                id_persona = cache_personas[identificacion]
-            else:
-                # Buscar en BigQuery (solo si no está en cache)
-                persona_query = f"""
-                    SELECT id_persona 
-                    FROM `proyecto-css-panama.cobranza.personas`
-                    WHERE identificacion = '{identificacion}'
-                """
-                persona_df = ejecutar_query(persona_query)
-                
-                if len(persona_df) == 0:
-                    id_persona = str(uuid.uuid4())
-                    personas_data.append({
-                        'id_persona': id_persona,
-                        'identificacion': identificacion,
-                        'nombre': nombre
-                    })
-                else:
-                    id_persona = persona_df['id_persona'].iloc[0]
-                    # Si cambió el nombre, actualizar (lo haremos en un UPDATE por lotes después)
-                    cache_personas[identificacion] = id_persona
-
-            # Preparar CUENTA
-            id_cuenta = str(uuid.uuid4())
+            # Guardar identificación única para consultar después
+            ids_personas_unicas.add(identificacion)
+            
+            # Preparar datos de cuenta (sin id_persona todavía, lo asignaremos después)
             obligacion = str(row.get('obligacion', '')).strip() if pd.notna(row.get('obligacion')) else None
             empresa = str(row.get('empresa', '')).strip() if pd.notna(row.get('empresa')) else None
             direccion = str(row.get('direccion', '')).strip() if pd.notna(row.get('direccion')) else None
@@ -236,9 +229,9 @@ def procesar_carga(df, proyecto):
             observaciones = str(row.get('observaciones', '')).strip() if pd.notna(row.get('observaciones')) else None
             fecha_ultimo_pago = normalizar_fecha(row.get('fecha_ultimo_pago')) if pd.notna(row.get('fecha_ultimo_pago')) else None
             
-            cuentas_data.append({
-                'id_cuenta': id_cuenta,
-                'id_persona': id_persona,
+            cuentas_para_insertar.append({
+                'id_cuenta': str(uuid.uuid4()),
+                'identificacion': identificacion,  # Temporal, después lo reemplazamos con id_persona
                 'id_proyecto': proyecto,
                 'cuenta': cuenta,
                 'obligacion': obligacion,
@@ -255,26 +248,11 @@ def procesar_carga(df, proyecto):
             # Preparar TELÉFONOS
             telefonos = normalizar_telefonos(row.get('telefono'))
             for i, telefono in enumerate(telefonos):
-                # Buscar si el teléfono ya existe
-                tel_query = f"""
-                    SELECT id_telefono 
-                    FROM `proyecto-css-panama.cobranza.telefonos`
-                    WHERE numero = '{telefono}'
-                """
-                tel_df = ejecutar_query(tel_query)
-                
-                if len(tel_df) == 0:
-                    id_telefono = str(uuid.uuid4())
-                    telefonos_data.append({
-                        'id_telefono': id_telefono,
-                        'numero': telefono
-                    })
-                else:
-                    id_telefono = tel_df['id_telefono'].iloc[0]
-
-                telefonos_proyecto_data.append({
-                    'id_telefono': id_telefono,
-                    'id_persona': id_persona,
+                telefonos_unicos.add(telefono)
+                telefonos_proyecto_para_insertar.append({
+                    'id_telefono': None,  # Temporal, lo asignamos después
+                    'numero': telefono,
+                    'identificacion': identificacion,  # Para match después
                     'id_proyecto': proyecto,
                     'fuente': 'CARGA_INICIAL',
                     'prioridad': i + 1,
@@ -284,57 +262,141 @@ def procesar_carga(df, proyecto):
             # Preparar CORREOS
             correos = normalizar_correos(row.get('correo'))
             for i, correo in enumerate(correos):
-                corr_query = f"""
-                    SELECT id_correo 
-                    FROM `proyecto-css-panama.cobranza.correos`
-                    WHERE correo = '{correo}'
-                """
-                corr_df = ejecutar_query(corr_query)
-                
-                if len(corr_df) == 0:
-                    id_correo = str(uuid.uuid4())
-                    correos_data.append({
-                        'id_correo': id_correo,
-                        'correo': correo
-                    })
-                else:
-                    id_correo = corr_df['id_correo'].iloc[0]
-
-                correos_proyecto_data.append({
-                    'id_correo': id_correo,
-                    'id_persona': id_persona,
+                correos_unicos.add(correo)
+                correos_proyecto_para_insertar.append({
+                    'id_correo': None,  # Temporal
+                    'correo': correo,
+                    'identificacion': identificacion,  # Para match después
                     'id_proyecto': proyecto,
                     'fuente': 'CARGA_INICIAL',
                     'prioridad': i + 1,
                     'estado': 'ACTIVO'
                 })
 
-            procesados += 1
-
         except Exception as e:
             errores += 1
             detalles.append(f"Fila {idx+2}: {str(e)}")
 
     # ============================================================
-    # PASO 2: Insertar por lotes en BigQuery
+    # PASO 3: Consultar BigQuery UNA SOLA VEZ por cada tipo de entidad
     # ============================================================
     
-    # Convertir a DataFrames para insertar por lotes
-    if personas_data:
-        df_personas = pd.DataFrame(personas_data)
-        # Insertar personas nuevas
-        for _, row in df_personas.iterrows():
-            insert_query = f"""
-                INSERT INTO `proyecto-css-panama.cobranza.personas`
-                (id_persona, identificacion, nombre)
-                VALUES ('{row['id_persona']}', '{row['identificacion']}', '{row['nombre']}')
-            """
-            ejecutar_query(insert_query)
+    # 3.1 Consultar PERSONAS existentes
+    if ids_personas_unicas:
+        ids_list = "', '".join(ids_personas_unicas)
+        query_personas = f"""
+            SELECT identificacion, id_persona, nombre
+            FROM `proyecto-css-panama.cobranza.personas`
+            WHERE identificacion IN ('{ids_list}')
+        """
+        df_personas_existentes = ejecutar_query(query_personas)
+        # Crear diccionario: identificacion -> id_persona
+        map_identificacion_a_id = dict(zip(df_personas_existentes['identificacion'], df_personas_existentes['id_persona']))
+        # También guardar nombres para actualizar si cambian
+        map_nombres_existentes = dict(zip(df_personas_existentes['identificacion'], df_personas_existentes['nombre']))
+    else:
+        map_identificacion_a_id = {}
+        map_nombres_existentes = {}
 
-    if cuentas_data:
-        # Insertar cuentas por lotes usando UNNEST (más eficiente)
+    # 3.2 Consultar TELÉFONOS existentes
+    if telefonos_unicos:
+        tel_list = "', '".join(telefonos_unicos)
+        query_telefonos = f"""
+            SELECT numero, id_telefono
+            FROM `proyecto-css-panama.cobranza.telefonos`
+            WHERE numero IN ('{tel_list}')
+        """
+        df_telefonos_existentes = ejecutar_query(query_telefonos)
+        map_telefono_a_id = dict(zip(df_telefonos_existentes['numero'], df_telefonos_existentes['id_telefono']))
+    else:
+        map_telefono_a_id = {}
+
+    # 3.3 Consultar CORREOS existentes
+    if correos_unicos:
+        corr_list = "', '".join(correos_unicos)
+        query_correos = f"""
+            SELECT correo, id_correo
+            FROM `proyecto-css-panama.cobranza.correos`
+            WHERE correo IN ('{corr_list}')
+        """
+        df_correos_existentes = ejecutar_query(query_correos)
+        map_correo_a_id = dict(zip(df_correos_existentes['correo'], df_correos_existentes['id_correo']))
+    else:
+        map_correo_a_id = {}
+
+    # ============================================================
+    # PASO 4: Procesar en memoria para asignar IDs
+    # ============================================================
+    
+    # 4.1 Determinar qué personas son NUEVAS
+    personas_nuevas = []
+    for ident in ids_personas_unicas:
+        if ident not in map_identificacion_a_id:
+            id_persona = str(uuid.uuid4())
+            map_identificacion_a_id[ident] = id_persona
+            # Buscar el nombre de esta persona (de la primera fila donde apareció)
+            nombre = df[df['identificacion'] == ident]['nombre'].iloc[0]
+            personas_nuevas.append({
+                'id_persona': id_persona,
+                'identificacion': ident,
+                'nombre': normalizar_nombre(nombre)
+            })
+
+    # 4.2 Determinar qué teléfonos son NUEVOS
+    telefonos_nuevos = []
+    for telefono in telefonos_unicos:
+        if telefono not in map_telefono_a_id:
+            id_telefono = str(uuid.uuid4())
+            map_telefono_a_id[telefono] = id_telefono
+            telefonos_nuevos.append({
+                'id_telefono': id_telefono,
+                'numero': telefono
+            })
+
+    # 4.3 Determinar qué correos son NUEVOS
+    correos_nuevos = []
+    for correo in correos_unicos:
+        if correo not in map_correo_a_id:
+            id_correo = str(uuid.uuid4())
+            map_correo_a_id[correo] = id_correo
+            correos_nuevos.append({
+                'id_correo': id_correo,
+                'correo': correo
+            })
+
+    # 4.4 Ahora asignar id_persona a las cuentas (reemplazar identificacion)
+    for cuenta in cuentas_para_insertar:
+        ident = cuenta.pop('identificacion')
+        cuenta['id_persona'] = map_identificacion_a_id[ident]
+
+    # 4.5 Asignar id_telefono a las relaciones telefonos_proyecto
+    for rel_tel in telefonos_proyecto_para_insertar:
+        rel_tel['id_telefono'] = map_telefono_a_id[rel_tel['numero']]
+        rel_tel['id_persona'] = map_identificacion_a_id[rel_tel.pop('identificacion')]
+
+    # 4.6 Asignar id_correo a las relaciones correos_proyecto
+    for rel_corr in correos_proyecto_para_insertar:
+        rel_corr['id_correo'] = map_correo_a_id[rel_corr['correo']]
+        rel_corr['id_persona'] = map_identificacion_a_id[rel_corr.pop('identificacion')]
+
+    # ============================================================
+    # PASO 5: Insertar por LOTES en BigQuery (4-6 consultas)
+    # ============================================================
+    
+    # 5.1 Insertar personas NUEVAS (una sola consulta)
+    if personas_nuevas:
+        valores_personas = [f"('{p['id_persona']}', '{p['identificacion']}', '{p['nombre']}')" for p in personas_nuevas]
+        insert_personas = f"""
+            INSERT INTO `proyecto-css-panama.cobranza.personas`
+            (id_persona, identificacion, nombre)
+            VALUES {', '.join(valores_personas)}
+        """
+        ejecutar_query(insert_personas)
+
+    # 5.2 Insertar cuentas (una sola consulta)
+    if cuentas_para_insertar:
         valores_cuentas = []
-        for c in cuentas_data:
+        for c in cuentas_para_insertar:
             valores_cuentas.append(f"""(
                 '{c['id_cuenta']}',
                 '{c['id_persona']}',
@@ -360,9 +422,9 @@ def procesar_carga(df, proyecto):
             """
             ejecutar_query(insert_cuentas)
 
-    # Insertar teléfonos nuevos
-    if telefonos_data:
-        valores_telefonos = [f"('{t['id_telefono']}', '{t['numero']}')" for t in telefonos_data]
+    # 5.3 Insertar teléfonos NUEVOS (una sola consulta)
+    if telefonos_nuevos:
+        valores_telefonos = [f"('{t['id_telefono']}', '{t['numero']}')" for t in telefonos_nuevos]
         insert_telefonos = f"""
             INSERT INTO `proyecto-css-panama.cobranza.telefonos`
             (id_telefono, numero)
@@ -370,8 +432,8 @@ def procesar_carga(df, proyecto):
         """
         ejecutar_query(insert_telefonos)
 
-    # Insertar relaciones telefonos_proyecto
-    if telefonos_proyecto_data:
+    # 5.4 Insertar relaciones telefonos_proyecto (una sola consulta)
+    if telefonos_proyecto_para_insertar:
         valores_rel_tel = [f"""(
             '{t['id_telefono']}',
             '{t['id_persona']}',
@@ -379,7 +441,7 @@ def procesar_carga(df, proyecto):
             '{t['fuente']}',
             {t['prioridad']},
             '{t['estado']}'
-        )""" for t in telefonos_proyecto_data]
+        )""" for t in telefonos_proyecto_para_insertar]
         
         insert_rel_tel = f"""
             INSERT INTO `proyecto-css-panama.cobranza.telefonos_proyecto`
@@ -388,9 +450,9 @@ def procesar_carga(df, proyecto):
         """
         ejecutar_query(insert_rel_tel)
 
-    # Insertar correos nuevos
-    if correos_data:
-        valores_correos = [f"('{c['id_correo']}', '{c['correo']}')" for c in correos_data]
+    # 5.5 Insertar correos NUEVOS (una sola consulta)
+    if correos_nuevos:
+        valores_correos = [f"('{c['id_correo']}', '{c['correo']}')" for c in correos_nuevos]
         insert_correos = f"""
             INSERT INTO `proyecto-css-panama.cobranza.correos`
             (id_correo, correo)
@@ -398,8 +460,8 @@ def procesar_carga(df, proyecto):
         """
         ejecutar_query(insert_correos)
 
-    # Insertar relaciones correos_proyecto
-    if correos_proyecto_data:
+    # 5.6 Insertar relaciones correos_proyecto (una sola consulta)
+    if correos_proyecto_para_insertar:
         valores_rel_corr = [f"""(
             '{c['id_correo']}',
             '{c['id_persona']}',
@@ -407,7 +469,7 @@ def procesar_carga(df, proyecto):
             '{c['fuente']}',
             {c['prioridad']},
             '{c['estado']}'
-        )""" for c in correos_proyecto_data]
+        )""" for c in correos_proyecto_para_insertar]
         
         insert_rel_corr = f"""
             INSERT INTO `proyecto-css-panama.cobranza.correos_proyecto`
@@ -416,13 +478,17 @@ def procesar_carga(df, proyecto):
         """
         ejecutar_query(insert_rel_corr)
 
+    # ============================================================
+    # PASO 6: Resultado
+    # ============================================================
+    
+    procesados = total - errores
     elapsed_time = time.time() - start_time
     detalle = f"{procesados} procesados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
     if detalles:
         detalle += f" | Primeros errores: {', '.join(detalles[:3])}"
     
-    return total, procesados, errores, detalle
-# ============================================================
+    return total, procesados, errores, detalle# ============================================================
 # GENERAR PLANTILLA
 # ============================================================
 

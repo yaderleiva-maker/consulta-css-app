@@ -1,9 +1,17 @@
-# modulos/hexagon_panama/consultas.py
 import streamlit as st
 import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from datetime import datetime
+import io
+from io import StringIO
+
+# 🆕 Imports para el puente con Cobranza
+from modulos.hexagon_panama.cobranza.investigacion import (
+    anexar_investigacion,
+    generar_reporte_investigacion,
+    generar_excel_reporte,
+)
 
 def run(usuario, tipo_consulta):
     st.write(f"👤 Usuario: {usuario}")
@@ -27,16 +35,13 @@ def run(usuario, tipo_consulta):
     uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
 
     if uploaded_file:
-
         # -----------------------
         # LEER ARCHIVO CON AUTODETECCIÓN DE SEPARADOR
         # -----------------------
         try:
-            # Leer el contenido para detectar separador
             contenido = uploaded_file.getvalue().decode('utf-8-sig')
             primeras_lineas = contenido.split('\n')[:5]
             
-            # Detectar separador (; o ,)
             separador_detectado = None
             max_cols = 0
             
@@ -46,16 +51,12 @@ def run(usuario, tipo_consulta):
                         max_cols = linea.count(sep)
                         separador_detectado = sep
             
-            # Si no se detectó nada, usar coma por defecto
             if separador_detectado is None:
                 separador_detectado = ','
             
             st.info(f"📌 Separador detectado: {'PUNTO Y COMA (;)' if separador_detectado == ';' else 'COMA (,)' if separador_detectado == ',' else 'TAB (\\t)' if separador_detectado == '\t' else f'({separador_detectado})'}")
             
-            # Volver a leer el archivo desde el inicio
             uploaded_file.seek(0)
-            
-            # Leer CSV con el separador detectado
             df = pd.read_csv(
                 uploaded_file,
                 sep=separador_detectado,
@@ -68,33 +69,24 @@ def run(usuario, tipo_consulta):
             st.error(f"❌ Error al leer el archivo: {e}")
             st.stop()
 
-        # Eliminar columnas completamente vacías
         df = df.dropna(axis=1, how='all')
-        
-        # Limpiar nombres de columnas (minúsculas, sin espacios)
         df.columns = df.columns.str.strip().str.lower()
         
         # -----------------------
-        # ELIMINAR FILAS SIN CÉDULA
+        # VALIDACIONES
         # -----------------------
         if "cedula" not in df.columns:
             st.error("❌ Falta la columna 'cedula'")
             st.stop()
         
-        # Eliminar filas sin cédula
         df = df[df['cedula'].notna() & (df['cedula'].astype(str).str.strip() != '')]
         
         if df.empty:
             st.error("❌ El archivo no contiene cédulas válidas")
             st.stop()
 
-        # -----------------------
-        # LIMPIAR DECIMALES .0 EN TELÉFONOS
-        # -----------------------
-        columnas_telefono = [
-            "telf1","telf2","telf3","telf4","telf5",
-            "telf6","telf7","telf8","telf9","telf10"
-        ]
+        columnas_telefono = ["telf1","telf2","telf3","telf4","telf5",
+                            "telf6","telf7","telf8","telf9","telf10"]
 
         for col in columnas_telefono:
             if col in df.columns:
@@ -107,27 +99,14 @@ def run(usuario, tipo_consulta):
                     .replace('None', '')
                 )
         
-        # -----------------------
-        # VALIDACIONES
-        # -----------------------
-         # -----------------------
-        # ASEGURAR COLUMNAS EXISTENTES
-        # -----------------------
-        # Columnas que deben existir para las consultas
         columnas_telefono = ["telf1", "telf2", "telf3", "telf4", "telf5",
                             "telf6", "telf7", "telf8", "telf9", "telf10"]
-        
         columnas_correo = ["correo1", "correo2"]
         
-        # Crear columnas faltantes
         for col in columnas_telefono + columnas_correo + ["nombre"]:
             if col not in df.columns:
                 df[col] = ""
-                #st.warning(f"⚠️ Columna '{col}' no encontrada, creada vacía")
 
-        # -----------------------
-        # LIMPIAR DECIMALES .0 EN TELÉFONOS
-        # -----------------------
         for col in columnas_telefono:
             if col in df.columns:
                 df[col] = (
@@ -139,9 +118,6 @@ def run(usuario, tipo_consulta):
                     .replace('None', '')
                 )
         
-        # -----------------------
-        # VALIDACIONES
-        # -----------------------
         columnas_validas = [
             "cedula", "nombre", "correo1", "correo2",
             "telf1", "telf2", "telf3", "telf4", "telf5",
@@ -153,18 +129,6 @@ def run(usuario, tipo_consulta):
         if columnas_invalidas:
             st.warning(f"⚠️ Columnas adicionales ignoradas: {columnas_invalidas}")
 
-        if "cedula" not in df.columns:
-            st.error("❌ Falta la columna 'cedula'")
-            st.stop()
-
-        # Eliminar filas sin cédula
-        df = df[df['cedula'].notna() & (df['cedula'].astype(str).str.strip() != '')]
-        
-        if df.empty:
-            st.error("❌ El archivo no contiene cédulas válidas")
-            st.stop()
-
-        # 🔥 NORMALIZAR TODO A STRING
         for col in df.columns:
             df[col] = df[col].astype(str).str.strip()
             df[col] = df[col].replace('nan', '').replace('None', '')
@@ -189,7 +153,30 @@ def run(usuario, tipo_consulta):
             st.stop()
 
         # -----------------------
-        # SUBIR DATA
+        # SELECCIONAR PROYECTO PARA ANEXAR (PUENTE)
+        # -----------------------
+        proyectos = client.query("""
+            SELECT id_proyecto, nombre
+            FROM `proyecto-css-panama.cobranza.proyectos`
+            WHERE activo = TRUE
+            ORDER BY nombre
+        """).to_dataframe()
+
+        if proyectos.empty:
+            st.error("❌ No hay proyectos activos para anexar la investigación.")
+            st.stop()
+
+        nombre_proyecto = st.selectbox(
+            "🏢 Proyecto de cartera al que se anexará el resultado",
+            proyectos['nombre'].tolist(),
+            key="proyecto_consulta",
+        )
+        proyecto_id = proyectos.loc[
+            proyectos['nombre'].eq(nombre_proyecto), 'id_proyecto'
+        ].iloc[0]
+
+        # -----------------------
+        # SUBIR DATA A TABLA TEMPORAL
         # -----------------------
         table_id = "proyecto-css-panama.consultas.temp_clientes"
 
@@ -324,7 +311,8 @@ def run(usuario, tipo_consulta):
                 "fecha": datetime.now(),
                 "tipo_consulta": tipo_consulta,
                 "cantidad_registros": len(result),
-                "archivo": uploaded_file.name
+                "archivo": uploaded_file.name,
+                "proyecto": proyecto_id
             }])
 
             client.load_table_from_dataframe(
@@ -338,19 +326,46 @@ def run(usuario, tipo_consulta):
             st.warning(f"⚠️ No se pudo guardar historial: {e}")
 
         # -----------------------
-        # RESULTADO
+        # RESULTADO Y ANEXADO AUTOMÁTICO (PUENTE)
         # -----------------------
-        st.success(f"✅ Consulta {tipo_consulta} lista 🎉")
+        st.success(f"✅ Consulta {tipo_consulta} lista: {len(result):,} registros")
 
-        col1, col2 = st.columns([1, 3])
-        with col1:
+        if tipo_consulta in ("TELEFONOS NUEVOS", "TELÉFONOS NUEVOS"):
+            tipo_anexo = "telefonos"
+        elif tipo_consulta == "CORREOS NUEVOS":
+            tipo_anexo = "correos"
+        else:
+            tipo_anexo = None
+
+        if tipo_anexo:
+            with st.spinner(f"🔄 Anexando {tipo_anexo} automáticamente a Cobranza..."):
+                total, anexados, errores, detalle = anexar_investigacion(
+                    result, proyecto_id, tipo_anexo
+                )
+
+            if errores:
+                st.warning(f"⚠️ {detalle}")
+            else:
+                st.success(f"✅ {detalle}")
+
+            # Generar reporte DESPUÉS del anexo
+            with st.spinner("📊 Generando reporte actualizado..."):
+                reporte = generar_reporte_investigacion(proyecto_id)
+
             st.download_button(
-                "📥 Descargar resultado",
-                result.to_csv(index=False),
-                file_name=f"resultado_{tipo_consulta.replace(' ', '_')}.csv",
-                mime="text/csv"
+                label="📥 Descargar reporte completo actualizado",
+                data=generar_excel_reporte(reporte),
+                file_name=f"INVESTIGACION_{proyecto_id}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
             )
-        with col2:
-            st.write(f"📊 **{len(result)}** registros encontrados")
 
-        st.dataframe(result.head(20))
+        st.download_button(
+            label="📥 Descargar resultado de la consulta (CSV)",
+            data=result.to_csv(index=False).encode("utf-8-sig"),
+            file_name=f"resultado_{tipo_consulta.replace(' ', '_')}.csv",
+            mime="text/csv",
+            use_container_width=True,
+        )
+
+        st.dataframe(result.head(20), use_container_width=True)

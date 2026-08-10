@@ -74,7 +74,7 @@ MODULOS = {
             }
         }
     },
-    "💰 Cobranza": {  # 🆕 NUEVO MÓDULO DE COBRANZA
+    "💰 Cobranza": {
         "icono": "💰",
         "tipo": "categoria",
         "modulos": {
@@ -84,13 +84,12 @@ MODULOS = {
                 "permiso": "COBRANZA",
                 "icono": "📥"
             },
-
-    "🔍 Investigación": {
-        "tipo": "modulo",
-        "funcion": lambda: render_investigacion(),
-        "permiso": "COBRANZA",
-        "icono": "🔍"
-            }   
+            "🔍 Investigación": {
+                "tipo": "modulo",
+                "funcion": lambda: render_investigacion(),
+                "permiso": "COBRANZA",
+                "icono": "🔍"
+            }
         }
     },
     "🏢 Hexagon Colombia": {

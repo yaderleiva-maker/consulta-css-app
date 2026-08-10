@@ -6,8 +6,8 @@ from datetime import datetime
 import io
 from io import StringIO
 
-# 🆕 Imports para el puente con Cobranza
-from modulos.hexagon_panama.cobranza.investigacion import (
+# 🆕 Import relativo corregido
+from ..cobranza.investigacion import (
     anexar_investigacion,
     generar_reporte_investigacion,
     generar_excel_reporte,

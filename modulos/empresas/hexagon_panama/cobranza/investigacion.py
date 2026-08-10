@@ -180,13 +180,15 @@ def insertar_correos_proyecto_batch(relaciones):
     ejecutar_query(query)
 
 # ============================================================
-# FUNCIÓN PRINCIPAL DE ANEXADO
+# FUNCIÓN PRINCIPAL DE ANEXADO (exportada)
 # ============================================================
 
 def anexar_investigacion(df, proyecto_id, tipo):
     """
     Anexa teléfonos o correos de investigación a Cobranza.
     tipo: 'telefonos' o 'correos'
+    
+    Retorna: (total, anexados, errores, detalle)
     """
     import time
     start_time = time.time()
@@ -201,15 +203,18 @@ def anexar_investigacion(df, proyecto_id, tipo):
     if 'cedula' not in df.columns or col_valor not in df.columns:
         return total, 0, total, f"Faltan columnas: 'cedula' y '{col_valor}'"
 
+    # Normalizar datos
     df = df.copy()
     df.columns = df.columns.str.strip().str.lower()
     df['cedula'] = df['cedula'].fillna('').astype(str).str.strip()
     df[col_valor] = df[col_valor].fillna('').astype(str).str.strip()
     cedulas = df.loc[df['cedula'] != '', 'cedula'].unique().tolist()
 
+    # Obtener personas existentes
     df_personas = obtener_personas_por_cedula(cedulas)
     map_cedula_a_id = dict(zip(df_personas['identificacion'], df_personas['id_persona']))
 
+    # Obtener existentes en el proyecto
     if tipo == 'telefonos':
         existentes_set = obtener_telefonos_existentes(proyecto_id, cedulas)
         validar_valor = validar_telefono
@@ -222,6 +227,7 @@ def anexar_investigacion(df, proyecto_id, tipo):
     nuevos_catalogos = []
     nuevas_relaciones = []
 
+    # Pre-cargar IDs de catálogo global para todos los valores válidos
     valores_validos = {
         validar_valor(valor)
         for valor in df[col_valor]
@@ -255,6 +261,7 @@ def anexar_investigacion(df, proyecto_id, tipo):
         if clave_relacion in existentes_set or clave_relacion in relaciones_pendientes:
             continue
 
+        # Verificar si ya existe en catálogo global
         if valor_limpio in cache_ids:
             id_valor = cache_ids[valor_limpio]
         else:
@@ -265,6 +272,7 @@ def anexar_investigacion(df, proyecto_id, tipo):
                 'valor': valor_limpio
             })
 
+        # Crear relación con el proyecto
         nuevas_relaciones.append({
             'id_valor': id_valor,
             'id_persona': id_persona,
@@ -275,6 +283,7 @@ def anexar_investigacion(df, proyecto_id, tipo):
         })
         relaciones_pendientes.add(clave_relacion)
 
+    # Insertar en BigQuery
     if nuevos_catalogos:
         if tipo == 'telefonos':
             insertar_telefonos_batch([{'id_telefono': c['id'], 'numero': c['valor']} for c in nuevos_catalogos])
@@ -309,11 +318,12 @@ def anexar_investigacion(df, proyecto_id, tipo):
     return total, anexados, errores, detalle
 
 # ============================================================
-# FUNCIONES PARA GENERAR REPORTE EXCEL
+# FUNCIONES PARA GENERAR REPORTE EXCEL (exportadas)
 # ============================================================
 
 def generar_reporte_investigacion(proyecto_id):
     """Genera un dict con DataFrames para el reporte completo."""
+    # 1. Personas + Cuentas
     query_personas = f"""
         SELECT 
             p.identificacion,
@@ -333,6 +343,7 @@ def generar_reporte_investigacion(proyecto_id):
     """
     df_personas = ejecutar_query(query_personas)
 
+    # 2. Teléfonos
     query_telefonos = f"""
         SELECT 
             p.identificacion,
@@ -353,6 +364,7 @@ def generar_reporte_investigacion(proyecto_id):
     """
     df_telefonos = ejecutar_query(query_telefonos)
 
+    # 3. Correos
     query_correos = f"""
         SELECT 
             p.identificacion,
@@ -369,6 +381,7 @@ def generar_reporte_investigacion(proyecto_id):
     """
     df_correos = ejecutar_query(query_correos)
 
+    # 4. Resumen
     resumen = {
         "Proyecto": proyecto_id,
         "Fecha generación": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -389,6 +402,7 @@ def generar_reporte_investigacion(proyecto_id):
     }
 
 def generar_excel_reporte(data):
+    """Genera bytes de un archivo Excel con múltiples hojas."""
     import io
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -399,6 +413,7 @@ def generar_excel_reporte(data):
             data['telefonos'].to_excel(writer, sheet_name='Teléfonos', index=False)
         if not data['correos'].empty:
             data['correos'].to_excel(writer, sheet_name='Correos', index=False)
+        # Ajustar anchos
         for sheet_name in writer.sheets:
             worksheet = writer.sheets[sheet_name]
             worksheet.set_column(0, 20, 18)
@@ -415,47 +430,12 @@ def render():
     """
     st.markdown("""
     <style>
-        .main-header {
-            font-size: 24px;
-            font-weight: 600;
-            color: #1a1a1a;
-            margin-bottom: 8px;
-        }
-        .sub-header {
-            font-size: 14px;
-            color: #6b6b6b;
-            margin-bottom: 24px;
-        }
-        .card {
-            background-color: #ffffff;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-            border: 1px solid #f0f0f0;
-            margin-bottom: 16px;
-        }
-        .card-title {
-            font-size: 16px;
-            font-weight: 500;
-            color: #1a1a1a;
-            margin-bottom: 12px;
-        }
-        .helper-text {
-            font-size: 13px;
-            color: #6b6b6b;
-            margin-top: 4px;
-        }
-        .btn-primary {
-            background-color: #dc2626;
-            color: white;
-            border: none;
-            padding: 12px 32px;
-            border-radius: 8px;
-            font-weight: 500;
-            font-size: 16px;
-            cursor: pointer;
-            width: 100%;
-        }
+        .main-header { font-size: 24px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; }
+        .sub-header { font-size: 14px; color: #6b6b6b; margin-bottom: 24px; }
+        .card { background-color: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); border: 1px solid #f0f0f0; margin-bottom: 16px; }
+        .card-title { font-size: 16px; font-weight: 500; color: #1a1a1a; margin-bottom: 12px; }
+        .helper-text { font-size: 13px; color: #6b6b6b; margin-top: 4px; }
+        .btn-primary { background-color: #dc2626; color: white; border: none; padding: 12px 32px; border-radius: 8px; font-weight: 500; font-size: 16px; cursor: pointer; width: 100%; }
         .btn-primary:hover { background-color: #b91c1c; }
         .btn-primary:disabled { background-color: #9ca3af; cursor: not-allowed; }
     </style>

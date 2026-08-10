@@ -22,20 +22,17 @@ COLUMNAS_OPCIONALES = ['telefono', 'correo', 'empresa', 'direccion', 'ocupacion'
 # ============================================================
 
 def normalizar_identificacion(valor):
-    """Mantiene la identificación exactamente como llega"""
     if pd.isna(valor):
         return None
     return str(valor).strip()
 
 def normalizar_nombre(valor):
-    """Convierte nombre a MAYÚSCULAS y elimina espacios dobles"""
     if pd.isna(valor):
         return None
     nombre = str(valor).strip().upper()
     return ' '.join(nombre.split())
 
 def normalizar_telefonos(valor):
-    """Separa teléfonos por coma, limpia espacios y elimina duplicados"""
     if pd.isna(valor):
         return []
     if isinstance(valor, str):
@@ -46,7 +43,6 @@ def normalizar_telefonos(valor):
     return []
 
 def normalizar_correos(valor):
-    """Separa correos por coma, limpia espacios y elimina duplicados"""
     if pd.isna(valor):
         return []
     if isinstance(valor, str):
@@ -57,7 +53,6 @@ def normalizar_correos(valor):
     return []
 
 def normalizar_saldo(valor):
-    """Convierte saldo a float, manejando formatos con comas y puntos"""
     if pd.isna(valor):
         return None
     if isinstance(valor, (int, float)):
@@ -72,7 +67,6 @@ def normalizar_saldo(valor):
     return None
 
 def normalizar_fecha(valor):
-    """Convierte a formato DATE (YYYY-MM-DD)"""
     if pd.isna(valor):
         return None
     if isinstance(valor, (pd.Timestamp, datetime)):
@@ -86,12 +80,30 @@ def normalizar_fecha(valor):
     return None
 
 # ============================================================
+# 🟢 VALIDACIÓN DE TELÉFONOS (ya la tienes, ahora la usamos)
+# ============================================================
+
+def validar_telefono(numero):
+    """Valida un número de teléfono para Panamá (7 u 8 dígitos, sin prefijo)."""
+    if not numero or str(numero).strip() in ['', '0', '000', 'nan', 'None']:
+        return None
+    limpio = re.sub(r'[^0-9]', '', str(numero))
+    if len(limpio) not in [7, 8]:
+        return None
+    if limpio.count('0') == len(limpio):
+        return None
+    if limpio.startswith('6') and len(limpio) != 8:
+        return None
+    if not limpio.startswith('6') and len(limpio) not in [7, 8]:
+        return None
+    return limpio
+
+# ============================================================
 # FUNCIONES DE BIGQUERY
 # ============================================================
 
 @st.cache_data(ttl=300)
 def obtener_proyectos_activos():
-    """Obtiene lista de proyectos activos desde BigQuery"""
     query = """
         SELECT 
             id_proyecto,
@@ -110,7 +122,6 @@ def obtener_proyectos_activos():
         return pd.DataFrame()
 
 def obtener_historial_cargas(proyecto, limite=20):
-    """Obtiene el historial de cargas de un proyecto"""
     query = f"""
         SELECT 
             fecha_carga,
@@ -130,7 +141,6 @@ def obtener_historial_cargas(proyecto, limite=20):
         return pd.DataFrame()
 
 def registrar_carga_en_bigquery(proyecto, registros, procesados, errores, estado, detalle=None):
-    """Registra una carga en el historial de BigQuery"""
     id_carga = str(uuid.uuid4())
     query = f"""
         INSERT INTO `proyecto-css-panama.cobranza.historial_cargas`
@@ -154,21 +164,10 @@ def registrar_carga_en_bigquery(proyecto, registros, procesados, errores, estado
         return False
 
 # ============================================================
-# PROCESO DE INGESTA
+# PROCESO DE INGESTA (BATCH)
 # ============================================================
 
 def procesar_carga(df, proyecto):
-    """
-    Procesa el DataFrame y lo descompone en las tablas de BigQuery.
-    VERSIÓN BATCH - OPTIMIZADA PARA GRANDES VOLÚMENES.
-    
-    Estrategia:
-    1. Normalizar TODO en memoria (Pandas)
-    2. Extraer identificadores únicos
-    3. 3 consultas a BigQuery para obtener existentes
-    4. Match en memoria (sets/dicts)
-    5. Preparar inserts por lote (4-6 consultas de escritura)
-    """
     import time
     start_time = time.time()
     
@@ -176,19 +175,14 @@ def procesar_carga(df, proyecto):
     errores = 0
     detalles = []
 
-    # ============================================================
-    # PASO 1: Validar columnas requeridas
-    # ============================================================
-    
     faltantes = validar_columnas(df, COLUMNAS_REQUERIDAS)
     if faltantes:
         return total, 0, total, f"Faltan columnas: {', '.join(faltantes)}"
 
     # ============================================================
-    # PASO 2: Normalizar TODO en memoria (una sola pasada)
+    # PASO 1: Normalizar en memoria
     # ============================================================
     
-    # Listas para acumular datos
     personas_para_insertar = []
     cuentas_para_insertar = []
     telefonos_para_insertar = []
@@ -196,13 +190,9 @@ def procesar_carga(df, proyecto):
     correos_para_insertar = []
     correos_proyecto_para_insertar = []
     
-    # Conjuntos para extraer identificadores únicos
     ids_personas_unicas = set()
     telefonos_unicos = set()
     correos_unicos = set()
-    
-    # Diccionario para mapear identificacion -> id_persona (después de la consulta)
-    # Lo llenaremos después de consultar BigQuery
     
     for idx, row in df.iterrows():
         try:
@@ -216,10 +206,8 @@ def procesar_carga(df, proyecto):
                 detalles.append(f"Fila {idx+2}: Datos obligatorios incompletos")
                 continue
 
-            # Guardar identificación única para consultar después
             ids_personas_unicas.add(identificacion)
             
-            # Preparar datos de cuenta (sin id_persona todavía, lo asignaremos después)
             obligacion = str(row.get('obligacion', '')).strip() if pd.notna(row.get('obligacion')) else None
             empresa = str(row.get('empresa', '')).strip() if pd.notna(row.get('empresa')) else None
             direccion = str(row.get('direccion', '')).strip() if pd.notna(row.get('direccion')) else None
@@ -231,7 +219,7 @@ def procesar_carga(df, proyecto):
             
             cuentas_para_insertar.append({
                 'id_cuenta': str(uuid.uuid4()),
-                'identificacion': identificacion,  # Temporal, después lo reemplazamos con id_persona
+                'identificacion': identificacion,
                 'id_proyecto': proyecto,
                 'cuenta': cuenta,
                 'obligacion': obligacion,
@@ -245,30 +233,35 @@ def procesar_carga(df, proyecto):
                 'observaciones': observaciones
             })
 
-            # Preparar TELÉFONOS
-            telefonos = normalizar_telefonos(row.get('telefono'))
-            for i, telefono in enumerate(telefonos):
-                telefonos_unicos.add(telefono)
+            # ---- 🟢 PROCESAR TELÉFONOS CON VALIDACIÓN ----
+            telefonos_raw = normalizar_telefonos(row.get('telefono'))
+            for i, telefono in enumerate(telefonos_raw):
+                telefono_limpio = validar_telefono(telefono)  # 🟢 VALIDAMOS
+                if not telefono_limpio:
+                    continue  # 🟢 Saltamos números inválidos (0, >8 dígitos, etc.)
+                telefonos_unicos.add(telefono_limpio)
                 telefonos_proyecto_para_insertar.append({
-                    'id_telefono': None,  # Temporal, lo asignamos después
-                    'numero': telefono,
-                    'identificacion': identificacion,  # Para match después
+                    'id_telefono': None,
+                    'numero': telefono_limpio,      # 🟢 Usamos el limpio
+                    'identificacion': identificacion,
                     'id_proyecto': proyecto,
-                    'fuente': 'CARGA_INICIAL',
+                    'fuente': 'BASE',               # 🟢 CAMBIADO: 'BASE' en lugar de 'CARGA_INICIAL'
                     'prioridad': i + 1,
                     'estado': 'ACTIVO'
                 })
 
-            # Preparar CORREOS
+            # ---- PROCESAR CORREOS (sin validación fuerte, solo separar) ----
             correos = normalizar_correos(row.get('correo'))
             for i, correo in enumerate(correos):
+                if not correo:
+                    continue
                 correos_unicos.add(correo)
                 correos_proyecto_para_insertar.append({
-                    'id_correo': None,  # Temporal
+                    'id_correo': None,
                     'correo': correo,
-                    'identificacion': identificacion,  # Para match después
+                    'identificacion': identificacion,
                     'id_proyecto': proyecto,
-                    'fuente': 'CARGA_INICIAL',
+                    'fuente': 'BASE',               # 🟢 CAMBIADO: 'BASE'
                     'prioridad': i + 1,
                     'estado': 'ACTIVO'
                 })
@@ -278,10 +271,9 @@ def procesar_carga(df, proyecto):
             detalles.append(f"Fila {idx+2}: {str(e)}")
 
     # ============================================================
-    # PASO 3: Consultar BigQuery UNA SOLA VEZ por cada tipo de entidad
+    # PASO 2: Consultar BigQuery (3 consultas)
     # ============================================================
     
-    # 3.1 Consultar PERSONAS existentes
     if ids_personas_unicas:
         ids_list = "', '".join(ids_personas_unicas)
         query_personas = f"""
@@ -290,15 +282,12 @@ def procesar_carga(df, proyecto):
             WHERE identificacion IN ('{ids_list}')
         """
         df_personas_existentes = ejecutar_query(query_personas)
-        # Crear diccionario: identificacion -> id_persona
         map_identificacion_a_id = dict(zip(df_personas_existentes['identificacion'], df_personas_existentes['id_persona']))
-        # También guardar nombres para actualizar si cambian
         map_nombres_existentes = dict(zip(df_personas_existentes['identificacion'], df_personas_existentes['nombre']))
     else:
         map_identificacion_a_id = {}
         map_nombres_existentes = {}
 
-    # 3.2 Consultar TELÉFONOS existentes
     if telefonos_unicos:
         tel_list = "', '".join(telefonos_unicos)
         query_telefonos = f"""
@@ -311,7 +300,6 @@ def procesar_carga(df, proyecto):
     else:
         map_telefono_a_id = {}
 
-    # 3.3 Consultar CORREOS existentes
     if correos_unicos:
         corr_list = "', '".join(correos_unicos)
         query_correos = f"""
@@ -325,16 +313,14 @@ def procesar_carga(df, proyecto):
         map_correo_a_id = {}
 
     # ============================================================
-    # PASO 4: Procesar en memoria para asignar IDs
+    # PASO 3: Asignar IDs en memoria
     # ============================================================
     
-    # 4.1 Determinar qué personas son NUEVAS
     personas_nuevas = []
     for ident in ids_personas_unicas:
         if ident not in map_identificacion_a_id:
             id_persona = str(uuid.uuid4())
             map_identificacion_a_id[ident] = id_persona
-            # Buscar el nombre de esta persona (de la primera fila donde apareció)
             nombre = df[df['identificacion'] == ident]['nombre'].iloc[0]
             personas_nuevas.append({
                 'id_persona': id_persona,
@@ -342,7 +328,6 @@ def procesar_carga(df, proyecto):
                 'nombre': normalizar_nombre(nombre)
             })
 
-    # 4.2 Determinar qué teléfonos son NUEVOS
     telefonos_nuevos = []
     for telefono in telefonos_unicos:
         if telefono not in map_telefono_a_id:
@@ -353,7 +338,6 @@ def procesar_carga(df, proyecto):
                 'numero': telefono
             })
 
-    # 4.3 Determinar qué correos son NUEVOS
     correos_nuevos = []
     for correo in correos_unicos:
         if correo not in map_correo_a_id:
@@ -364,26 +348,22 @@ def procesar_carga(df, proyecto):
                 'correo': correo
             })
 
-    # 4.4 Ahora asignar id_persona a las cuentas (reemplazar identificacion)
     for cuenta in cuentas_para_insertar:
         ident = cuenta.pop('identificacion')
         cuenta['id_persona'] = map_identificacion_a_id[ident]
 
-    # 4.5 Asignar id_telefono a las relaciones telefonos_proyecto
     for rel_tel in telefonos_proyecto_para_insertar:
         rel_tel['id_telefono'] = map_telefono_a_id[rel_tel['numero']]
         rel_tel['id_persona'] = map_identificacion_a_id[rel_tel.pop('identificacion')]
 
-    # 4.6 Asignar id_correo a las relaciones correos_proyecto
     for rel_corr in correos_proyecto_para_insertar:
         rel_corr['id_correo'] = map_correo_a_id[rel_corr['correo']]
         rel_corr['id_persona'] = map_identificacion_a_id[rel_corr.pop('identificacion')]
 
     # ============================================================
-    # PASO 5: Insertar por LOTES en BigQuery (4-6 consultas)
+    # PASO 4: Insertar por lotes (6 consultas)
     # ============================================================
     
-    # 5.1 Insertar personas NUEVAS (una sola consulta)
     if personas_nuevas:
         valores_personas = [f"('{p['id_persona']}', '{p['identificacion']}', '{p['nombre']}')" for p in personas_nuevas]
         insert_personas = f"""
@@ -393,7 +373,6 @@ def procesar_carga(df, proyecto):
         """
         ejecutar_query(insert_personas)
 
-    # 5.2 Insertar cuentas (una sola consulta)
     if cuentas_para_insertar:
         valores_cuentas = []
         for c in cuentas_para_insertar:
@@ -412,7 +391,6 @@ def procesar_carga(df, proyecto):
                 {f"'{c['cartera']}'" if c['cartera'] else 'NULL'},
                 {f"'{c['observaciones']}'" if c['observaciones'] else 'NULL'}
             )""")
-        
         if valores_cuentas:
             insert_cuentas = f"""
                 INSERT INTO `proyecto-css-panama.cobranza.cuentas`
@@ -422,7 +400,6 @@ def procesar_carga(df, proyecto):
             """
             ejecutar_query(insert_cuentas)
 
-    # 5.3 Insertar teléfonos NUEVOS (una sola consulta)
     if telefonos_nuevos:
         valores_telefonos = [f"('{t['id_telefono']}', '{t['numero']}')" for t in telefonos_nuevos]
         insert_telefonos = f"""
@@ -432,7 +409,6 @@ def procesar_carga(df, proyecto):
         """
         ejecutar_query(insert_telefonos)
 
-    # 5.4 Insertar relaciones telefonos_proyecto (una sola consulta)
     if telefonos_proyecto_para_insertar:
         valores_rel_tel = [f"""(
             '{t['id_telefono']}',
@@ -442,7 +418,6 @@ def procesar_carga(df, proyecto):
             {t['prioridad']},
             '{t['estado']}'
         )""" for t in telefonos_proyecto_para_insertar]
-        
         insert_rel_tel = f"""
             INSERT INTO `proyecto-css-panama.cobranza.telefonos_proyecto`
             (id_telefono, id_persona, id_proyecto, fuente, prioridad, estado)
@@ -450,7 +425,6 @@ def procesar_carga(df, proyecto):
         """
         ejecutar_query(insert_rel_tel)
 
-    # 5.5 Insertar correos NUEVOS (una sola consulta)
     if correos_nuevos:
         valores_correos = [f"('{c['id_correo']}', '{c['correo']}')" for c in correos_nuevos]
         insert_correos = f"""
@@ -460,7 +434,6 @@ def procesar_carga(df, proyecto):
         """
         ejecutar_query(insert_correos)
 
-    # 5.6 Insertar relaciones correos_proyecto (una sola consulta)
     if correos_proyecto_para_insertar:
         valores_rel_corr = [f"""(
             '{c['id_correo']}',
@@ -470,7 +443,6 @@ def procesar_carga(df, proyecto):
             {c['prioridad']},
             '{c['estado']}'
         )""" for c in correos_proyecto_para_insertar]
-        
         insert_rel_corr = f"""
             INSERT INTO `proyecto-css-panama.cobranza.correos_proyecto`
             (id_correo, id_persona, id_proyecto, fuente, prioridad, estado)
@@ -478,23 +450,19 @@ def procesar_carga(df, proyecto):
         """
         ejecutar_query(insert_rel_corr)
 
-    # ============================================================
-    # PASO 6: Resultado
-    # ============================================================
-    
     procesados = total - errores
     elapsed_time = time.time() - start_time
     detalle = f"{procesados} procesados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
     if detalles:
         detalle += f" | Primeros errores: {', '.join(detalles[:3])}"
     
-    return total, procesados, errores, detalle# ============================================================
-# GENERAR PLANTILLA
+    return total, procesados, errores, detalle
+
+# ============================================================
+# GENERAR PLANTILLA (sin cambios)
 # ============================================================
 
 def generar_plantilla():
-    """Genera un archivo Excel con el formato oficial de Hexagon"""
-    # Crear DataFrame con columnas y ejemplos
     data = {
         'identificacion': ['8-123-456', '8-789-012', '1-234-567'],
         'nombre': ['JUAN PEREZ GONZALEZ', 'MARIA LOPEZ', 'CARLOS RUIZ'],
@@ -511,15 +479,10 @@ def generar_plantilla():
         'cartera': ['PREDEMANDA', 'INCOBRABLE', 'PREDEMANDA'],
         'observaciones': ['Promesa de pago para el 15/08', '', 'Cliente con orden de descuento']
     }
-    
     df = pd.DataFrame(data)
-    
-    # Crear Excel con dos hojas: datos e instrucciones
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, sheet_name='Carga', index=False)
-        
-        # Hoja de instrucciones
         instrucciones = pd.DataFrame({
             'Instrucciones': [
                 'FORMATO DE CARGA HEXAGON - COBRANZA',
@@ -551,192 +514,54 @@ def generar_plantilla():
             ]
         })
         instrucciones.to_excel(writer, sheet_name='Instrucciones', index=False, header=False)
-        
-        # Ajustar ancho de columnas en la hoja de carga
         worksheet = writer.sheets['Carga']
         for i, col in enumerate(df.columns):
             worksheet.set_column(i, i, 20)
-    
     return output.getvalue()
 
 # ============================================================
-# VISTA PRINCIPAL
+# VISTA PRINCIPAL (sin cambios)
 # ============================================================
 
 def render():
-    """Punto de entrada para la vista de Carga de Cartera"""
-    
     st.markdown("""
     <style>
-        .main-header {
-            font-size: 24px;
-            font-weight: 600;
-            color: #1a1a1a;
-            margin-bottom: 8px;
-        }
-        .sub-header {
-            font-size: 14px;
-            color: #6b6b6b;
-            margin-bottom: 24px;
-        }
-        .card {
-            background-color: #ffffff;
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-            border: 1px solid #f0f0f0;
-            margin-bottom: 16px;
-        }
-        .card-title {
-            font-size: 16px;
-            font-weight: 500;
-            color: #1a1a1a;
-            margin-bottom: 12px;
-        }
-        .upload-area {
-            border: 2px dashed #d1d5db;
-            border-radius: 12px;
-            padding: 40px 24px;
-            text-align: center;
-            background-color: #fafafa;
-            transition: border-color 0.2s;
-        }
-        .upload-area:hover {
-            border-color: #dc2626;
-            background-color: #fef2f2;
-        }
-        .upload-area .icon {
-            font-size: 40px;
-            color: #9ca3af;
-            margin-bottom: 8px;
-        }
-        .upload-area .text-primary {
-            font-size: 15px;
-            font-weight: 500;
-            color: #1a1a1a;
-        }
-        .upload-area .text-secondary {
-            font-size: 13px;
-            color: #6b6b6b;
-        }
-        .btn-primary {
-            background-color: #dc2626;
-            color: white;
-            border: none;
-            padding: 10px 24px;
-            border-radius: 8px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            width: 100%;
-        }
-        .btn-primary:hover {
-            background-color: #b91c1c;
-        }
-        .btn-primary:disabled {
-            background-color: #9ca3af;
-            cursor: not-allowed;
-        }
-        .btn-outline {
-            background-color: transparent;
-            color: #dc2626;
-            border: 1px solid #dc2626;
-            padding: 10px 24px;
-            border-radius: 8px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .btn-outline:hover {
-            background-color: #fef2f2;
-        }
-        .status-success {
-            color: #16a34a;
-            font-weight: 500;
-        }
-        .status-warning {
-            color: #ea580c;
-            font-weight: 500;
-        }
-        .status-error {
-            color: #dc2626;
-            font-weight: 500;
-        }
-        .history-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 10px 0;
-            border-bottom: 1px solid #f3f4f6;
-        }
-        .history-item:last-child {
-            border-bottom: none;
-        }
-        .history-date {
-            color: #6b6b6b;
-            font-size: 13px;
-        }
-        .history-count {
-            font-weight: 500;
-        }
-        .selected-file {
-            background-color: #f0fdf4;
-            border: 1px solid #86efac;
-            border-radius: 8px;
-            padding: 12px 16px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .selected-file .file-name {
-            font-weight: 500;
-            color: #166534;
-        }
-        .selected-file .file-size {
-            color: #6b6b6b;
-            font-size: 13px;
-        }
-        .project-selector {
-            margin-bottom: 16px;
-        }
-        .project-selector label {
-            font-weight: 500;
-            color: #1a1a1a;
-            font-size: 14px;
-        }
-        .helper-text {
-            font-size: 13px;
-            color: #6b6b6b;
-            margin-top: 4px;
-        }
+        .main-header { font-size: 24px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; }
+        .sub-header { font-size: 14px; color: #6b6b6b; margin-bottom: 24px; }
+        .card { background-color: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); border: 1px solid #f0f0f0; margin-bottom: 16px; }
+        .card-title { font-size: 16px; font-weight: 500; color: #1a1a1a; margin-bottom: 12px; }
+        .btn-primary { background-color: #dc2626; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-weight: 500; cursor: pointer; transition: background-color 0.2s; width: 100%; }
+        .btn-primary:hover { background-color: #b91c1c; }
+        .status-success { color: #16a34a; font-weight: 500; }
+        .status-warning { color: #ea580c; font-weight: 500; }
+        .status-error { color: #dc2626; font-weight: 500; }
+        .history-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+        .history-item:last-child { border-bottom: none; }
+        .history-date { color: #6b6b6b; font-size: 13px; }
+        .history-count { font-weight: 500; }
+        .selected-file { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+        .selected-file .file-name { font-weight: 500; color: #166534; }
+        .selected-file .file-size { color: #6b6b6b; font-size: 13px; }
+        .project-selector { margin-bottom: 16px; }
+        .project-selector label { font-weight: 500; color: #1a1a1a; font-size: 14px; }
+        .helper-text { font-size: 13px; color: #6b6b6b; margin-top: 4px; }
     </style>
     """, unsafe_allow_html=True)
 
-    # ============================================================
-    # HEADER
-    # ============================================================
-    
     st.markdown('<div class="main-header">📥 Carga de Cartera</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el archivo con la cartera de clientes para procesar en Hexagon. El sistema validará, normalizará y distribuirá la información automáticamente.</div>', unsafe_allow_html=True)
 
-    # ============================================================
-    # CARD PRINCIPAL: PROYECTO + ARCHIVO
-    # ============================================================
-    
     st.markdown('<div class="card">', unsafe_allow_html=True)
     
-    # ---- Selector de Proyecto ----
     proyectos_df = obtener_proyectos_activos()
-    
     if len(proyectos_df) == 0:
         st.warning("⚠️ No hay proyectos activos en el sistema. Contacta al administrador.")
         st.markdown('</div>', unsafe_allow_html=True)
         return
     
-    # Crear opciones para el selectbox
     opciones_proyectos = {row['nombre']: row['id_proyecto'] for _, row in proyectos_df.iterrows()}
     nombres_proyectos = list(opciones_proyectos.keys())
     
-    st.markdown('<div class="project-selector">', unsafe_allow_html=True)
     proyecto_seleccionado_nombre = st.selectbox(
         "🏢 Proyecto",
         nombres_proyectos,
@@ -745,9 +570,7 @@ def render():
     )
     proyecto_seleccionado = opciones_proyectos.get(proyecto_seleccionado_nombre)
     st.markdown('<div class="helper-text">La cartera se asignará a este proyecto. Los clientes, cuentas y contactos se vincularán automáticamente.</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
     
-    # ---- Botón Descargar Plantilla ----
     col1, col2 = st.columns([4, 1])
     with col2:
         plantilla_bytes = generar_plantilla()
@@ -759,10 +582,6 @@ def render():
             use_container_width=True
         )
     
-    # ============================================================
-    # ÁREA DE SUBIDA DE ARCHIVO (SIMPLIFICADA)
-    # ============================================================
-    
     uploaded_file = st.file_uploader(
         "Selecciona un archivo",
         type=["xlsx", "xls", "csv"],
@@ -770,7 +589,6 @@ def render():
         key="carga_cartera_uploader"
     )
     
-    # ---- Mostrar archivo seleccionado ----
     if uploaded_file is not None:
         size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
         st.markdown(f"""
@@ -783,28 +601,19 @@ def render():
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ============================================================
-    # PROCESAMIENTO DEL ARCHIVO
-    # ============================================================
-    
     if uploaded_file is not None:
         with st.spinner("📊 Procesando archivo..."):
             try:
                 df = leer_excel(uploaded_file)
-                
                 faltantes = validar_columnas(df, COLUMNAS_REQUERIDAS)
-                
                 if faltantes:
                     st.error(f"⚠️ Faltan columnas obligatorias: {', '.join(faltantes)}")
                     st.stop()
                 
-                # Vista previa
                 st.markdown('<div class="card">', unsafe_allow_html=True)
                 st.markdown('<div class="card-title">📊 Vista previa del archivo</div>', unsafe_allow_html=True)
-                
                 st.dataframe(df.head(10), use_container_width=True)
                 
-                # Estadísticas
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     st.metric("Total registros", f"{len(df):,}")
@@ -815,11 +624,9 @@ def render():
                 with col4:
                     st.metric("Empresas", f"{df['empresa'].notna().sum() if 'empresa' in df.columns else 0:,}")
                 
-                # Botón Procesar
                 if st.button("🚀 Procesar carga", type="primary", use_container_width=True):
                     with st.spinner("🔄 Procesando carga..."):
                         total, procesados, errores, detalle = procesar_carga(df, proyecto_seleccionado)
-                        
                         estado = "completada" if errores == 0 else "con_errores"
                         registrar_carga_en_bigquery(proyecto_seleccionado, total, procesados, errores, estado, detalle)
                         
@@ -846,18 +653,12 @@ def render():
                 st.error(f"❌ Error al procesar el archivo: {str(e)}")
                 st.exception(e)
 
-    # ============================================================
-    # HISTORIAL DE CARGAS
-    # ============================================================
-    
     if proyecto_seleccionado:
         st.markdown("""
         <div class="card">
             <div class="card-title">📋 Últimas cargas</div>
         """, unsafe_allow_html=True)
-
         historial_df = obtener_historial_cargas(proyecto_seleccionado)
-        
         if len(historial_df) > 0:
             for _, row in historial_df.iterrows():
                 fecha = row['fecha_carga'].strftime('%d/%m/%Y %H:%M') if hasattr(row['fecha_carga'], 'strftime') else str(row['fecha_carga'])
@@ -865,7 +666,6 @@ def render():
                 estado = row['estado']
                 icono = "✅" if estado == "completada" else "⚠️"
                 clase = "status-success" if estado == "completada" else "status-warning"
-                
                 st.markdown(f"""
                 <div class="history-item">
                     <div>
@@ -883,48 +683,13 @@ def render():
                 No hay cargas registradas para este proyecto.
             </div>
             """, unsafe_allow_html=True)
-
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ============================================================
-    # FOOTER
-    # ============================================================
-    
     st.markdown("""
     <div style="text-align: center; margin-top: 32px; font-size: 12px; color: #9ca3af; border-top: 1px solid #f0f0f0; padding-top: 16px;">
         Hexagon · Cobranza · Versión 1.0
     </div>
     """, unsafe_allow_html=True)
 
-# ============================================================
-# EJECUCIÓN DIRECTA (para pruebas)
-# ============================================================
-
 if __name__ == "__main__":
     render()
-
-def validar_telefono(numero):
-    """Valida un número de teléfono para Panamá"""
-    if not numero or str(numero).strip() in ['', '0', '000']:
-        return None, 'INVALIDO'
-    
-    # Limpiar: solo dígitos
-    limpio = re.sub(r'[^0-9]', '', str(numero))
-    
-    # Verificar longitud
-    if len(limpio) not in [7, 8]:
-        return None, 'INVALIDO'
-    
-    # Verificar que no sea todo ceros
-    if limpio.count('0') == len(limpio):
-        return None, 'INVALIDO'
-    
-    # Si empieza con 6, debe tener 8 dígitos
-    if limpio.startswith('6') and len(limpio) != 8:
-        return None, 'INVALIDO'
-    
-    # Si empieza con otro dígito, puede tener 7 u 8
-    if not limpio.startswith('6') and len(limpio) not in [7, 8]:
-        return None, 'INVALIDO'
-    
-    return limpio, 'ACTIVO'

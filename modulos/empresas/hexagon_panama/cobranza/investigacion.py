@@ -1,375 +1,423 @@
 import streamlit as st
 import pandas as pd
-from google.cloud import bigquery
-from google.oauth2 import service_account
+import uuid
+import re
 from datetime import datetime
 
-# 🆕 Importación corregida (ruta relativa correcta)
-from ..cobranza.investigacion import (
-    anexar_investigacion,
-    generar_reporte_investigacion,
-    generar_excel_reporte,
-)
+from services.bigquery import ejecutar_query
 
-def run(usuario, tipo_consulta):
-    st.write(f"👤 Usuario: {usuario}")
-    st.title("HEXAGON - Extractor de Datos 🔍")
-    
-    # Selector en la página principal
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.write("### Selecciona el tipo de consulta")
-    with col2:
-        tipo_consulta = st.selectbox(
-            "Tipo",
-            ["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"],
-            index=["CSS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS"].index(tipo_consulta),
-            key="consulta_selector"
-        )
-    
-    st.info(f"📌 **Consultando:** {tipo_consulta}")
-    st.markdown("---")
-    
-    uploaded_file = st.file_uploader("Sube tu archivo CSV", type=["csv"])
+# ============================================================
+# CONFIGURACIÓN
+# ============================================================
 
-    if uploaded_file:
+PROYECTO_BQ = "proyecto-css-panama.cobranza"
 
-        # -----------------------
-        # LEER ARCHIVO CON AUTODETECCIÓN DE SEPARADOR
-        # -----------------------
-        try:
-            contenido = uploaded_file.getvalue().decode('utf-8-sig')
-            primeras_lineas = contenido.split('\n')[:5]
-            
-            separador_detectado = None
-            max_cols = 0
-            
-            for sep in [';', ',', '\t', '|']:
-                for linea in primeras_lineas:
-                    if linea.count(sep) > max_cols:
-                        max_cols = linea.count(sep)
-                        separador_detectado = sep
-            
-            if separador_detectado is None:
-                separador_detectado = ','
-            
-            st.info(f"📌 Separador detectado: {'PUNTO Y COMA (;)' if separador_detectado == ';' else 'COMA (,)' if separador_detectado == ',' else 'TAB (\\t)' if separador_detectado == '\t' else f'({separador_detectado})'}")
-            
-            uploaded_file.seek(0)
-            
-            df = pd.read_csv(
-                uploaded_file,
-                sep=separador_detectado,
-                engine='python',
-                encoding='utf-8-sig',
-                dtype=str
-            )
-            
-        except Exception as e:
-            st.error(f"❌ Error al leer el archivo: {e}")
-            st.stop()
+# ============================================================
+# FUNCIONES DE VALIDACIÓN
+# ============================================================
 
-        # Eliminar columnas completamente vacías
-        df = df.dropna(axis=1, how='all')
-        df.columns = df.columns.str.strip().str.lower()
-        
-        # -----------------------
-        # ELIMINAR FILAS SIN CÉDULA
-        # -----------------------
-        if "cedula" not in df.columns:
-            st.error("❌ Falta la columna 'cedula'")
-            st.stop()
-        
-        df = df[df['cedula'].notna() & (df['cedula'].astype(str).str.strip() != '')]
-        
-        if df.empty:
-            st.error("❌ El archivo no contiene cédulas válidas")
-            st.stop()
+def validar_telefono(numero):
+    """Valida un número de teléfono para Panamá (7 u 8 dígitos, sin prefijo)."""
+    if not numero or str(numero).strip() in ['', '0', '000', 'nan', 'None']:
+        return None
+    limpio = re.sub(r'[^0-9]', '', str(numero))
+    if len(limpio) not in [7, 8]:
+        return None
+    if limpio.count('0') == len(limpio):
+        return None
+    if limpio.startswith('6') and len(limpio) != 8:
+        return None
+    if not limpio.startswith('6') and len(limpio) not in [7, 8]:
+        return None
+    return limpio
 
-        # -----------------------
-        # LIMPIAR DECIMALES .0 EN TELÉFONOS
-        # -----------------------
-        columnas_telefono = [
-            "telf1","telf2","telf3","telf4","telf5",
-            "telf6","telf7","telf8","telf9","telf10"
-        ]
+def validar_correo(correo):
+    """Valida formato básico de correo electrónico."""
+    if not correo or str(correo).strip() in ['', 'nan', 'None']:
+        return None
+    correo = str(correo).strip().lower()
+    if '@' not in correo or '.' not in correo:
+        return None
+    return correo
 
-        for col in columnas_telefono:
-            if col in df.columns:
-                df[col] = (
-                    df[col]
-                    .astype(str)
-                    .str.replace(r"\.0$", "", regex=True)
-                    .str.strip()
-                    .replace('nan', '')
-                    .replace('None', '')
-                )
-        
-        # -----------------------
-        # ASEGURAR COLUMNAS EXISTENTES
-        # -----------------------
-        columnas_telefono = ["telf1", "telf2", "telf3", "telf4", "telf5",
-                            "telf6", "telf7", "telf8", "telf9", "telf10"]
-        columnas_correo = ["correo1", "correo2"]
-        
-        for col in columnas_telefono + columnas_correo + ["nombre"]:
-            if col not in df.columns:
-                df[col] = ""
+# ============================================================
+# FUNCIONES DE BIGQUERY (consultas batch)
+# ============================================================
 
-        # -----------------------
-        # VALIDACIONES
-        # -----------------------
-        columnas_validas = [
-            "cedula", "nombre", "correo1", "correo2",
-            "telf1", "telf2", "telf3", "telf4", "telf5",
-            "telf6", "telf7", "telf8", "telf9", "telf10"
-        ]
+@st.cache_data(ttl=300)
+def obtener_proyectos_activos():
+    query = f"""
+        SELECT id_proyecto, nombre
+        FROM `{PROYECTO_BQ}.proyectos`
+        WHERE activo = TRUE
+        ORDER BY nombre ASC
+    """
+    return ejecutar_query(query)
 
-        columnas_invalidas = [col for col in df.columns if col not in columnas_validas]
-        if columnas_invalidas:
-            st.warning(f"⚠️ Columnas adicionales ignoradas: {columnas_invalidas}")
+def obtener_personas_por_cedula(cedulas):
+    if not cedulas:
+        return pd.DataFrame()
+    cedulas_escapadas = "', '".join([str(c).strip() for c in cedulas if str(c).strip()])
+    query = f"""
+        SELECT id_persona, identificacion, nombre
+        FROM `{PROYECTO_BQ}.personas`
+        WHERE identificacion IN ('{cedulas_escapadas}')
+    """
+    return ejecutar_query(query)
 
-        # 🔥 NORMALIZAR TODO A STRING
-        for col in df.columns:
-            df[col] = df[col].astype(str).str.strip()
-            df[col] = df[col].replace('nan', '').replace('None', '')
+def obtener_telefonos_existentes(proyecto_id, cedulas):
+    """Devuelve conjunto de (cedula, numero) que ya existen en telefonos_proyecto para el proyecto."""
+    if not cedulas:
+        return set()
+    cedulas_escapadas = "', '".join([str(c).strip() for c in cedulas if str(c).strip()])
+    query = f"""
+        SELECT p.identificacion, t.numero
+        FROM `{PROYECTO_BQ}.telefonos_proyecto` tp
+        JOIN `{PROYECTO_BQ}.personas` p ON tp.id_persona = p.id_persona
+        JOIN `{PROYECTO_BQ}.telefonos` t ON tp.id_telefono = t.id_telefono
+        WHERE tp.id_proyecto = '{proyecto_id}'
+          AND p.identificacion IN ('{cedulas_escapadas}')
+    """
+    df = ejecutar_query(query)
+    return set(zip(df['identificacion'], df['numero'])) if not df.empty else set()
 
-        st.success(f"✅ Archivo válido con {len(df)} filas y {len(df.columns)} columnas")
-        st.write("Vista previa:", df.head())
-        
-        # -----------------------
-        # CONEXIÓN A BIGQUERY
-        # -----------------------
-        try:
-            credentials = service_account.Credentials.from_service_account_info(
-                st.secrets["gcp_service_account"]
-            )
+def obtener_correos_existentes(proyecto_id, cedulas):
+    if not cedulas:
+        return set()
+    cedulas_escapadas = "', '".join([str(c).strip() for c in cedulas if str(c).strip()])
+    query = f"""
+        SELECT p.identificacion, c.correo
+        FROM `{PROYECTO_BQ}.correos_proyecto` cp
+        JOIN `{PROYECTO_BQ}.personas` p ON cp.id_persona = p.id_persona
+        JOIN `{PROYECTO_BQ}.correos` c ON cp.id_correo = c.id_correo
+        WHERE cp.id_proyecto = '{proyecto_id}'
+          AND p.identificacion IN ('{cedulas_escapadas}')
+    """
+    df = ejecutar_query(query)
+    return set(zip(df['identificacion'], df['correo'])) if not df.empty else set()
 
-            client = bigquery.Client(
-                credentials=credentials,
-                project=credentials.project_id
-            )
-        except Exception as e:
-            st.error(f"❌ Error de conexión a BigQuery: {e}")
-            st.stop()
+def obtener_catalogo_telefonos(numeros):
+    """Devuelve dict {numero: id_telefono} para números existentes en catálogo global."""
+    if not numeros:
+        return {}
+    valores = "', '".join(str(x).replace("'", "''") for x in numeros if x)
+    query = f"""
+        SELECT numero, id_telefono
+        FROM `{PROYECTO_BQ}.telefonos`
+        WHERE numero IN ('{valores}')
+    """
+    df = ejecutar_query(query)
+    return dict(zip(df['numero'], df['id_telefono'])) if not df.empty else {}
 
-        # -----------------------
-        # SELECTOR DE PROYECTO PARA ANEXADO (NUEVO)
-        # -----------------------
-        proyectos = client.query("""
-            SELECT id_proyecto, nombre
-            FROM `proyecto-css-panama.cobranza.proyectos`
-            WHERE activo = TRUE
-            ORDER BY nombre
-        """).to_dataframe()
+def obtener_catalogo_correos(correos):
+    if not correos:
+        return {}
+    valores = "', '".join(str(x).replace("'", "''") for x in correos if x)
+    query = f"""
+        SELECT correo, id_correo
+        FROM `{PROYECTO_BQ}.correos`
+        WHERE correo IN ('{valores}')
+    """
+    df = ejecutar_query(query)
+    return dict(zip(df['correo'], df['id_correo'])) if not df.empty else {}
 
-        if proyectos.empty:
-            st.error("❌ No hay proyectos activos para anexar la investigación.")
-            st.stop()
+# ============================================================
+# FUNCIONES DE INSERCIÓN POR LOTE
+# ============================================================
 
-        nombre_proyecto = st.selectbox(
-            "🏢 Proyecto de cartera al que se anexará el resultado",
-            proyectos['nombre'].tolist(),
-            key="proyecto_consulta",
-        )
-        proyecto_id = proyectos.loc[
-            proyectos['nombre'].eq(nombre_proyecto), 'id_proyecto'
-        ].iloc[0]
+def insertar_telefonos_batch(telefonos_nuevos):
+    if not telefonos_nuevos:
+        return
+    valores = [f"('{t['id_telefono']}', '{t['numero']}')" for t in telefonos_nuevos]
+    query = f"""
+        INSERT INTO `{PROYECTO_BQ}.telefonos` (id_telefono, numero)
+        VALUES {', '.join(valores)}
+    """
+    ejecutar_query(query)
 
-        # -----------------------
-        # SUBIR DATA
-        # -----------------------
-        table_id = "proyecto-css-panama.consultas.temp_clientes"
+def insertar_telefonos_proyecto_batch(relaciones):
+    if not relaciones:
+        return
+    valores = [f"""(
+        '{r['id_telefono']}',
+        '{r['id_persona']}',
+        '{r['id_proyecto']}',
+        '{r['fuente']}',
+        {r['prioridad']},
+        '{r['estado']}'
+    )""" for r in relaciones]
+    query = f"""
+        INSERT INTO `{PROYECTO_BQ}.telefonos_proyecto`
+        (id_telefono, id_persona, id_proyecto, fuente, prioridad, estado)
+        VALUES {', '.join(valores)}
+    """
+    ejecutar_query(query)
 
-        with st.spinner("Subiendo datos a BigQuery..."):
-            try:
-                client.load_table_from_dataframe(
-                    df,
-                    table_id,
-                    job_config=bigquery.LoadJobConfig(
-                        write_disposition="WRITE_TRUNCATE"
-                    )
-                ).result()
-                st.success("✅ Datos subidos correctamente")
-            except Exception as e:
-                st.error(f"❌ Error al subir datos: {e}")
-                st.stop()
+def insertar_correos_batch(correos_nuevos):
+    if not correos_nuevos:
+        return
+    valores = [f"('{c['id_correo']}', '{c['correo']}')" for c in correos_nuevos]
+    query = f"""
+        INSERT INTO `{PROYECTO_BQ}.correos` (id_correo, correo)
+        VALUES {', '.join(valores)}
+    """
+    ejecutar_query(query)
 
-        # -----------------------
-        # QUERY DINÁMICO
-        # -----------------------
-        if tipo_consulta == "CSS":
-            query = """
-            SELECT 
-              a.cedula,
-              b.NOMBRE,
-              b.PATRONO,
-              b.RAZON_SO,
-              b.TEL1,
-              b.FECHA,
-              b.SALARIO
-            FROM `proyecto-css-panama.consultas.temp_clientes` a
-            LEFT JOIN `proyecto-css-panama.css_data.css-actual` b
-            ON a.cedula = b.cedula
-            """
+def insertar_correos_proyecto_batch(relaciones):
+    if not relaciones:
+        return
+    valores = [f"""(
+        '{r['id_correo']}',
+        '{r['id_persona']}',
+        '{r['id_proyecto']}',
+        '{r['fuente']}',
+        {r['prioridad']},
+        '{r['estado']}'
+    )""" for r in relaciones]
+    query = f"""
+        INSERT INTO `{PROYECTO_BQ}.correos_proyecto`
+        (id_correo, id_persona, id_proyecto, fuente, prioridad, estado)
+        VALUES {', '.join(valores)}
+    """
+    ejecutar_query(query)
 
-        elif tipo_consulta == "TELÉFONOS NUEVOS":
-            query = """
-            WITH archivo AS (
-              SELECT cedula, telf1 AS valor FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, telf2 FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, telf3 FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, telf4 FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, telf5 FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, telf6 FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, telf7 FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, telf8 FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, telf9 FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, telf10 FROM `proyecto-css-panama.consultas.temp_clientes`
-            ),
-            archivo_limpio AS (
-              SELECT 
-                CAST(cedula AS STRING) AS cedula,
-                CAST(valor AS STRING) AS valor,
-                CONCAT(CAST(cedula AS STRING), CAST(valor AS STRING)) AS clave
-              FROM archivo
-              WHERE valor IS NOT NULL 
-                AND TRIM(CAST(valor AS STRING)) != ''
-            ),
-            base AS (
-              SELECT 
-                CAST(CEDULA AS STRING) AS cedula,
-                CAST(NUMERO AS STRING) AS valor,
-                CAST(TIPO AS STRING) AS tipo,
-                CONCAT(CAST(CEDULA AS STRING), CAST(NUMERO AS STRING)) AS clave
-              FROM `proyecto-css-panama.css_data.telefonos-actual`
-              WHERE CEDULA IN (
-                  SELECT DISTINCT cedula 
-                  FROM `proyecto-css-panama.consultas.temp_clientes`
-              )
-            )
-            SELECT b.cedula, b.valor AS numero, b.tipo
-            FROM base b
-            LEFT JOIN archivo_limpio a
-            ON b.clave = a.clave
-            WHERE a.clave IS NULL
-            """
+# ============================================================
+# FUNCIÓN PRINCIPAL DE ANEXADO
+# ============================================================
 
-        elif tipo_consulta == "CORREOS NUEVOS":
-            query = """
-            WITH archivo AS (
-              SELECT cedula, correo1 AS valor FROM `proyecto-css-panama.consultas.temp_clientes`
-              UNION ALL SELECT cedula, correo2 FROM `proyecto-css-panama.consultas.temp_clientes`
-            ),
-            archivo_limpio AS (
-              SELECT 
-                CAST(cedula AS STRING) AS cedula,
-                CAST(valor AS STRING) AS valor,
-                CONCAT(CAST(cedula AS STRING), CAST(valor AS STRING)) AS clave
-              FROM archivo
-              WHERE valor IS NOT NULL 
-                AND TRIM(CAST(valor AS STRING)) != ''
-            ),
-            base AS (
-              SELECT 
-                CAST(CEDULA AS STRING) AS cedula, 
-                CAST(EMAIL AS STRING) AS valor,
-                CONCAT(CAST(CEDULA AS STRING), CAST(EMAIL AS STRING)) AS clave
-              FROM `proyecto-css-panama.css_data.correos-actual`
-              WHERE CEDULA IN (
-                  SELECT DISTINCT cedula 
-                  FROM `proyecto-css-panama.consultas.temp_clientes`
-              )
-            )
-            SELECT b.cedula, b.valor AS correo
-            FROM base b
-            LEFT JOIN archivo_limpio a
-            ON b.clave = a.clave
-            WHERE a.clave IS NULL
-            """
+def anexar_investigacion(df, proyecto_id, tipo):
+    """
+    Anexa teléfonos o correos de investigación a Cobranza.
+    tipo: 'telefonos' o 'correos'
+    """
+    import time
+    start_time = time.time()
 
+    total = len(df)
+    anexados = 0
+    errores = 0
+    detalles = []
+
+    # Determinar columna de valor
+    col_valor = 'numero' if tipo == 'telefonos' else 'correo'
+
+    # Validar columnas
+    if 'cedula' not in df.columns or col_valor not in df.columns:
+        return total, 0, total, f"Faltan columnas: 'cedula' y '{col_valor}'"
+
+    # Normalizar y limpiar datos
+    df = df.copy()
+    df.columns = df.columns.str.strip().str.lower()
+    df['cedula'] = df['cedula'].fillna('').astype(str).str.strip()
+    df[col_valor] = df[col_valor].fillna('').astype(str).str.strip()
+    cedulas = df.loc[df['cedula'] != '', 'cedula'].unique().tolist()
+
+    # Obtener personas existentes
+    df_personas = obtener_personas_por_cedula(cedulas)
+    map_cedula_a_id = dict(zip(df_personas['identificacion'], df_personas['id_persona']))
+
+    # Obtener existentes en el proyecto y catálogo global
+    if tipo == 'telefonos':
+        existentes_set = obtener_telefonos_existentes(proyecto_id, cedulas)
+        validar_valor = validar_telefono
+        fuente = 'INVESTIGACION'
+    else:
+        existentes_set = obtener_correos_existentes(proyecto_id, cedulas)
+        validar_valor = validar_correo
+        fuente = 'INVESTIGACION'
+
+    nuevos_catalogos = []
+    nuevas_relaciones = []
+
+    # Pre-cargar IDs de catálogo global para todos los valores válidos
+    valores_validos = {
+        validar_valor(valor)
+        for valor in df[col_valor]
+        if validar_valor(valor)
+    }
+    cache_ids = (
+        obtener_catalogo_telefonos(valores_validos)
+        if tipo == 'telefonos'
+        else obtener_catalogo_correos(valores_validos)
+    )
+    relaciones_pendientes = set()
+
+    for _, row in df.iterrows():
+        cedula = str(row['cedula']).strip()
+        valor_raw = str(row[col_valor]).strip()
+
+        valor_limpio = validar_valor(valor_raw)
+        if not valor_limpio:
+            errores += 1
+            detalles.append(f"Cédula {cedula}: {col_valor} inválido '{valor_raw}'")
+            continue
+
+        if cedula not in map_cedula_a_id:
+            errores += 1
+            detalles.append(f"Cédula {cedula}: persona no encontrada en Cobranza")
+            continue
+
+        id_persona = map_cedula_a_id[cedula]
+        clave_relacion = (cedula, valor_limpio)
+
+        if clave_relacion in existentes_set or clave_relacion in relaciones_pendientes:
+            continue
+
+        # Verificar si ya existe en catálogo global (cache)
+        if valor_limpio in cache_ids:
+            id_valor = cache_ids[valor_limpio]
         else:
-            st.error(f"❌ Tipo de consulta no reconocido: {tipo_consulta}")
-            st.stop()
+            # Nuevo en catálogo global
+            id_valor = str(uuid.uuid4())
+            cache_ids[valor_limpio] = id_valor
+            nuevos_catalogos.append({
+                'id': id_valor,
+                'valor': valor_limpio
+            })
 
-        # -----------------------
-        # EJECUTAR QUERY
-        # -----------------------
-        with st.spinner("Ejecutando consulta..."):
-            try:
-                result = client.query(query).to_dataframe()
-                st.success(f"✅ Consulta completada: {len(result)} registros encontrados")
-            except Exception as e:
-                st.error(f"❌ Error al ejecutar consulta: {e}")
-                st.stop()
+        # Crear relación con el proyecto
+        nuevas_relaciones.append({
+            'id_valor': id_valor,
+            'id_persona': id_persona,
+            'id_proyecto': proyecto_id,
+            'fuente': fuente,
+            'prioridad': 10,  # prioridad más baja que BASE
+            'estado': 'ACTIVO'
+        })
+        relaciones_pendientes.add(clave_relacion)
 
-        # -----------------------
-        # HISTORIAL
-        # -----------------------
-        try:
-            historial = pd.DataFrame([{
-                "usuario": usuario,
-                "fecha": datetime.now(),
-                "tipo_consulta": tipo_consulta,
-                "cantidad_registros": len(result),
-                "archivo": uploaded_file.name
-            }])
-
-            client.load_table_from_dataframe(
-                historial,
-                "proyecto-css-panama.consultas.historial_consultas",
-                job_config=bigquery.LoadJobConfig(
-                    write_disposition="WRITE_APPEND"
-                )
-            ).result()
-        except Exception as e:
-            st.warning(f"⚠️ No se pudo guardar historial: {e}")
-
-        # -----------------------
-        # RESULTADO + ANEXADO AUTOMÁTICO (NUEVO)
-        # -----------------------
-        st.success(f"✅ Consulta {tipo_consulta} lista: {len(result):,} registros")
-
-        # Determinar si el tipo de consulta permite anexado
-        if tipo_consulta in ("TELEFONOS NUEVOS", "TELÉFONOS NUEVOS"):
-            tipo_anexo = "telefonos"
-        elif tipo_consulta == "CORREOS NUEVOS":
-            tipo_anexo = "correos"
+    # Insertar en BigQuery
+    if nuevos_catalogos:
+        if tipo == 'telefonos':
+            insertar_telefonos_batch([{'id_telefono': c['id'], 'numero': c['valor']} for c in nuevos_catalogos])
         else:
-            tipo_anexo = None
+            insertar_correos_batch([{'id_correo': c['id'], 'correo': c['valor']} for c in nuevos_catalogos])
 
-        # Si es de teléfonos o correos, anexar automáticamente
-        if tipo_anexo:
-            with st.spinner(f"🔄 Anexando {tipo_anexo} automáticamente a Cobranza..."):
-                total, anexados, errores, detalle = anexar_investigacion(
-                    result, proyecto_id, tipo_anexo
-                )
+    if nuevas_relaciones:
+        if tipo == 'telefonos':
+            relaciones = [{
+                'id_telefono': r['id_valor'],
+                'id_persona': r['id_persona'],
+                'id_proyecto': r['id_proyecto'],
+                'fuente': r['fuente'],
+                'prioridad': r['prioridad'],
+                'estado': r['estado']
+            } for r in nuevas_relaciones]
+            insertar_telefonos_proyecto_batch(relaciones)
+        else:
+            relaciones = [{
+                'id_correo': r['id_valor'],
+                'id_persona': r['id_persona'],
+                'id_proyecto': r['id_proyecto'],
+                'fuente': r['fuente'],
+                'prioridad': r['prioridad'],
+                'estado': r['estado']
+            } for r in nuevas_relaciones]
+            insertar_correos_proyecto_batch(relaciones)
 
-            if errores:
-                st.warning(f"⚠️ {detalle}")
-            else:
-                st.success(f"✅ {detalle}")
+    anexados = len(nuevas_relaciones)
+    elapsed_time = time.time() - start_time
+    detalle = f"{anexados} {tipo} anexados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
+    return total, anexados, errores, detalle
 
-            # Generar reporte completo DESPUÉS del anexo
-            with st.spinner("📊 Generando reporte actualizado..."):
-                reporte = generar_reporte_investigacion(proyecto_id)
+# ============================================================
+# FUNCIONES PARA GENERAR REPORTE EXCEL
+# ============================================================
 
-            st.download_button(
-                label="📥 Descargar reporte completo actualizado",
-                data=generar_excel_reporte(reporte),
-                file_name=f"INVESTIGACION_{proyecto_id}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
+def generar_reporte_investigacion(proyecto_id):
+    """Genera un dict con DataFrames para el reporte completo."""
+    # 1. Personas + Cuentas
+    query_personas = f"""
+        SELECT 
+            p.identificacion,
+            p.nombre,
+            c.cuenta,
+            c.empresa,
+            c.ocupacion,
+            c.direccion,
+            c.saldo,
+            c.fecha_ultimo_pago,
+            c.dias_mora,
+            c.cartera
+        FROM `{PROYECTO_BQ}.personas` p
+        JOIN `{PROYECTO_BQ}.cuentas` c ON p.id_persona = c.id_persona
+        WHERE c.id_proyecto = '{proyecto_id}'
+        ORDER BY p.nombre
+    """
+    df_personas = ejecutar_query(query_personas)
 
-        # Siempre ofrecer descarga del resultado de la consulta (CSV)
-        st.download_button(
-            label="📥 Descargar resultado de la consulta (CSV)",
-            data=result.to_csv(index=False).encode("utf-8-sig"),
-            file_name=f"resultado_{tipo_consulta.replace(' ', '_')}.csv",
-            mime="text/csv",
-            use_container_width=True,
-        )
+    # 2. Teléfonos
+    query_telefonos = f"""
+        SELECT 
+            p.identificacion,
+            p.nombre,
+            t.numero,
+            t.tipo,
+            tp.fuente AS origen,
+            tp.prioridad,
+            tp.cant_toques,
+            tp.cant_contactos,
+            tp.cant_no_contactos,
+            tp.estado
+        FROM `{PROYECTO_BQ}.personas` p
+        JOIN `{PROYECTO_BQ}.telefonos_proyecto` tp ON p.id_persona = tp.id_persona
+        JOIN `{PROYECTO_BQ}.telefonos` t ON tp.id_telefono = t.id_telefono
+        WHERE tp.id_proyecto = '{proyecto_id}'
+        ORDER BY p.nombre, tp.prioridad
+    """
+    df_telefonos = ejecutar_query(query_telefonos)
 
-        # Mostrar vista previa
-        st.dataframe(result.head(20), use_container_width=True)
+    # 3. Correos
+    query_correos = f"""
+        SELECT 
+            p.identificacion,
+            p.nombre,
+            c.correo,
+            cp.fuente AS origen,
+            cp.prioridad,
+            cp.estado
+        FROM `{PROYECTO_BQ}.personas` p
+        JOIN `{PROYECTO_BQ}.correos_proyecto` cp ON p.id_persona = cp.id_persona
+        JOIN `{PROYECTO_BQ}.correos` c ON cp.id_correo = c.id_correo
+        WHERE cp.id_proyecto = '{proyecto_id}'
+        ORDER BY p.nombre, cp.prioridad
+    """
+    df_correos = ejecutar_query(query_correos)
+
+    # 4. Resumen
+    resumen = {
+        "Proyecto": proyecto_id,
+        "Fecha generación": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "Total clientes": len(df_personas),
+        "Total teléfonos": len(df_telefonos),
+        "Total correos": len(df_correos),
+        "Teléfonos BASE": len(df_telefonos[df_telefonos['origen'] == 'BASE']) if not df_telefonos.empty else 0,
+        "Teléfonos INVESTIGACION": len(df_telefonos[df_telefonos['origen'] == 'INVESTIGACION']) if not df_telefonos.empty else 0,
+        "Teléfonos INACTIVOS": len(df_telefonos[df_telefonos['estado'] == 'INACTIVO']) if not df_telefonos.empty else 0,
+    }
+    df_resumen = pd.DataFrame([resumen])
+
+    return {
+        'resumen': df_resumen,
+        'personas': df_personas,
+        'telefonos': df_telefonos,
+        'correos': df_correos
+    }
+
+def generar_excel_reporte(data):
+    """Genera bytes de un archivo Excel con múltiples hojas."""
+    import io
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        data['resumen'].to_excel(writer, sheet_name='Resumen', index=False)
+        if not data['personas'].empty:
+            data['personas'].to_excel(writer, sheet_name='Clientes', index=False)
+        if not data['telefonos'].empty:
+            data['telefonos'].to_excel(writer, sheet_name='Teléfonos', index=False)
+        if not data['correos'].empty:
+            data['correos'].to_excel(writer, sheet_name='Correos', index=False)
+        # Ajustar anchos
+        for sheet_name in writer.sheets:
+            worksheet = writer.sheets[sheet_name]
+            worksheet.set_column(0, 20, 18)
+    return output.getvalue()

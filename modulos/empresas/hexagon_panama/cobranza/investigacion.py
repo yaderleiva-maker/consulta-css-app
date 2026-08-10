@@ -66,7 +66,6 @@ def obtener_personas_por_cedula(cedulas):
     return ejecutar_query(query)
 
 def obtener_telefonos_existentes(proyecto_id, cedulas):
-    """Devuelve conjunto de (cedula, numero) que ya existen en telefonos_proyecto para el proyecto."""
     if not cedulas:
         return set()
     cedulas_escapadas = "', '".join([str(c).strip() for c in cedulas if str(c).strip()])
@@ -97,7 +96,6 @@ def obtener_correos_existentes(proyecto_id, cedulas):
     return set(zip(df['identificacion'], df['correo'])) if not df.empty else set()
 
 def obtener_catalogo_telefonos(numeros):
-    """Devuelve dict {numero: id_telefono} para números existentes en catálogo global."""
     if not numeros:
         return {}
     valores = "', '".join(str(x).replace("'", "''") for x in numeros if x)
@@ -198,25 +196,20 @@ def anexar_investigacion(df, proyecto_id, tipo):
     errores = 0
     detalles = []
 
-    # Determinar columna de valor
     col_valor = 'numero' if tipo == 'telefonos' else 'correo'
 
-    # Validar columnas
     if 'cedula' not in df.columns or col_valor not in df.columns:
         return total, 0, total, f"Faltan columnas: 'cedula' y '{col_valor}'"
 
-    # Normalizar y limpiar datos
     df = df.copy()
     df.columns = df.columns.str.strip().str.lower()
     df['cedula'] = df['cedula'].fillna('').astype(str).str.strip()
     df[col_valor] = df[col_valor].fillna('').astype(str).str.strip()
     cedulas = df.loc[df['cedula'] != '', 'cedula'].unique().tolist()
 
-    # Obtener personas existentes
     df_personas = obtener_personas_por_cedula(cedulas)
     map_cedula_a_id = dict(zip(df_personas['identificacion'], df_personas['id_persona']))
 
-    # Obtener existentes en el proyecto y catálogo global
     if tipo == 'telefonos':
         existentes_set = obtener_telefonos_existentes(proyecto_id, cedulas)
         validar_valor = validar_telefono
@@ -229,7 +222,6 @@ def anexar_investigacion(df, proyecto_id, tipo):
     nuevos_catalogos = []
     nuevas_relaciones = []
 
-    # Pre-cargar IDs de catálogo global para todos los valores válidos
     valores_validos = {
         validar_valor(valor)
         for valor in df[col_valor]
@@ -263,11 +255,9 @@ def anexar_investigacion(df, proyecto_id, tipo):
         if clave_relacion in existentes_set or clave_relacion in relaciones_pendientes:
             continue
 
-        # Verificar si ya existe en catálogo global (cache)
         if valor_limpio in cache_ids:
             id_valor = cache_ids[valor_limpio]
         else:
-            # Nuevo en catálogo global
             id_valor = str(uuid.uuid4())
             cache_ids[valor_limpio] = id_valor
             nuevos_catalogos.append({
@@ -275,18 +265,16 @@ def anexar_investigacion(df, proyecto_id, tipo):
                 'valor': valor_limpio
             })
 
-        # Crear relación con el proyecto
         nuevas_relaciones.append({
             'id_valor': id_valor,
             'id_persona': id_persona,
             'id_proyecto': proyecto_id,
             'fuente': fuente,
-            'prioridad': 10,  # prioridad más baja que BASE
+            'prioridad': 10,
             'estado': 'ACTIVO'
         })
         relaciones_pendientes.add(clave_relacion)
 
-    # Insertar en BigQuery
     if nuevos_catalogos:
         if tipo == 'telefonos':
             insertar_telefonos_batch([{'id_telefono': c['id'], 'numero': c['valor']} for c in nuevos_catalogos])
@@ -326,7 +314,6 @@ def anexar_investigacion(df, proyecto_id, tipo):
 
 def generar_reporte_investigacion(proyecto_id):
     """Genera un dict con DataFrames para el reporte completo."""
-    # 1. Personas + Cuentas
     query_personas = f"""
         SELECT 
             p.identificacion,
@@ -346,7 +333,6 @@ def generar_reporte_investigacion(proyecto_id):
     """
     df_personas = ejecutar_query(query_personas)
 
-    # 2. Teléfonos
     query_telefonos = f"""
         SELECT 
             p.identificacion,
@@ -367,7 +353,6 @@ def generar_reporte_investigacion(proyecto_id):
     """
     df_telefonos = ejecutar_query(query_telefonos)
 
-    # 3. Correos
     query_correos = f"""
         SELECT 
             p.identificacion,
@@ -384,7 +369,6 @@ def generar_reporte_investigacion(proyecto_id):
     """
     df_correos = ejecutar_query(query_correos)
 
-    # 4. Resumen
     resumen = {
         "Proyecto": proyecto_id,
         "Fecha generación": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -405,7 +389,6 @@ def generar_reporte_investigacion(proyecto_id):
     }
 
 def generar_excel_reporte(data):
-    """Genera bytes de un archivo Excel con múltiples hojas."""
     import io
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -416,8 +399,188 @@ def generar_excel_reporte(data):
             data['telefonos'].to_excel(writer, sheet_name='Teléfonos', index=False)
         if not data['correos'].empty:
             data['correos'].to_excel(writer, sheet_name='Correos', index=False)
-        # Ajustar anchos
         for sheet_name in writer.sheets:
             worksheet = writer.sheets[sheet_name]
             worksheet.set_column(0, 20, 18)
     return output.getvalue()
+
+# ============================================================
+# 🆕 VISTA PRINCIPAL DE STREAMLIT (render)
+# ============================================================
+
+def render():
+    """
+    Punto de entrada para el módulo de Investigación en Streamlit.
+    Permite subir un archivo manualmente y anexar a Cobranza.
+    """
+    st.markdown("""
+    <style>
+        .main-header {
+            font-size: 24px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 8px;
+        }
+        .sub-header {
+            font-size: 14px;
+            color: #6b6b6b;
+            margin-bottom: 24px;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            border: 1px solid #f0f0f0;
+            margin-bottom: 16px;
+        }
+        .card-title {
+            font-size: 16px;
+            font-weight: 500;
+            color: #1a1a1a;
+            margin-bottom: 12px;
+        }
+        .helper-text {
+            font-size: 13px;
+            color: #6b6b6b;
+            margin-top: 4px;
+        }
+        .btn-primary {
+            background-color: #dc2626;
+            color: white;
+            border: none;
+            padding: 12px 32px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+        .btn-primary:hover { background-color: #b91c1c; }
+        .btn-primary:disabled { background-color: #9ca3af; cursor: not-allowed; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown('<div class="main-header">🔍 Investigación y Anexado</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Sube un archivo con cédulas y números/correos nuevos para anexarlos a Cobranza.</div>', unsafe_allow_html=True)
+
+    # ---- Selección de proyecto ----
+    proyectos_df = obtener_proyectos_activos()
+    if proyectos_df.empty:
+        st.warning("⚠️ No hay proyectos activos en el sistema.")
+        return
+
+    opciones_proyectos = {row['nombre']: row['id_proyecto'] for _, row in proyectos_df.iterrows()}
+    nombres_proyectos = list(opciones_proyectos.keys())
+
+    proyecto_seleccionado_nombre = st.selectbox(
+        "🏢 Proyecto",
+        nombres_proyectos,
+        index=0 if nombres_proyectos else None,
+        help="Selecciona el proyecto al que pertenecen los clientes"
+    )
+    proyecto_id = opciones_proyectos.get(proyecto_seleccionado_nombre)
+
+    # ---- Tipo de dato ----
+    tipo_anexo = st.radio(
+        "📌 Selecciona el tipo de dato a anexar",
+        ["📱 Teléfonos", "📧 Correos"],
+        horizontal=True,
+        help="Elige si estás subiendo teléfonos o correos"
+    )
+    tipo = "telefonos" if "Teléfonos" in tipo_anexo else "correos"
+    col_valor = "numero" if tipo == "telefonos" else "correo"
+
+    # ---- Subida de archivo ----
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown(f'<div class="card-title">📤 Subir archivo con {tipo}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="helper-text">El archivo debe tener columnas: <strong>cedula</strong> y <strong>{col_valor}</strong></div>', unsafe_allow_html=True)
+
+    uploaded_file = st.file_uploader(
+        f"Selecciona un archivo CSV o Excel",
+        type=["csv", "xlsx", "xls"],
+        key="investigacion_render_upload",
+        label_visibility="collapsed"
+    )
+
+    if uploaded_file is not None:
+        try:
+            # Leer archivo
+            if uploaded_file.name.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(uploaded_file)
+            else:
+                import io
+                from io import StringIO
+                contenido = uploaded_file.getvalue().decode('utf-8-sig')
+                for sep in [',', ';']:
+                    try:
+                        df = pd.read_csv(StringIO(contenido), sep=sep, dtype=str)
+                        if len(df.columns) > 1:
+                            break
+                    except:
+                        continue
+
+            # Normalizar columnas
+            df.columns = df.columns.str.strip().str.lower()
+            st.dataframe(df.head(10), use_container_width=True)
+            st.info(f"Total: {len(df)} filas")
+
+            if st.button(f"🚀 Anexar {tipo} a Cobranza", type="primary", use_container_width=True):
+                with st.spinner(f"🔄 Anexando {tipo}..."):
+                    total, anexados, errores, detalle = anexar_investigacion(df, proyecto_id, tipo)
+
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("📊 Total", f"{total:,}")
+                with col2:
+                    st.metric("✅ Anexados", f"{anexados:,}")
+                with col3:
+                    st.metric("❌ Errores", f"{errores:,}")
+
+                if errores == 0:
+                    st.success(f"✅ {detalle}")
+                else:
+                    st.warning(f"⚠️ {detalle}")
+
+                # Descargar reporte actualizado
+                with st.spinner("📊 Generando reporte..."):
+                    reporte = generar_reporte_investigacion(proyecto_id)
+                    excel_bytes = generar_excel_reporte(reporte)
+                    st.download_button(
+                        label="📥 Descargar reporte completo actualizado",
+                        data=excel_bytes,
+                        file_name=f"INVESTIGACION_{proyecto_id}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                    )
+
+        except Exception as e:
+            st.error(f"❌ Error al procesar el archivo: {str(e)}")
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---- Descarga directa de reporte ----
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">📥 Descargar reporte completo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="helper-text">Descarga el reporte de investigación del proyecto seleccionado (clientes, teléfonos, correos).</div>', unsafe_allow_html=True)
+
+    if st.button("📊 Generar reporte actual", use_container_width=True):
+        with st.spinner("Generando reporte..."):
+            reporte = generar_reporte_investigacion(proyecto_id)
+            excel_bytes = generar_excel_reporte(reporte)
+            st.download_button(
+                label="📥 Descargar Reporte",
+                data=excel_bytes,
+                file_name=f"INVESTIGACION_{proyecto_id}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================================
+# EJECUCIÓN DIRECTA (para pruebas)
+# ============================================================
+
+if __name__ == "__main__":
+    render()

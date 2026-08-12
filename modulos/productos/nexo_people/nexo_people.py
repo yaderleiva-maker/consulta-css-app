@@ -75,6 +75,7 @@ def run_in_out(usuario):
                 from services.empleados import obtener_reporte_infoequipo
                 df = obtener_reporte_infoequipo()
                 if not df.empty:
+                    # ✅ USAR LA FUNCIÓN LOCAL
                     excel_data = generar_excel_infoequipo(df)
                     if excel_data:
                         st.download_button(
@@ -133,6 +134,29 @@ def run_in_out(usuario):
             st.info("No hay empleados activos")
 
 
+    # ============================================================
+    #                           
+    # ============================================================
+def generar_excel_infoequipo(df):
+    """
+    Generar Excel para el reporte INFOEQUIPO HUMANO.
+    """
+    from io import BytesIO
+    
+    if df.empty:
+        return None
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='INFOEQUIPO', index=False)
+        
+        workbook = writer.book
+        worksheet = writer.sheets['INFOEQUIPO']
+        for i, col in enumerate(df.columns):
+            max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+            worksheet.set_column(i, i, min(max_len, 50))
+    
+    return output.getvalue()
 # ============================================================
 # MÓDULO 2: FICHA DE EMPLEADOS
 # ============================================================

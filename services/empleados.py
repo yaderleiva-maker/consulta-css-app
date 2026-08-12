@@ -286,6 +286,10 @@ def obtener_reporte_infoequipo():
         s.arl,
         ROW_NUMBER() OVER (PARTITION BY s.id_empleado ORDER BY s.fecha_creacion DESC) AS rn
       FROM `nexo_people.seguridad_social_colombia` s
+    ),
+    estados AS (
+      SELECT id_estado_empleado, nombre 
+      FROM `nexo_people.catalogo_estados_empleado`
     )
     SELECT 
       e.fecha_ingreso_empresa AS fecha_ingreso_contrato,
@@ -314,20 +318,20 @@ def obtener_reporte_infoequipo():
     LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     LEFT JOIN ultima_cuenta_bancaria b ON e.id_empleado = b.id_empleado AND b.rn = 1
     LEFT JOIN `nexo_people.catalogo_bancos` bn ON b.id_banco = bn.id_banco
-    WHERE e.id_estado_empleado IN (
-      SELECT id_estado_empleado 
-      FROM `nexo_people.catalogo_estados_empleado` 
-      WHERE nombre IN ('Activo', 'Inactivo')
-    )
+    LEFT JOIN estados est ON e.id_estado_empleado = est.id_estado_empleado
+    WHERE est.nombre IN ('Activo', 'Inactivo')
     ORDER BY 
       orden_estado ASC,
-      e.fecha_terminacion ASC NULLS LAST
+      CASE 
+        WHEN e.fecha_terminacion IS NOT NULL THEN e.fecha_terminacion
+        ELSE e.fecha_ingreso_empresa
+      END ASC
     """
     
     from services.bigquery import ejecutar_query
     df = ejecutar_query(query)
     
-    # 🔥 RENOMBRAR COLUMNAS A NOMBRES LEGIBLES
+    # 🔥 RENOMBRAR COLUMNAS
     if not df.empty:
         df.columns = [
             "Fecha de inicio del contrato",

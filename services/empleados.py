@@ -105,7 +105,7 @@ def obtener_estadisticas_rapidas():
 def obtener_activos_inactivos():
     """
     Obtener lista de empleados activos e inactivos.
-    El cargo se obtiene desde historial_laboral usando JOIN.
+    Activos ordenados por fecha de ingreso (más antiguos primero).
     """
     query = """
     SELECT 
@@ -115,24 +115,25 @@ def obtener_activos_inactivos():
       e.id_estado_empleado AS estado_id,
       e.fecha_terminacion,
       e.fecha_ingreso_empresa,
-      
-      -- Cargo actual desde historial_laboral
-      COALESCE(c.nombre, 'Sin cargo') AS cargo_nombre,
-      
-      COALESCE(emp.nombre, 'Sin empresa') AS empresa_nombre,
-      COALESCE(est.nombre, 'Desconocido') AS estado_nombre,
-      
+      COALESCE(
+        (SELECT c.nombre 
+         FROM `nexo_people.historial_laboral` h
+         LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
+         WHERE h.id_empleado = e.id_empleado 
+           AND h.fecha_fin IS NULL
+         LIMIT 1),
+        'Sin cargo'
+      ) AS cargo_nombre,
+      COALESCE((SELECT nombre FROM `nexo_people.empresas` WHERE id_empresa = e.id_empresa), 'Sin empresa') AS empresa_nombre,
+      COALESCE((SELECT nombre FROM `nexo_people.catalogo_estados_empleado` WHERE id_estado_empleado = e.id_estado_empleado), 'Desconocido') AS estado_nombre,
       CASE 
         WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') THEN 0
         ELSE 1
       END AS orden_estado
     FROM `nexo_people.empleados` e
-    LEFT JOIN `nexo_people.historial_laboral` h ON e.id_empleado = h.id_empleado AND h.fecha_fin IS NULL
-    LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
-    LEFT JOIN `nexo_people.empresas` emp ON e.id_empresa = emp.id_empresa
-    LEFT JOIN `nexo_people.catalogo_estados_empleado` est ON e.id_estado_empleado = est.id_estado_empleado
     ORDER BY 
       orden_estado ASC,
+      -- 🔥 Activos: más antiguos primero por fecha de ingreso
       CASE 
         WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') 
         THEN e.fecha_terminacion 

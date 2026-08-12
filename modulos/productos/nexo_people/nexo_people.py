@@ -151,9 +151,11 @@ def generar_excel_infoequipo(df):
     # 🔥 CREAR COPIA PARA NO MODIFICAR EL ORIGINAL
     df_excel = df.copy()
     
-    # 🔥 FORMATO DE FECHAS
+    # 🔥 FORMATO DE FECHAS (CON MANEJO DE ERRORES)
     for col in ['Fecha de inicio del contrato', 'Fecha de terminación de contrato']:
         if col in df_excel.columns:
+            # Convertir a datetime primero, luego formatear
+            df_excel[col] = pd.to_datetime(df_excel[col], errors='coerce')
             df_excel[col] = df_excel[col].apply(
                 lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) else ''
             )
@@ -182,13 +184,9 @@ def generar_excel_infoequipo(df):
             if col == 'Salario':
                 col_idx = i
                 worksheet.set_column(col_idx, col_idx, 15, formato_moneda)
-        
-        # 📌 AGREGAR FILA DE SEPARACIÓN Y ENUMERACIÓN
-        # Esto se hace directamente en Python antes de exportar
     
     return output.getvalue()
-
-# modulos/hexagon_colombia/nexo_people.py
+    
 
 def procesar_infoequipo(df):
     """

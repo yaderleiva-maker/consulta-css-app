@@ -287,9 +287,11 @@ def obtener_reporte_infoequipo():
         ROW_NUMBER() OVER (PARTITION BY s.id_empleado ORDER BY s.fecha_creacion DESC) AS rn
       FROM `nexo_people.seguridad_social_colombia` s
     ),
-    estados AS (
-      SELECT id_estado_empleado, nombre 
+    -- 🔥 NUEVO CTE: ESTADOS INCLUIDOS
+    estados_incluidos AS (
+      SELECT id_estado_empleado
       FROM `nexo_people.catalogo_estados_empleado`
+      WHERE nombre IN ('Activo', 'Inactivo')
     )
     SELECT 
       e.fecha_ingreso_empresa AS fecha_ingreso_contrato,
@@ -313,19 +315,15 @@ def obtener_reporte_infoequipo():
         ELSE 1
       END AS orden_estado
     FROM `nexo_people.empleados` e
+    INNER JOIN estados_incluidos est ON e.id_estado_empleado = est.id_estado_empleado
     LEFT JOIN ultima_seguridad_social ss ON e.id_empleado = ss.id_empleado AND ss.rn = 1
     LEFT JOIN ultimo_historial h ON e.id_empleado = h.id_empleado AND h.rn = 1
     LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     LEFT JOIN ultima_cuenta_bancaria b ON e.id_empleado = b.id_empleado AND b.rn = 1
     LEFT JOIN `nexo_people.catalogo_bancos` bn ON b.id_banco = bn.id_banco
-    LEFT JOIN estados est ON e.id_estado_empleado = est.id_estado_empleado
-    WHERE est.nombre IN ('Activo', 'Inactivo')
-    ORDER BY 
+    ORDER BY
       orden_estado ASC,
-      CASE 
-        WHEN e.fecha_terminacion IS NOT NULL THEN e.fecha_terminacion
-        ELSE e.fecha_ingreso_empresa
-      END ASC
+      e.fecha_terminacion ASC NULLS LAST
     """
     
     from services.bigquery import ejecutar_query

@@ -69,24 +69,24 @@ def run_in_out(usuario):
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
     
-with col2:
-    if st.button("📋 INFOEQUIPO Humano", use_container_width=True):
-        with st.spinner("Generando reporte INFOEQUIPO..."):
-            from services.empleados import obtener_reporte_infoequipo
-            df = obtener_reporte_infoequipo()
-            if not df.empty:
-                # 🔥 AÑADIR ENUMERACIÓN Y SEPARADORES
-                df_procesado = procesar_infoequipo(df)
-                excel_data = generar_excel_infoequipo(df_procesado)
-                if excel_data:
-                    st.download_button(
-                        label="✅ Descargar Excel",
-                        data=excel_data,
-                        file_name=f"infoequipo_humano_{date.today().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-            else:
-                st.warning("No hay datos para generar el reporte")
+    with col2:
+        if st.button("📋 INFOEQUIPO Humano", use_container_width=True):
+            with st.spinner("Generando reporte INFOEQUIPO..."):
+                from services.empleados import obtener_reporte_infoequipo
+                df = obtener_reporte_infoequipo()
+                if not df.empty:
+                    # 🔥 AÑADIR ENUMERACIÓN Y SEPARADORES
+                    df_procesado = procesar_infoequipo(df)
+                    excel_data = generar_excel_infoequipo(df_procesado)
+                    if excel_data:
+                        st.download_button(
+                            label="✅ Descargar Excel",
+                            data=excel_data,
+                            file_name=f"infoequipo_humano_{date.today().strftime('%Y%m%d')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                else:
+                    st.warning("No hay datos para generar el reporte")
     
     # ============================================================
     # LISTA DE EMPLEADOS

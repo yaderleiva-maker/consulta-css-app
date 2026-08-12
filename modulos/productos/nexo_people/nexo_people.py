@@ -197,7 +197,6 @@ def procesar_infoequipo(df):
     df_proc = df.copy()
     
     # 🔥 IDENTIFICAR ÍNDICES DE CORTE
-    # Asumiendo que los inactivos están primero (orden_estado = 0)
     idx_inactivos = df_proc[df_proc['orden_estado'] == 0].index.tolist()
     idx_activos = df_proc[df_proc['orden_estado'] == 1].index.tolist()
     
@@ -206,18 +205,18 @@ def procesar_infoequipo(df):
     
     # 📌 ENCABEZADO "PERSONAL INACTIVO"
     if len(idx_inactivos) > 0:
-        # Agregar fila de encabezado
+        # Fila de encabezado (columna A vacía)
         encabezado = {col: '' for col in df_proc.columns}
         encabezado['Nombres y Apellidos'] = '========== PERSONAL INACTIVO =========='
         filas.append(encabezado)
         
-        # Agregar inactivos con enumeración
         for i, idx in enumerate(idx_inactivos, 1):
             fila = df_proc.loc[idx].to_dict()
-            fila['Nombres y Apellidos'] = f"{i}. {fila['Nombres y Apellidos']}"
+            # 🔥 Agregar número en una nueva columna "N°"
+            fila['N°'] = i
             filas.append(fila)
     
-    # 📌 FILA DE SEPARACIÓN (solo si hay ambos grupos)
+    # 📌 SEPARADOR
     if len(idx_inactivos) > 0 and len(idx_activos) > 0:
         separador = {col: '' for col in df_proc.columns}
         separador['Nombres y Apellidos'] = '----------------------------------------'
@@ -229,14 +228,20 @@ def procesar_infoequipo(df):
         encabezado['Nombres y Apellidos'] = '========== PERSONAL ACTIVO =========='
         filas.append(encabezado)
         
-        # Agregar activos con enumeración
         for i, idx in enumerate(idx_activos, 1):
             fila = df_proc.loc[idx].to_dict()
-            fila['Nombres y Apellidos'] = f"{i}. {fila['Nombres y Apellidos']}"
+            fila['N°'] = i
             filas.append(fila)
     
     # 🔥 CREAR NUEVO DATAFRAME
     df_resultado = pd.DataFrame(filas)
+    
+    # 🔥 REORDENAR COLUMNAS: N° al inicio
+    cols = df_resultado.columns.tolist()
+    if 'N°' in cols:
+        cols.remove('N°')
+        cols = ['N°'] + cols
+        df_resultado = df_resultado[cols]
     
     # 🔥 ELIMINAR COLUMNA AUXILIAR
     if 'orden_estado' in df_resultado.columns:

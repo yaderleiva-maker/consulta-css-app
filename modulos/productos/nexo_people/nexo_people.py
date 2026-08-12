@@ -34,6 +34,8 @@ from services.vacaciones import (
 # MÓDULO 1: IN & OUT
 # ============================================================
 
+# modulos/hexagon_colombia/nexo_people.py
+
 def run_in_out(usuario):
     """
     Módulo In & Out
@@ -41,21 +43,12 @@ def run_in_out(usuario):
     st.markdown("## 📊 In & Out - Personal Activo / Inactivo")
     st.caption("Lista de empleados activos e inactivos. Ordenados de más antiguos a más recientes.")
     
-    empleados = obtener_activos_inactivos()
-    
-    if not empleados:
-        st.info("No hay empleados registrados")
-        return
-    
-    inactivos = [e for e in empleados if e.get('estado_nombre') == 'Inactivo']
-    activos = [e for e in empleados if e.get('estado_nombre') == 'Activo']
-    
     # ============================================================
-    # BOTÓN PARA DESCARGAR EXCEL
+    # BOTONES DE DESCARGA
     # ============================================================
     col1, col2, col3 = st.columns([1, 1, 3])
     with col1:
-        if st.button("📥 Descargar Excel", use_container_width=True):
+        if st.button("📥 In & Out Excel", use_container_width=True):
             df = generar_excel_activos_inactivos()
             if not df.empty:
                 output = BytesIO()
@@ -75,6 +68,35 @@ def run_in_out(usuario):
                     file_name="in_out_empleados.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
+    
+    with col2:
+        if st.button("📋 INFOEQUIPO Humano", use_container_width=True):
+            with st.spinner("Generando reporte INFOEQUIPO..."):
+                from services.empleados import obtener_reporte_infoequipo
+                df = obtener_reporte_infoequipo()
+                if not df.empty:
+                    excel_data = generar_excel_infoequipo(df)
+                    if excel_data:
+                        st.download_button(
+                            label="✅ Descargar Excel",
+                            data=excel_data,
+                            file_name=f"infoequipo_humano_{date.today().strftime('%Y%m%d')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                else:
+                    st.warning("No hay datos para generar el reporte")
+    
+    # ============================================================
+    # LISTA DE EMPLEADOS
+    # ============================================================
+    empleados = obtener_activos_inactivos()
+    
+    if not empleados:
+        st.info("No hay empleados registrados")
+        return
+    
+    inactivos = [e for e in empleados if e.get('estado_nombre') == 'Inactivo']
+    activos = [e for e in empleados if e.get('estado_nombre') == 'Activo']
     
     # ============================================================
     # INACTIVOS

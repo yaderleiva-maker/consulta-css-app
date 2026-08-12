@@ -144,17 +144,19 @@ def generar_excel_infoequipo(df):
     """
     from io import BytesIO
     import pandas as pd
+    import numpy as np
     
     if df.empty:
         return None
     
-    # 🔥 CREAR COPIA PARA NO MODIFICAR EL ORIGINAL
     df_excel = df.copy()
     
-    # 🔥 FORMATO DE FECHAS (CON MANEJO DE ERRORES)
+    # 🔥 LIMPIAR VALORES NaN Y NONE
+    df_excel = df_excel.replace({np.nan: '', None: ''})
+    
+    # 🔥 FORMATO DE FECHAS
     for col in ['Fecha de inicio del contrato', 'Fecha de terminación de contrato']:
         if col in df_excel.columns:
-            # Convertir a datetime primero, luego formatear
             df_excel[col] = pd.to_datetime(df_excel[col], errors='coerce')
             df_excel[col] = df_excel[col].apply(
                 lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) else ''
@@ -166,24 +168,22 @@ def generar_excel_infoequipo(df):
     
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        # 📌 HOJA PRINCIPAL
         df_excel.to_excel(writer, sheet_name='INFOEQUIPO', index=False)
         
         workbook = writer.book
         worksheet = writer.sheets['INFOEQUIPO']
         
-        # 📌 FORMATO DE NÚMEROS (Salario)
         formato_moneda = workbook.add_format({'num_format': '$ #,##0.00'})
+        formato_texto = workbook.add_format({'num_format': '@'})
         
         for i, col in enumerate(df_excel.columns):
-            # Ajustar ancho de columnas
             max_len = max(df_excel[col].astype(str).str.len().max(), len(col)) + 2
             worksheet.set_column(i, i, min(max_len, 50))
             
-            # Aplicar formato de moneda a columna Salario
             if col == 'Salario':
-                col_idx = i
-                worksheet.set_column(col_idx, col_idx, 15, formato_moneda)
+                worksheet.set_column(i, i, 15, formato_moneda)
+            elif col in ['Identificación', 'Teléfono']:
+                worksheet.set_column(i, i, 15, formato_texto)
     
     return output.getvalue()
     

@@ -298,7 +298,12 @@ def obtener_reporte_infoequipo():
       c.nombre AS cargo,
       h.salario_base AS salario,
       '$ 249,045' AS extrasalarial,
-      CONCAT(bn.nombre, ' - ', b.numero_cuenta) AS certificacion_bancaria
+      CONCAT(COALESCE(bn.nombre, ''), ' - ', COALESCE(b.numero_cuenta, '')) AS certificacion_bancaria,
+      -- Campo para ordenar: 0 = Inactivos, 1 = Activos
+      CASE 
+        WHEN e.fecha_terminacion IS NOT NULL THEN 0
+        ELSE 1
+      END AS orden_estado
     FROM `nexo_people.empleados` e
     LEFT JOIN ultima_seguridad_social ss ON e.id_empleado = ss.id_empleado AND ss.rn = 1
     LEFT JOIN ultimo_historial h ON e.id_empleado = h.id_empleado AND h.rn = 1
@@ -311,17 +316,14 @@ def obtener_reporte_infoequipo():
       WHERE nombre IN ('Activo', 'Inactivo')
     )
     ORDER BY 
-      CASE 
-        WHEN e.fecha_terminacion IS NOT NULL THEN 0
-        ELSE 1
-      END,
+      orden_estado ASC,
       e.fecha_terminacion ASC NULLS LAST
     """
     
     from services.bigquery import ejecutar_query
     df = ejecutar_query(query)
     
-    # 🔥 RENOMBRAR COLUMNAS A NOMBRES LEGIBLES (con tildes y espacios)
+    # 🔥 RENOMBRAR COLUMNAS A NOMBRES LEGIBLES
     if not df.empty:
         df.columns = [
             "Fecha de inicio del contrato",
@@ -339,7 +341,8 @@ def obtener_reporte_infoequipo():
             "Cargo",
             "Salario",
             "Extrasalarial",
-            "Certificación Bancaria"
+            "Certificación Bancaria",
+            "orden_estado"  # 🔥 Columna auxiliar para ordenar
         ]
     
     return df

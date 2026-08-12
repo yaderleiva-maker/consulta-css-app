@@ -130,7 +130,7 @@ def login():
         izquierda, centro, derecha = st.columns([1, 1.15, 1])
         with centro:
             with st.container(border=True):
-                st.image("assets/NEXO.JPEG", use_container_width=False)
+                st.image("assets/NEXO.jpeg", use_container_width=False)
                 st.markdown(
                     """
                     <div class="nexo-brand">

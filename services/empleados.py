@@ -248,6 +248,10 @@ def obtener_lista_empleados(estado=None):
 
 # services/empleados.py
 
+# services/empleados.py
+
+# services/empleados.py
+
 def obtener_reporte_infoequipo():
     """
     Genera el reporte INFOEQUIPO HUMANO con toda la información del colaborador.
@@ -269,7 +273,7 @@ def obtener_reporte_infoequipo():
         b.numero_cuenta,
         ROW_NUMBER() OVER (PARTITION BY b.id_empleado ORDER BY b.fecha_creacion DESC) AS rn
       FROM `nexo_people.informacion_bancaria` b
-      WHERE b.estado = 'ACTIVO'
+      WHERE b.estado = 'Activo'
     ),
     ultima_seguridad_social AS (
       SELECT 
@@ -298,16 +302,7 @@ def obtener_reporte_infoequipo():
       c.nombre AS cargo,
       h.salario_base AS salario,
       '$ 249,045' AS extrasalarial,
-      -- 🔥 CERTIFICACIÓN BANCARIA CORREGIDA
-      CASE 
-        WHEN bn.nombre IS NOT NULL AND b.numero_cuenta IS NOT NULL 
-        THEN CONCAT(bn.nombre, ' - ', b.numero_cuenta)
-        WHEN bn.nombre IS NOT NULL AND b.numero_cuenta IS NULL 
-        THEN bn.nombre
-        WHEN b.numero_cuenta IS NOT NULL AND bn.nombre IS NULL 
-        THEN b.numero_cuenta
-        ELSE 'Sin información bancaria'
-      END AS certificacion_bancaria,
+      CONCAT(COALESCE(bn.nombre, 'Sin banco'), ' - ', COALESCE(b.numero_cuenta, 'Sin cuenta')) AS certificacion_bancaria,
       CASE 
         WHEN e.fecha_terminacion IS NOT NULL THEN 0
         ELSE 1
@@ -331,7 +326,7 @@ def obtener_reporte_infoequipo():
     from services.bigquery import ejecutar_query
     df = ejecutar_query(query)
     
-    # 🔥 RENOMBRAR COLUMNAS
+    # 🔥 RENOMBRAR COLUMNAS A NOMBRES LEGIBLES
     if not df.empty:
         df.columns = [
             "Fecha de inicio del contrato",

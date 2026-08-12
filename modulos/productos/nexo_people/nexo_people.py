@@ -69,23 +69,24 @@ def run_in_out(usuario):
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
     
-    with col2:
-        if st.button("📋 INFOEQUIPO Humano", use_container_width=True):
-            with st.spinner("Generando reporte INFOEQUIPO..."):
-                from services.empleados import obtener_reporte_infoequipo
-                df = obtener_reporte_infoequipo()
-                if not df.empty:
-                    # ✅ USAR LA FUNCIÓN LOCAL
-                    excel_data = generar_excel_infoequipo(df)
-                    if excel_data:
-                        st.download_button(
-                            label="✅ Descargar Excel",
-                            data=excel_data,
-                            file_name=f"infoequipo_humano_{date.today().strftime('%Y%m%d')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                else:
-                    st.warning("No hay datos para generar el reporte")
+with col2:
+    if st.button("📋 INFOEQUIPO Humano", use_container_width=True):
+        with st.spinner("Generando reporte INFOEQUIPO..."):
+            from services.empleados import obtener_reporte_infoequipo
+            df = obtener_reporte_infoequipo()
+            if not df.empty:
+                # 🔥 AÑADIR ENUMERACIÓN Y SEPARADORES
+                df_procesado = procesar_infoequipo(df)
+                excel_data = generar_excel_infoequipo(df_procesado)
+                if excel_data:
+                    st.download_button(
+                        label="✅ Descargar Excel",
+                        data=excel_data,
+                        file_name=f"infoequipo_humano_{date.today().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+            else:
+                st.warning("No hay datos para generar el reporte")
     
     # ============================================================
     # LISTA DE EMPLEADOS
@@ -142,21 +143,109 @@ def generar_excel_infoequipo(df):
     Generar Excel para el reporte INFOEQUIPO HUMANO.
     """
     from io import BytesIO
+    import pandas as pd
     
     if df.empty:
         return None
     
+    # 🔥 CREAR COPIA PARA NO MODIFICAR EL ORIGINAL
+    df_excel = df.copy()
+    
+    # 🔥 FORMATO DE FECHAS
+    for col in ['Fecha de inicio del contrato', 'Fecha de terminación de contrato']:
+        if col in df_excel.columns:
+            df_excel[col] = df_excel[col].apply(
+                lambda x: x.strftime('%d/%m/%Y') if pd.notna(x) else ''
+            )
+    
+    # 🔥 ELIMINAR COLUMNA AUXILIAR
+    if 'orden_estado' in df_excel.columns:
+        df_excel = df_excel.drop(columns=['orden_estado'])
+    
     output = BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='INFOEQUIPO', index=False)
+        # 📌 HOJA PRINCIPAL
+        df_excel.to_excel(writer, sheet_name='INFOEQUIPO', index=False)
         
         workbook = writer.book
         worksheet = writer.sheets['INFOEQUIPO']
-        for i, col in enumerate(df.columns):
-            max_len = max(df[col].astype(str).str.len().max(), len(col)) + 2
+        
+        # 📌 FORMATO DE NÚMEROS (Salario)
+        formato_moneda = workbook.add_format({'num_format': '$ #,##0.00'})
+        
+        for i, col in enumerate(df_excel.columns):
+            # Ajustar ancho de columnas
+            max_len = max(df_excel[col].astype(str).str.len().max(), len(col)) + 2
             worksheet.set_column(i, i, min(max_len, 50))
+            
+            # Aplicar formato de moneda a columna Salario
+            if col == 'Salario':
+                col_idx = i
+                worksheet.set_column(col_idx, col_idx, 15, formato_moneda)
+        
+        # 📌 AGREGAR FILA DE SEPARACIÓN Y ENUMERACIÓN
+        # Esto se hace directamente en Python antes de exportar
     
     return output.getvalue()
+
+# modulos/hexagon_colombia/nexo_people.py
+
+def procesar_infoequipo(df):
+    """
+    Procesa el DataFrame para agregar enumeración y separación entre Activos e Inactivos.
+    """
+    import pandas as pd
+    
+    df_proc = df.copy()
+    
+    # 🔥 IDENTIFICAR ÍNDICES DE CORTE
+    # Asumiendo que los inactivos están primero (orden_estado = 0)
+    idx_inactivos = df_proc[df_proc['orden_estado'] == 0].index.tolist()
+    idx_activos = df_proc[df_proc['orden_estado'] == 1].index.tolist()
+    
+    # 🔥 CREAR NUEVO DATAFRAME CON FILAS DE SEPARACIÓN
+    filas = []
+    
+    # 📌 ENCABEZADO "PERSONAL INACTIVO"
+    if len(idx_inactivos) > 0:
+        # Agregar fila de encabezado
+        encabezado = {col: '' for col in df_proc.columns}
+        encabezado['Nombres y Apellidos'] = '========== PERSONAL INACTIVO =========='
+        filas.append(encabezado)
+        
+        # Agregar inactivos con enumeración
+        for i, idx in enumerate(idx_inactivos, 1):
+            fila = df_proc.loc[idx].to_dict()
+            fila['Nombres y Apellidos'] = f"{i}. {fila['Nombres y Apellidos']}"
+            filas.append(fila)
+    
+    # 📌 FILA DE SEPARACIÓN (solo si hay ambos grupos)
+    if len(idx_inactivos) > 0 and len(idx_activos) > 0:
+        separador = {col: '' for col in df_proc.columns}
+        separador['Nombres y Apellidos'] = '----------------------------------------'
+        filas.append(separador)
+    
+    # 📌 ENCABEZADO "PERSONAL ACTIVO"
+    if len(idx_activos) > 0:
+        encabezado = {col: '' for col in df_proc.columns}
+        encabezado['Nombres y Apellidos'] = '========== PERSONAL ACTIVO =========='
+        filas.append(encabezado)
+        
+        # Agregar activos con enumeración
+        for i, idx in enumerate(idx_activos, 1):
+            fila = df_proc.loc[idx].to_dict()
+            fila['Nombres y Apellidos'] = f"{i}. {fila['Nombres y Apellidos']}"
+            filas.append(fila)
+    
+    # 🔥 CREAR NUEVO DATAFRAME
+    df_resultado = pd.DataFrame(filas)
+    
+    # 🔥 ELIMINAR COLUMNA AUXILIAR
+    if 'orden_estado' in df_resultado.columns:
+        df_resultado = df_resultado.drop(columns=['orden_estado'])
+    
+    return df_resultado
+    
 # ============================================================
 # MÓDULO 2: FICHA DE EMPLEADOS
 # ============================================================

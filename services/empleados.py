@@ -270,27 +270,37 @@ def obtener_reporte_infoequipo():
         ROW_NUMBER() OVER (PARTITION BY b.id_empleado ORDER BY b.fecha_creacion DESC) AS rn
       FROM `nexo_people.informacion_bancaria` b
       WHERE b.estado = 'ACTIVO'
+    ),
+    ultima_seguridad_social AS (
+      SELECT 
+        s.id_empleado,
+        s.eps,
+        s.pensiones,
+        s.cesantias,
+        s.caja_compensacion,
+        s.arl,
+        ROW_NUMBER() OVER (PARTITION BY s.id_empleado ORDER BY s.fecha_creacion DESC) AS rn
+      FROM `nexo_people.seguridad_social_colombia` s
     )
     SELECT 
-      e.fecha_ingreso_empresa AS `Fecha de inicio del contrato`,
-      e.fecha_terminacion AS `Fecha de terminación de contrato`,
-      CONCAT(e.nombres, ' ', e.apellidos) AS `Nombres y Apellidos`,
-      e.cedula AS Identificación,
-      s.eps AS EPS,
-      s.pensiones AS Pensiones,
-      s.cesantias AS Cesantías,
-      s.caja_compensacion AS `Caja de Compensación`,
-      s.arl AS ARL,
-      e.direccion AS Dirección,
-      e.telefono AS Teléfono,
-      e.email_personal AS Correo,
-      c.nombre AS Cargo,
-      h.salario_base AS Salario,
-      '$ 249,045' AS `Extrasalarial`,
-      CONCAT(bn.nombre, ' - ', b.numero_cuenta) AS `Certificación Bancaria`
+      e.fecha_ingreso_empresa AS fecha_ingreso_contrato,
+      e.fecha_terminacion AS fecha_terminacion_contrato,
+      CONCAT(e.nombres, ' ', e.apellidos) AS nombre_completo,
+      e.cedula AS identificacion,
+      ss.eps AS eps,
+      ss.pensiones AS pensiones,
+      ss.cesantias AS cesantias,
+      ss.caja_compensacion AS caja_compensacion,
+      ss.arl AS arl,
+      e.direccion AS direccion,
+      e.telefono AS telefono,
+      e.email_personal AS correo,
+      c.nombre AS cargo,
+      h.salario_base AS salario,
+      '$ 249,045' AS extrasalarial,
+      CONCAT(bn.nombre, ' - ', b.numero_cuenta) AS certificacion_bancaria
     FROM `nexo_people.empleados` e
-    LEFT JOIN `nexo_people.seguridad_social_colombia` s ON e.id_empleado = s.id_empleado
-      AND s.fecha_fin IS NULL
+    LEFT JOIN ultima_seguridad_social ss ON e.id_empleado = ss.id_empleado AND ss.rn = 1
     LEFT JOIN ultimo_historial h ON e.id_empleado = h.id_empleado AND h.rn = 1
     LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     LEFT JOIN ultima_cuenta_bancaria b ON e.id_empleado = b.id_empleado AND b.rn = 1
@@ -310,4 +320,26 @@ def obtener_reporte_infoequipo():
     
     from services.bigquery import ejecutar_query
     df = ejecutar_query(query)
+    
+    # 🔥 RENOMBRAR COLUMNAS A NOMBRES LEGIBLES (con tildes y espacios)
+    if not df.empty:
+        df.columns = [
+            "Fecha de inicio del contrato",
+            "Fecha de terminación de contrato",
+            "Nombres y Apellidos",
+            "Identificación",
+            "EPS",
+            "Pensiones",
+            "Cesantías",
+            "Caja de Compensación",
+            "ARL",
+            "Dirección",
+            "Teléfono",
+            "Correo",
+            "Cargo",
+            "Salario",
+            "Extrasalarial",
+            "Certificación Bancaria"
+        ]
+    
     return df

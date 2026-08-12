@@ -245,3 +245,69 @@ def obtener_lista_empleados(estado=None):
     
     df = ejecutar_query(query)
     return df.to_dict('records')
+
+# services/empleados.py
+
+def obtener_reporte_infoequipo():
+    """
+    Genera el reporte INFOEQUIPO HUMANO con toda la información del colaborador.
+    """
+    query = """
+    WITH ultimo_historial AS (
+      SELECT 
+        h.id_empleado,
+        h.id_cargo,
+        h.salario_base,
+        h.fecha_inicio,
+        ROW_NUMBER() OVER (PARTITION BY h.id_empleado ORDER BY h.fecha_inicio DESC) AS rn
+      FROM `nexo_people.historial_laboral` h
+    ),
+    ultima_cuenta_bancaria AS (
+      SELECT 
+        b.id_empleado,
+        b.id_banco,
+        b.numero_cuenta,
+        ROW_NUMBER() OVER (PARTITION BY b.id_empleado ORDER BY b.fecha_creacion DESC) AS rn
+      FROM `nexo_people.informacion_bancaria` b
+      WHERE b.estado = 'ACTIVO'
+    )
+    SELECT 
+      e.fecha_ingreso_empresa AS `Fecha de inicio del contrato`,
+      e.fecha_terminacion AS `Fecha de terminación de contrato`,
+      CONCAT(e.nombres, ' ', e.apellidos) AS `Nombres y Apellidos`,
+      e.cedula AS Identificación,
+      s.eps AS EPS,
+      s.pensiones AS Pensiones,
+      s.cesantias AS Cesantías,
+      s.caja_compensacion AS `Caja de Compensación`,
+      s.arl AS ARL,
+      e.direccion AS Dirección,
+      e.telefono AS Teléfono,
+      e.email_personal AS Correo,
+      c.nombre AS Cargo,
+      h.salario_base AS Salario,
+      '$ 249,045' AS `Extrasalarial`,
+      CONCAT(bn.nombre, ' - ', b.numero_cuenta) AS `Certificación Bancaria`
+    FROM `nexo_people.empleados` e
+    LEFT JOIN `nexo_people.seguridad_social_colombia` s ON e.id_empleado = s.id_empleado
+      AND s.fecha_fin IS NULL
+    LEFT JOIN ultimo_historial h ON e.id_empleado = h.id_empleado AND h.rn = 1
+    LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
+    LEFT JOIN ultima_cuenta_bancaria b ON e.id_empleado = b.id_empleado AND b.rn = 1
+    LEFT JOIN `nexo_people.catalogo_bancos` bn ON b.id_banco = bn.id_banco
+    WHERE e.id_estado_empleado IN (
+      SELECT id_estado_empleado 
+      FROM `nexo_people.catalogo_estados_empleado` 
+      WHERE nombre IN ('Activo', 'Inactivo')
+    )
+    ORDER BY 
+      CASE 
+        WHEN e.fecha_terminacion IS NOT NULL THEN 0
+        ELSE 1
+      END,
+      e.fecha_terminacion ASC NULLS LAST
+    """
+    
+    from services.bigquery import ejecutar_query
+    df = ejecutar_query(query)
+    return df

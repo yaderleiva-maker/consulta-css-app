@@ -298,8 +298,16 @@ def obtener_reporte_infoequipo():
       c.nombre AS cargo,
       h.salario_base AS salario,
       '$ 249,045' AS extrasalarial,
-      CONCAT(COALESCE(bn.nombre, ''), ' - ', COALESCE(b.numero_cuenta, '')) AS certificacion_bancaria,
-      -- Campo para ordenar: 0 = Inactivos, 1 = Activos
+      -- 🔥 CERTIFICACIÓN BANCARIA CORREGIDA
+      CASE 
+        WHEN bn.nombre IS NOT NULL AND b.numero_cuenta IS NOT NULL 
+        THEN CONCAT(bn.nombre, ' - ', b.numero_cuenta)
+        WHEN bn.nombre IS NOT NULL AND b.numero_cuenta IS NULL 
+        THEN bn.nombre
+        WHEN b.numero_cuenta IS NOT NULL AND bn.nombre IS NULL 
+        THEN b.numero_cuenta
+        ELSE 'Sin información bancaria'
+      END AS certificacion_bancaria,
       CASE 
         WHEN e.fecha_terminacion IS NOT NULL THEN 0
         ELSE 1
@@ -323,7 +331,7 @@ def obtener_reporte_infoequipo():
     from services.bigquery import ejecutar_query
     df = ejecutar_query(query)
     
-    # 🔥 RENOMBRAR COLUMNAS A NOMBRES LEGIBLES
+    # 🔥 RENOMBRAR COLUMNAS
     if not df.empty:
         df.columns = [
             "Fecha de inicio del contrato",
@@ -342,7 +350,7 @@ def obtener_reporte_infoequipo():
             "Salario",
             "Extrasalarial",
             "Certificación Bancaria",
-            "orden_estado"  # 🔥 Columna auxiliar para ordenar
+            "orden_estado"
         ]
     
     return df

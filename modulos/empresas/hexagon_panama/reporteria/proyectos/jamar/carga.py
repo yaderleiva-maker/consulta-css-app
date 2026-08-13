@@ -37,13 +37,24 @@ def obtener_ultima_carga_cartera():
             WHERE id_proyecto = '{PROYECTO_ID}'
         """
         df = ejecutar_query(query)
-        if not df.empty and df['ultima_carga'].iloc[0] is not None:
-            return {
-                'fecha': df['ultima_carga'].iloc[0],
-                'total': df['total_registros'].iloc[0]
-            }
-        return None
-    except:
+        
+        if df.empty:
+            return None
+            
+        # Verificar si hay datos válidos
+        if df['ultima_carga'].iloc[0] is None:
+            return None
+            
+        # Verificar si es NaT (Not a Time)
+        if pd.isna(df['ultima_carga'].iloc[0]):
+            return None
+            
+        return {
+            'fecha': df['ultima_carga'].iloc[0],
+            'total': df['total_registros'].iloc[0]
+        }
+    except Exception as e:
+        st.warning(f"⚠️ No se pudo obtener información de la cartera: {e}")
         return None
 
 # ============================================================
@@ -222,8 +233,15 @@ def render():
     ultima_carga = obtener_ultima_carga_cartera()
     
     if ultima_carga:
-        fecha_str = ultima_carga['fecha'].strftime('%d/%m/%Y %H:%M') if hasattr(ultima_carga['fecha'], 'strftime') else str(ultima_carga['fecha'])
-        st.success(f"📊 **Cartera ya cargada** · {ultima_carga['total']:,} registros · Última carga: {fecha_str}")
+        fecha = ultima_carga['fecha']
+        total = ultima_carga['total']
+        
+        # Verificar si la fecha es válida
+        if pd.isna(fecha):
+            st.success(f"📊 **Cartera ya cargada** · {total:,} registros")
+        else:
+            fecha_str = fecha.strftime('%d/%m/%Y %H:%M')
+            st.success(f"📊 **Cartera ya cargada** · {total:,} registros · Última carga: {fecha_str}")
     else:
         st.warning("⚠️ **No hay cartera cargada.** Sube un archivo para comenzar.")
     

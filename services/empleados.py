@@ -178,10 +178,7 @@ def generar_excel_activos_inactivos():
       e.cedula AS Cedula,
       e.fecha_ingreso_empresa AS Fecha_Ingreso,
       e.fecha_terminacion AS Fecha_Terminacion,
-      
-      -- Cargo actual desde historial_laboral
       COALESCE(c.nombre, 'Sin cargo') AS Cargo,
-      
       COALESCE(est.nombre, 'Desconocido') AS Estado,
       COALESCE(ms.nombre, '') AS Motivo_Salida
     FROM `nexo_people.empleados` e
@@ -189,13 +186,16 @@ def generar_excel_activos_inactivos():
     LEFT JOIN `nexo_people.catalogo_cargos` c ON h.id_cargo = c.id_cargo
     LEFT JOIN `nexo_people.catalogo_estados_empleado` est ON e.id_estado_empleado = est.id_estado_empleado
     LEFT JOIN `nexo_people.catalogo_motivos_salida` ms ON e.id_motivo_salida = ms.id_motivo_salida
-    ORDER BY 
-      CASE 
-        WHEN e.id_estado_empleado = (SELECT id_estado_empleado FROM `nexo_people.catalogo_estados_empleado` WHERE nombre = 'Inactivo') THEN 0
+    ORDER BY
+      CASE
+        WHEN est.nombre = 'Inactivo' THEN 0
         ELSE 1
       END ASC,
       e.fecha_terminacion ASC NULLS LAST
     """
+    
+    from services.bigquery import ejecutar_query
+    import pandas as pd
     
     df = ejecutar_query(query)
     

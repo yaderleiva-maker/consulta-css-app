@@ -23,9 +23,12 @@ def normalizar_texto(valor):
     if pd.isna(valor):
         return None
     texto = str(valor).strip()
-    if texto == '' or texto == 'nan' or texto == 'None':
+    if texto == '' or texto == 'nan' or texto == 'None' or texto == 'NULL':
         return None
-    texto = texto.replace("'", "''")  # Escapar comillas para SQL
+    # Escapar comillas simples (') para SQL
+    texto = texto.replace("'", "''")
+    # Escapar caracteres especiales
+    texto = texto.replace("\\", "\\\\")
     return texto
 
 def normalizar_numero(valor):

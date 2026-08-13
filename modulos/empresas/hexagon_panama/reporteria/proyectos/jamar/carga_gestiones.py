@@ -253,7 +253,6 @@ def guardar_gestiones_jamar(df, proyecto_id):
                     df_insert[columna], errors="coerce"
                 ).dt.date
                 
-        # Para fecha_carga, created_at, updated_at
         for columna in ["fecha_carga", "created_at", "updated_at"]:
             if columna in df_insert.columns:
                 df_insert[columna] = pd.to_datetime(
@@ -264,7 +263,7 @@ def guardar_gestiones_jamar(df, proyecto_id):
         return 0, total, f"Error en fechas: {e}"
     
     # ============================================================
-    # CONEXION A BIGQUERY
+    # CONEXION A BIGQUERY - USAR ESQUEMA REAL
     # ============================================================
     
     try:
@@ -276,55 +275,28 @@ def guardar_gestiones_jamar(df, proyecto_id):
             project=credentials.project_id
         )
         
+        destino = f"{PROYECTO_BQ}.gestiones_jamar"
+        
         # Verificar que la tabla existe
         try:
-            client.get_table(f"{PROYECTO_BQ}.gestiones_jamar")
+            tabla_destino = client.get_table(destino)
+            st.info(f"✅ Tabla encontrada: {destino}")
+            st.info(f"📊 Esquema: {len(tabla_destino.schema)} campos")
         except Exception as e:
-            st.error(f"La tabla gestiones_jamar no existe: {e}")
+            st.error(f"❌ La tabla no existe: {e}")
             return 0, total, f"Tabla no existe: {e}"
         
+        # Usar el esquema REAL de la tabla (con REQUIRED / NULLABLE correctos)
         job_config = bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            autodetect=False,
-            schema=[
-                bigquery.SchemaField("id_gestion", "STRING"),
-                bigquery.SchemaField("id_proyecto", "STRING"),
-                bigquery.SchemaField("llave", "STRING"),
-                bigquery.SchemaField("codigo_agencia", "STRING"),
-                bigquery.SchemaField("numero_cuenta", "STRING"),
-                bigquery.SchemaField("codigo_cliente", "STRING"),
-                bigquery.SchemaField("fechahoragestion", "TIMESTAMP"),
-                bigquery.SchemaField("codigo_gestion", "STRING"),
-                bigquery.SchemaField("observacion", "STRING"),
-                bigquery.SchemaField("codigo_cobrador", "STRING"),
-                bigquery.SchemaField("area_gestion", "STRING"),
-                bigquery.SchemaField("tipo_gestion", "STRING"),
-                bigquery.SchemaField("numeromarcado", "STRING"),
-                bigquery.SchemaField("tipo_telefono", "STRING"),
-                bigquery.SchemaField("fechapromesa", "DATE"),
-                bigquery.SchemaField("valorpromesa", "FLOAT64"),
-                bigquery.SchemaField("mejor_gestion_jamar", "STRING"),
-                bigquery.SchemaField("resultado_gestion", "STRING"),
-                bigquery.SchemaField("lugar_contacto", "STRING"),
-                bigquery.SchemaField("tipo_contacto", "STRING"),
-                bigquery.SchemaField("clave", "STRING"),
-                bigquery.SchemaField("fecha", "DATE"),
-                bigquery.SchemaField("min_de_prioridad", "INT64"),
-                bigquery.SchemaField("clave_min", "STRING"),
-                bigquery.SchemaField("fecha_carga", "TIMESTAMP"),
-                bigquery.SchemaField("created_at", "TIMESTAMP"),
-                bigquery.SchemaField("updated_at", "TIMESTAMP"),
-            ]
+            schema=tabla_destino.schema,  # ✅ Esto es lo que arregla el error
         )
         
         with st.spinner(f"Subiendo {len(df_insert)} registros a BigQuery..."):
-            st.info(f"📊 Columnas: {df_insert.columns.tolist()}")
-            st.info(f"📊 Tipos de datos: {df_insert.dtypes.to_dict()}")
-            
             job = client.load_table_from_dataframe(
                 df_insert,
-                f"{PROYECTO_BQ}.gestiones_jamar",
-                job_config=job_config
+                destino,
+                job_config=job_config,
             )
             
             # Esperar a que termine CON TIMEOUT
@@ -356,7 +328,6 @@ def guardar_gestiones_jamar(df, proyecto_id):
     detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
     
     return registros_guardados, errores, detalle
-
 # ============================================================
 # FUNCION PARA LEER AMBAS HOJAS DEL EXCEL
 # ============================================================

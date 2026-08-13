@@ -307,7 +307,6 @@ def obtener_reporte_infoequipo():
         ROW_NUMBER() OVER (PARTITION BY s.id_empleado ORDER BY s.fecha_creacion DESC) AS rn
       FROM `nexo_people.seguridad_social_colombia` s
     ),
-    -- 🔥 NUEVO CTE: ESTADOS INCLUIDOS
     estados_incluidos AS (
       SELECT id_estado_empleado
       FROM `nexo_people.catalogo_estados_empleado`
@@ -343,7 +342,11 @@ def obtener_reporte_infoequipo():
     LEFT JOIN `nexo_people.catalogo_bancos` bn ON b.id_banco = bn.id_banco
     ORDER BY
       orden_estado ASC,
-      e.fecha_terminacion ASC NULLS LAST
+      CASE
+        WHEN e.fecha_terminacion IS NOT NULL THEN e.fecha_terminacion
+        ELSE e.fecha_ingreso_empresa
+      END ASC NULLS LAST,
+      nombre_completo ASC
     """
     
     from services.bigquery import ejecutar_query

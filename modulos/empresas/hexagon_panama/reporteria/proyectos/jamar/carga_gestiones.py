@@ -137,7 +137,6 @@ def guardar_gestiones_jamar(df, proyecto_id):
     errores = 0
     registros_guardados = 0
     
-    # CAMBIO 2: Mapeo opcional (no bloquea la carga)
     mapeo = obtener_mapeo_codigos()
     if not mapeo:
         st.warning(
@@ -156,7 +155,6 @@ def guardar_gestiones_jamar(df, proyecto_id):
         try:
             llave_raw = row.get('Llave')
             
-            # CAMBIO 3: Columnas tolerantes a tildes
             codigo_agencia = normalizar_texto(
                 row.get("Codigo de la Agencia", row.get("Código de la Agencia"))
             )
@@ -239,6 +237,36 @@ def guardar_gestiones_jamar(df, proyecto_id):
     
     df_insert = pd.DataFrame(registros)
     
+    # ============================================================
+    # CONVERTIR FECHAS A TIPOS REALES
+    # ============================================================
+    
+    try:
+        if 'fechahoragestion' in df_insert.columns:
+            df_insert["fechahoragestion"] = pd.to_datetime(
+                df_insert["fechahoragestion"], errors="coerce"
+            )
+        
+        for columna in ["fechapromesa", "fecha"]:
+            if columna in df_insert.columns:
+                df_insert[columna] = pd.to_datetime(
+                    df_insert[columna], errors="coerce"
+                ).dt.date
+                
+        # Para fecha_carga, created_at, updated_at
+        for columna in ["fecha_carga", "created_at", "updated_at"]:
+            if columna in df_insert.columns:
+                df_insert[columna] = pd.to_datetime(
+                    df_insert[columna], errors="coerce"
+                )
+    except Exception as e:
+        st.error(f"Error al convertir fechas: {e}")
+        return 0, total, f"Error en fechas: {e}"
+    
+    # ============================================================
+    # CONEXION A BIGQUERY
+    # ============================================================
+    
     try:
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"]
@@ -247,6 +275,13 @@ def guardar_gestiones_jamar(df, proyecto_id):
             credentials=credentials,
             project=credentials.project_id
         )
+        
+        # Verificar que la tabla existe
+        try:
+            client.get_table(f"{PROYECTO_BQ}.gestiones_jamar")
+        except Exception as e:
+            st.error(f"La tabla gestiones_jamar no existe: {e}")
+            return 0, total, f"Tabla no existe: {e}"
         
         job_config = bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
@@ -283,24 +318,44 @@ def guardar_gestiones_jamar(df, proyecto_id):
         )
         
         with st.spinner(f"Subiendo {len(df_insert)} registros a BigQuery..."):
+            st.info(f"📊 Columnas: {df_insert.columns.tolist()}")
+            st.info(f"📊 Tipos de datos: {df_insert.dtypes.to_dict()}")
+            
             job = client.load_table_from_dataframe(
                 df_insert,
                 f"{PROYECTO_BQ}.gestiones_jamar",
                 job_config=job_config
             )
-            job.result()
             
-            table = client.get_table(f"{PROYECTO_BQ}.gestiones_jamar")
-            registros_guardados = table.num_rows
+            # Esperar a que termine CON TIMEOUT
+            job.result(timeout=180)
+            
+            # Confirmar carga
+            rows_loaded = job.output_rows or len(df_insert)
+            st.success(f"✅ BigQuery terminó el job. Filas cargadas: {rows_loaded}")
+            registros_guardados = rows_loaded
+            
+            # Verificar con SELECT
+            verificar_query = f"""
+                SELECT COUNT(*) as total
+                FROM `{PROYECTO_BQ}.gestiones_jamar`
+                WHERE id_proyecto = '{PROYECTO_ID}'
+            """
+            try:
+                df_verify = ejecutar_query(verificar_query)
+                if not df_verify.empty:
+                    st.info(f"📊 Total en tabla: {df_verify['total'].iloc[0]:,} registros")
+            except:
+                pass
             
     except Exception as e:
-        st.error(f"Error al insertar en BigQuery: {str(e)}")
+        st.error(f"❌ Error al insertar en BigQuery: {str(e)}")
         return 0, total, f"Error en BigQuery: {e}"
     
     elapsed_time = time.time() - start_time
-    detalle = f"{len(registros)} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
+    detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
     
-    return len(registros), errores, detalle
+    return registros_guardados, errores, detalle
 
 # ============================================================
 # FUNCION PARA LEER AMBAS HOJAS DEL EXCEL
@@ -430,15 +485,14 @@ def render():
                     with col3:
                         st.metric("Errores", f"{errores:,}")
                     
+                    # 🔥 SIN st.rerun() - DEJAR EL ERROR VISIBLE
                     if guardados > 0:
-                        st.success(f"{detalle}")
+                        st.success(f"✅ {detalle}")
                         st.balloons()
-                    elif errores > 0:
-                        st.warning(f"{detalle}")
+                        st.cache_data.clear()
                     else:
-                        st.warning("No se guardaron registros. Verifica el archivo.")
-                    
-                    st.rerun()
+                        st.error(f"❌ La carga falló: {detalle}")
+                        st.stop()  # Deja el error visible, NO reinicia la pantalla
                 
             except Exception as e:
                 st.error(f"Error al procesar el archivo: {str(e)}")

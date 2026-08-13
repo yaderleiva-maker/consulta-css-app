@@ -15,19 +15,10 @@ PROYECTOS = {
         "id": "JAMAR",
         "nombre": "Jamar S.A.",
         "carga": jamar_carga.render,
-        "gestiones": jamar_gestiones.render,  # ✅ Aqui va
+        "gestiones": jamar_gestiones.render,
         "reportes": jamar_reportes.REPORTES,
         "icono": "📊"
     },
-    # Futuros proyectos:
-    # "IFX": {
-    #     "id": "IFX",
-    #     "nombre": "IFX Network",
-    #     "carga": ifx_carga.render,
-    #     "gestiones": ifx_gestiones.render,
-    #     "reportes": ifx_reportes.REPORTES,
-    #     "icono": "📈"
-    # },
 }
 
 # ============================================================
@@ -155,70 +146,67 @@ def render():
     st.markdown("---")
     
     # ============================================================
-    # TABS
+    # SELECCION DE ACCION (reemplaza los tabs)
     # ============================================================
-    # ============================================================
-# SELECCION DE ACCION (reemplaza los tabs)
-# ============================================================
-
-seccion = st.radio(
-    "Accion",
-    ["Cargar Cartera", "Cargar Gestiones", "Generar Reportes"],
-    horizontal=True,
-    key="reporteria_seccion",
-)
-
-st.markdown("---")
-
-if seccion == "Cargar Cartera":
-    st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-    config["carga"]()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-elif seccion == "Cargar Gestiones":
-    st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-    config["gestiones"]()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-else:  # Generar Reportes
-    st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-    reportes = config["reportes"]
     
-    if not reportes:
-        st.info("No hay reportes configurados para este proyecto.")
-    else:
-        st.markdown("#### Reportes disponibles")
+    seccion = st.radio(
+        "Accion",
+        ["Cargar Cartera", "Cargar Gestiones", "Generar Reportes"],
+        horizontal=True,
+        key="reporteria_seccion",
+    )
+    
+    st.markdown("---")
+    
+    if seccion == "Cargar Cartera":
+        st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        config["carga"]()
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    elif seccion == "Cargar Gestiones":
+        st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        config["gestiones"]()
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    else:  # Generar Reportes
+        st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        reportes = config["reportes"]
         
-        for nombre_reporte, funcion in reportes.items():
-            with st.container():
-                col1, col2, col3 = st.columns([3, 1, 1])
-                with col1:
-                    st.markdown(f"**{nombre_reporte}**")
-                with col2:
-                    if st.button(f"Generar", key=f"gen_{nombre_reporte}"):
-                        with st.spinner(f"Generando {nombre_reporte}..."):
-                            excel_bytes, mensaje = funcion(config["id"])
-                            if excel_bytes:
-                                st.session_state[f"reporte_{nombre_reporte}"] = excel_bytes
-                                st.session_state[f"mensaje_{nombre_reporte}"] = mensaje
-                                st.rerun()
-                            else:
-                                st.warning(mensaje)
-                with col3:
-                    if st.session_state.get(f"reporte_{nombre_reporte}"):
-                        st.download_button(
-                            label="Descargar",
-                            data=st.session_state[f"reporte_{nombre_reporte}"],
-                            file_name=f"{config['id']}_{nombre_reporte.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key=f"download_{nombre_reporte}"
-                        )
-                        if st.session_state.get(f"mensaje_{nombre_reporte}"):
-                            st.success(st.session_state[f"mensaje_{nombre_reporte}"])
-                
-                st.markdown("---")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+        if not reportes:
+            st.info("ℹ️ No hay reportes configurados para este proyecto.")
+        else:
+            st.markdown("#### 📋 Reportes disponibles")
+            
+            for nombre_reporte, funcion in reportes.items():
+                with st.container():
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.markdown(f"**{nombre_reporte}**")
+                    with col2:
+                        if st.button(f"📊 Generar", key=f"gen_{nombre_reporte}"):
+                            with st.spinner(f"Generando {nombre_reporte}..."):
+                                excel_bytes, mensaje = funcion(config["id"])
+                                if excel_bytes:
+                                    st.session_state[f"reporte_{nombre_reporte}"] = excel_bytes
+                                    st.session_state[f"mensaje_{nombre_reporte}"] = mensaje
+                                    st.rerun()
+                                else:
+                                    st.warning(mensaje)
+                    with col3:
+                        if st.session_state.get(f"reporte_{nombre_reporte}"):
+                            st.download_button(
+                                label="📥 Descargar",
+                                data=st.session_state[f"reporte_{nombre_reporte}"],
+                                file_name=f"{config['id']}_{nombre_reporte.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key=f"download_{nombre_reporte}"
+                            )
+                            if st.session_state.get(f"mensaje_{nombre_reporte}"):
+                                st.success(st.session_state[f"mensaje_{nombre_reporte}"])
+                    
+                    st.markdown("---")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # ============================================================
     # FOOTER
@@ -229,3 +217,11 @@ else:  # Generar Reportes
         Hexagon · Reporteria · Version 1.0
     </div>
     """, unsafe_allow_html=True)
+
+
+# ============================================================
+# PUNTO DE ENTRADA PARA EJECUCION DIRECTA
+# ============================================================
+
+if __name__ == "__main__":
+    render()

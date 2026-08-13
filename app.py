@@ -11,6 +11,7 @@ from modulos.empresas.farmazone import carga_reportes
 from modulos.productos.nexo_people import nexo_people
 from modulos.empresas.hexagon_panama.cobranza.carga_cartera import render as render_carga_cartera
 from modulos.empresas.hexagon_panama.cobranza.investigacion import render as render_investigacion
+from modulos.empresas.hexagon_panama.reporteria import motor as reporteria_motor
 # =====================
 # CONFIGURACIÓN
 # =====================
@@ -124,6 +125,18 @@ MODULOS = {
             }
         }
     },
+    "📊 Reportería": {
+    "icono": "📊",
+    "tipo": "categoria",
+    "modulos": {
+        "📋 Generar Reportes": {
+            "tipo": "modulo",
+            "funcion": lambda: reporteria_motor.render(),
+            "permiso": "COBRANZA",
+            "icono": "📋"
+        }
+    }
+},
     "📦 Inventarios": {
         "icono": "📦",
         "tipo": "categoria",

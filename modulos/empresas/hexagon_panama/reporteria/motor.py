@@ -1,9 +1,9 @@
 import streamlit as st
 from datetime import datetime
 
-# Importar los submódulos de cada proyecto
-from .proyectos.jamar import carga as jamar_carga
-from .proyectos.jamar import reportes as jamar_reportes
+# Importar los submódulos de cada proyecto (ruta absoluta)
+from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import carga as jamar_carga
+from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import reportes as jamar_reportes
 
 # ============================================================
 # REGISTRO DE PROYECTOS
@@ -128,21 +128,19 @@ def render():
     st.markdown('<div class="sub-header">Selecciona un proyecto para cargar su cartera o generar reportes específicos.</div>', unsafe_allow_html=True)
     
     # ============================================================
-    # SELECCIÓN DE PROYECTO (con tarjetas visuales)
+    # SELECCIÓN DE PROYECTO
     # ============================================================
     
-    # Mostrar proyectos como tarjetas en columnas
     proyectos_lista = list(PROYECTOS.keys())
-    
-    # Si hay más de 3 proyectos, usar varias filas
-    cols = st.columns(min(3, len(proyectos_lista)))
     
     proyecto_seleccionado = None
     
+    # Mostrar proyectos como tarjetas
+    cols = st.columns(min(3, len(proyectos_lista)))
+    
     for idx, (nombre, config) in enumerate(PROYECTOS.items()):
-        col_idx = idx % 3 if len(proyectos_lista) > 3 else idx
-        with cols[col_idx if col_idx < len(cols) else 0]:
-            # Crear un botón que parezca una tarjeta
+        col_idx = idx % 3
+        with cols[col_idx]:
             if st.button(
                 f"{config['icono']}\n\n{config['nombre']}\n\n`{config['id']}`",
                 key=f"proyecto_{config['id']}",
@@ -151,9 +149,9 @@ def render():
             ):
                 proyecto_seleccionado = nombre
     
-    # Si no hay selección, mostrar el primer proyecto por defecto
-    if proyecto_seleccionado is None:
-        proyecto_seleccionado = proyectos_lista[0] if proyectos_lista else None
+    # Si no hay selección, usar el primero
+    if proyecto_seleccionado is None and proyectos_lista:
+        proyecto_seleccionado = proyectos_lista[0]
     
     if not proyecto_seleccionado:
         st.warning("⚠️ No hay proyectos configurados.")
@@ -162,12 +160,11 @@ def render():
     config = PROYECTOS[proyecto_seleccionado]
     
     # ============================================================
-    # CONTENIDO DEL PROYECTO SELECCIONADO
+    # CONTENIDO DEL PROYECTO
     # ============================================================
     
     st.markdown("---")
     
-    # Header del proyecto
     col1, col2, col3 = st.columns([1, 3, 1])
     with col1:
         st.markdown(f"## {config['icono']}")
@@ -175,21 +172,19 @@ def render():
         st.markdown(f"## {config['nombre']}")
         st.caption(f"ID: `{config['id']}`")
     with col3:
-        # Botón para refrescar
         if st.button("🔄 Refrescar", use_container_width=True):
             st.rerun()
     
     st.markdown("---")
     
     # ============================================================
-    # TABS: CARGA Y REPORTES
+    # TABS
     # ============================================================
     
     tab1, tab2 = st.tabs(["📥 Cargar Cartera", "📄 Generar Reportes"])
     
     with tab1:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-        # Ejecutar la función de carga del proyecto
         config['carga']()
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -202,7 +197,6 @@ def render():
             st.info("ℹ️ No hay reportes configurados para este proyecto.")
         else:
             st.markdown("#### 📋 Reportes disponibles")
-            st.markdown("Selecciona un reporte para generarlo y descargarlo.")
             
             for nombre_reporte, funcion in reportes.items():
                 with st.container():
@@ -220,7 +214,6 @@ def render():
                                 else:
                                     st.warning(mensaje)
                     with col3:
-                        # Si hay un reporte generado en sesión, mostrar botón de descarga
                         if st.session_state.get(f"reporte_{nombre_reporte}"):
                             st.download_button(
                                 label="📥 Descargar",
@@ -229,8 +222,6 @@ def render():
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 key=f"download_{nombre_reporte}"
                             )
-                            
-                            # Mostrar mensaje de éxito
                             if st.session_state.get(f"mensaje_{nombre_reporte}"):
                                 st.success(st.session_state[f"mensaje_{nombre_reporte}"])
                     

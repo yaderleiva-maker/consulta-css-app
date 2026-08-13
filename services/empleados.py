@@ -171,6 +171,7 @@ def obtener_activos_inactivos():
 def generar_excel_activos_inactivos():
     """
     Generar un DataFrame con activos e inactivos para descargar como Excel.
+    Inactivos primero (por fecha_terminacion), luego activos (por fecha_ingreso_empresa).
     """
     query = """
     SELECT 
@@ -191,7 +192,11 @@ def generar_excel_activos_inactivos():
         WHEN est.nombre = 'Inactivo' THEN 0
         ELSE 1
       END ASC,
-      e.fecha_terminacion ASC NULLS LAST
+      CASE
+        WHEN est.nombre = 'Inactivo' THEN e.fecha_terminacion
+        ELSE e.fecha_ingreso_empresa
+      END ASC NULLS LAST,
+      Nombre_Completo ASC
     """
     
     from services.bigquery import ejecutar_query

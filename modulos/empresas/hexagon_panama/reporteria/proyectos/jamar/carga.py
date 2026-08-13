@@ -229,7 +229,7 @@ def render():
     </style>
     """, unsafe_allow_html=True)
     
-    st.markdown('<div class="main-header">📥 Carga de Cartera - Jamar</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">📥 Carga de Cartera Predemanda - Jamar</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el archivo de cartera pre-demanda de Jamar. El sistema reemplazará completamente los datos anteriores.</div>', unsafe_allow_html=True)
     
     # ---- Instrucciones ----

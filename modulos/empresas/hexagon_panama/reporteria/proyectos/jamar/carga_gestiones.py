@@ -16,18 +16,18 @@ TABLA_GESTIONES = f"`{PROYECTO_BQ}.gestiones_jamar`"
 TABLA_MAPEO = f"`{PROYECTO_BQ}.mapeo_codigos_gestion`"
 
 # ============================================================
-# FUNCIONES DE NORMALIZACIÓN
+# FUNCIONES DE NORMALIZACIÓN (MEJORADAS)
 # ============================================================
 
 def normalizar_texto(valor):
+    """Normaliza texto y escapa caracteres especiales para SQL"""
     if pd.isna(valor):
         return None
     texto = str(valor).strip()
     if texto == '' or texto == 'nan' or texto == 'None' or texto == 'NULL':
         return None
-    # Escapar comillas simples (') para SQL
+    # Escapar comillas simples (') y barras invertidas
     texto = texto.replace("'", "''")
-    # Escapar caracteres especiales
     texto = texto.replace("\\", "\\\\")
     return texto
 
@@ -46,14 +46,12 @@ def normalizar_numero(valor):
     return None
 
 def normalizar_fecha_hora(valor):
-    """Convierte a TIMESTAMP"""
     if pd.isna(valor):
         return None
     if isinstance(valor, pd.Timestamp):
         return valor.isoformat()
     if isinstance(valor, str):
         valor = str(valor).strip()
-        # Si está vacío
         if not valor or valor == 'nan' or valor == 'None':
             return None
         for fmt in ['%d-%m-%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%d/%m/%Y %H:%M:%S']:
@@ -64,7 +62,6 @@ def normalizar_fecha_hora(valor):
     return None
 
 def normalizar_fecha(valor):
-    """Convierte a DATE"""
     if pd.isna(valor):
         return None
     if isinstance(valor, pd.Timestamp):
@@ -80,13 +77,22 @@ def normalizar_fecha(valor):
                 continue
     return None
 
+def formatear_valor_sql(valor):
+    """Formatea un valor para SQL: si es None devuelve 'NULL', si no devuelve comillas"""
+    if valor is None:
+        return 'NULL'
+    if isinstance(valor, (int, float)):
+        return str(valor)
+    if isinstance(valor, str):
+        return f"'{valor}'"
+    return f"'{valor}'"
+
 # ============================================================
 # FUNCIONES DE BIGQUERY
 # ============================================================
 
 @st.cache_data(ttl=300)
 def obtener_mapeo_codigos():
-    """Obtiene el mapeo de códigos de gestión desde BigQuery"""
     try:
         query = f"""
             SELECT codigo_gestion, mejor_gestion_jamar, resultado
@@ -94,28 +100,14 @@ def obtener_mapeo_codigos():
         """
         df = ejecutar_query(query)
         if df.empty:
-            st.warning("⚠️ No se encontró la tabla de mapeo. Ejecuta primero el SQL de creación.")
+            st.warning("⚠️ No se encontró la tabla de mapeo.")
             return {}
         return dict(zip(df['codigo_gestion'], zip(df['mejor_gestion_jamar'], df['resultado'])))
     except Exception as e:
         st.error(f"❌ Error al obtener mapeo: {e}")
         return {}
 
-def obtener_cartera_llaves():
-    """Obtiene las llaves existentes en la cartera para validación"""
-    try:
-        query = f"""
-            SELECT llave
-            FROM `{PROYECTO_BQ}.cartera_predemanda_jamar`
-            WHERE id_proyecto = '{PROYECTO_ID}'
-        """
-        df = ejecutar_query(query)
-        return set(df['llave'].tolist()) if not df.empty else set()
-    except:
-        return set()
-
 def verificar_cartera_cargada():
-    """Verifica si la cartera predemanda tiene datos"""
     try:
         query = f"""
             SELECT COUNT(*) AS total
@@ -130,7 +122,6 @@ def verificar_cartera_cargada():
         return False
 
 def obtener_ultimas_fechas_carga():
-    """Obtiene las fechas de las últimas cargas de gestiones"""
     try:
         query = f"""
             SELECT 
@@ -150,46 +141,39 @@ def obtener_ultimas_fechas_carga():
         return pd.DataFrame()
 
 def guardar_gestiones_jamar(df, proyecto_id):
-    """
-    Guarda las gestiones de Jamar en BigQuery.
-    """
+    """Guarda las gestiones de Jamar en BigQuery usando el cliente de BigQuery directamente."""
     import time
     start_time = time.time()
+    from google.cloud import bigquery
+    from google.oauth2 import service_account
     
     total = len(df)
     errores = 0
-    detalles = []
     registros_guardados = 0
     
-    # 1. Obtener mapeo de códigos
+    # Obtener mapeo de códigos
     mapeo = obtener_mapeo_codigos()
     if not mapeo:
-        st.error("❌ No se pudo obtener el mapeo de códigos. Verifica la tabla mapeo_codigos_gestion.")
-        return 0, total, "Error: Tabla de mapeo vacía o no existe"
-    
-    # 2. Validar que hay datos para procesar
+        st.error("❌ No se pudo obtener el mapeo de códigos.")
+        return 0, total, "Error: Tabla de mapeo vacía"
+
     if df.empty:
         st.warning("⚠️ El archivo no contiene datos.")
         return 0, total, "Archivo vacío"
     
-    st.info(f"📊 Procesando {len(df)} registros...")
-    
-    # 3. Preparar valores
-    valores = []
-    registros_sin_llave = 0
+    # Crear lista de diccionarios para insertar
+    registros = []
     
     for idx, row in df.iterrows():
         try:
-            # Extraer campos clave
+            # Extraer y normalizar campos
             llave_raw = row.get('Llave')
             codigo_agencia = normalizar_texto(row.get('Codigo de la Agencia'))
             numero_cuenta = normalizar_texto(row.get('Número de Cuenta'))
             
-            # Si no tiene llave, intentar generarla
             if pd.isna(llave_raw) or not str(llave_raw).strip():
                 if codigo_agencia and numero_cuenta:
                     llave = f"{codigo_agencia}{numero_cuenta}"
-                    registros_sin_llave += 1
                 else:
                     llave = None
             else:
@@ -198,18 +182,15 @@ def guardar_gestiones_jamar(df, proyecto_id):
             codigo_cliente = normalizar_texto(row.get('Codigo del Cliente'))
             codigo_gestion = normalizar_texto(row.get('codigo_gestion'))
             
-            # Obtener clasificación del código de gestión
             mejor_gestion = None
             resultado = None
             if codigo_gestion and codigo_gestion in mapeo:
                 mejor_gestion, resultado = mapeo[codigo_gestion]
             
-            # Fechas
             fechahora = normalizar_fecha_hora(row.get('fechahoragestion'))
             fechapromesa = normalizar_fecha(row.get('fechapromesa'))
             fecha = normalizar_fecha(row.get('Fecha'))
             
-            # Números
             valorpromesa = normalizar_numero(row.get('valorpromesa'))
             min_prioridad = None
             try:
@@ -219,89 +200,112 @@ def guardar_gestiones_jamar(df, proyecto_id):
             except:
                 pass
             
-            id_gestion = str(uuid.uuid4())
-            
-            # Escapar todos los textos
-            observacion = normalizar_texto(row.get('Observación'))
-            cod_cobrador = normalizar_texto(row.get('Codigo del cobrador'))
-            area_gestion = normalizar_texto(row.get('area_gestion'))
-            tipo_gestion = normalizar_texto(row.get('tipo_gestion'))
-            numeromarcado = normalizar_texto(row.get('numeromarcado'))
-            tipo_telefono = normalizar_texto(row.get('tipo_telefono'))
-            lugar_contacto = normalizar_texto(row.get('lugar_contacto'))
-            tipo_contacto = normalizar_texto(row.get('tipo_contacto'))
-            clave = normalizar_texto(row.get('Clave'))
-            clave_min = normalizar_texto(row.get('ClaveMin'))
-            pais = normalizar_texto(row.get('Pais'))
-            tipo_credito = normalizar_texto(row.get('Tipo credito'))
-            
-            valores.append(f"""(
-                '{id_gestion}',
-                '{PROYECTO_ID}',
-                {f"'{llave}'" if llave else 'NULL'},
-                {f"'{codigo_agencia}'" if codigo_agencia else 'NULL'},
-                {f"'{numero_cuenta}'" if numero_cuenta else 'NULL'},
-                {f"'{codigo_cliente}'" if codigo_cliente else 'NULL'},
-                {f"'{fechahora}'" if fechahora else 'NULL'},
-                {f"'{codigo_gestion}'" if codigo_gestion else 'NULL'},
-                {f"'{observacion}'" if observacion else 'NULL'},
-                {f"'{cod_cobrador}'" if cod_cobrador else 'NULL'},
-                {f"'{area_gestion}'" if area_gestion else 'NULL'},
-                {f"'{tipo_gestion}'" if tipo_gestion else 'NULL'},
-                {f"'{numeromarcado}'" if numeromarcado else 'NULL'},
-                {f"'{tipo_telefono}'" if tipo_telefono else 'NULL'},
-                {f"'{fechapromesa}'" if fechapromesa else 'NULL'},
-                {valorpromesa if valorpromesa is not None else 'NULL'},
-                {f"'{mejor_gestion}'" if mejor_gestion else 'NULL'},
-                {f"'{resultado}'" if resultado else 'NULL'},
-                {f"'{lugar_contacto}'" if lugar_contacto else 'NULL'},
-                {f"'{tipo_contacto}'" if tipo_contacto else 'NULL'},
-                {f"'{clave}'" if clave else 'NULL'},
-                {f"'{fecha}'" if fecha else 'NULL'},
-                {min_prioridad if min_prioridad is not None else 'NULL'},
-                {f"'{clave_min}'" if clave_min else 'NULL'},
-                CURRENT_TIMESTAMP(),
-                CURRENT_TIMESTAMP(),
-                CURRENT_TIMESTAMP()
-            )""")
+            registro = {
+                'id_gestion': str(uuid.uuid4()),
+                'id_proyecto': PROYECTO_ID,
+                'llave': llave,
+                'codigo_agencia': codigo_agencia,
+                'numero_cuenta': numero_cuenta,
+                'codigo_cliente': codigo_cliente,
+                'fechahoragestion': fechahora,
+                'codigo_gestion': codigo_gestion,
+                'observacion': normalizar_texto(row.get('Observación')),
+                'codigo_cobrador': normalizar_texto(row.get('Codigo del cobrador')),
+                'area_gestion': normalizar_texto(row.get('area_gestion')),
+                'tipo_gestion': normalizar_texto(row.get('tipo_gestion')),
+                'numeromarcado': normalizar_texto(row.get('numeromarcado')),
+                'tipo_telefono': normalizar_texto(row.get('tipo_telefono')),
+                'fechapromesa': fechapromesa,
+                'valorpromesa': valorpromesa,
+                'mejor_gestion_jamar': mejor_gestion,
+                'resultado_gestion': resultado,
+                'lugar_contacto': normalizar_texto(row.get('lugar_contacto')),
+                'tipo_contacto': normalizar_texto(row.get('tipo_contacto')),
+                'clave': normalizar_texto(row.get('Clave')),
+                'fecha': fecha,
+                'min_de_prioridad': min_prioridad,
+                'clave_min': normalizar_texto(row.get('ClaveMin')),
+                'fecha_carga': datetime.now().isoformat(),
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat()
+            }
+            registros.append(registro)
             
         except Exception as e:
             errores += 1
-            detalles.append(f"Fila {idx+2}: {str(e)}")
+            st.warning(f"⚠️ Error en fila {idx+2}: {str(e)}")
     
-    # Mostrar estadísticas de procesamiento
-    st.info(f"📊 Registros procesados: {len(valores)} para insertar, {errores} con errores")
-    if registros_sin_llave > 0:
-        st.info(f"🔑 {registros_sin_llave} registros no tenían llave y se generaron automáticamente")
-    
-    # 4. Insertar en BigQuery
-    if valores:
-        # Dividir en lotes para evitar errores de tamaño
-        batch_size = 500
-        total_insertados = 0
-        
-        for i in range(0, len(valores), batch_size):
-            batch = valores[i:i+batch_size]
-            try:
-                insert_query = f"""
-                    INSERT INTO {TABLA_GESTIONES}
-                    (id_gestion, id_proyecto, llave, codigo_agencia, numero_cuenta, codigo_cliente,
-                     fechahoragestion, codigo_gestion, observacion, codigo_cobrador, area_gestion,
-                     tipo_gestion, numeromarcado, tipo_telefono, fechapromesa, valorpromesa,
-                     mejor_gestion_jamar, resultado_gestion, lugar_contacto, tipo_contacto,
-                     clave, fecha, min_de_prioridad, clave_min, fecha_carga, created_at, updated_at)
-                    VALUES {', '.join(batch)}
-                """
-                ejecutar_query(insert_query)
-                total_insertados += len(batch)
-                st.success(f"✅ Lote {i//batch_size + 1}: {len(batch)} registros insertados")
-            except Exception as e:
-                st.error(f"❌ Error en lote {i//batch_size + 1}: {e}")
-                errores += len(batch)
-        
-        registros_guardados = total_insertados
-    else:
+    if not registros:
         st.warning("⚠️ No hay datos válidos para insertar")
+        return 0, total, "No hay datos válidos"
+    
+    # Convertir a DataFrame para subir a BigQuery
+    df_insert = pd.DataFrame(registros)
+    
+    # Conectar a BigQuery con credenciales
+    try:
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"]
+        )
+        client = bigquery.Client(
+            credentials=credentials,
+            project=credentials.project_id
+        )
+        
+        # Insertar usando load_table_from_dataframe (más robusto)
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            autodetect=False,
+            schema=[
+                bigquery.SchemaField("id_gestion", "STRING"),
+                bigquery.SchemaField("id_proyecto", "STRING"),
+                bigquery.SchemaField("llave", "STRING"),
+                bigquery.SchemaField("codigo_agencia", "STRING"),
+                bigquery.SchemaField("numero_cuenta", "STRING"),
+                bigquery.SchemaField("codigo_cliente", "STRING"),
+                bigquery.SchemaField("fechahoragestion", "TIMESTAMP"),
+                bigquery.SchemaField("codigo_gestion", "STRING"),
+                bigquery.SchemaField("observacion", "STRING"),
+                bigquery.SchemaField("codigo_cobrador", "STRING"),
+                bigquery.SchemaField("area_gestion", "STRING"),
+                bigquery.SchemaField("tipo_gestion", "STRING"),
+                bigquery.SchemaField("numeromarcado", "STRING"),
+                bigquery.SchemaField("tipo_telefono", "STRING"),
+                bigquery.SchemaField("fechapromesa", "DATE"),
+                bigquery.SchemaField("valorpromesa", "FLOAT64"),
+                bigquery.SchemaField("mejor_gestion_jamar", "STRING"),
+                bigquery.SchemaField("resultado_gestion", "STRING"),
+                bigquery.SchemaField("lugar_contacto", "STRING"),
+                bigquery.SchemaField("tipo_contacto", "STRING"),
+                bigquery.SchemaField("clave", "STRING"),
+                bigquery.SchemaField("fecha", "DATE"),
+                bigquery.SchemaField("min_de_prioridad", "INT64"),
+                bigquery.SchemaField("clave_min", "STRING"),
+                bigquery.SchemaField("fecha_carga", "TIMESTAMP"),
+                bigquery.SchemaField("created_at", "TIMESTAMP"),
+                bigquery.SchemaField("updated_at", "TIMESTAMP"),
+            ]
+        )
+        
+        with st.spinner(f"📤 Subiendo {len(df_insert)} registros a BigQuery..."):
+            job = client.load_table_from_dataframe(
+                df_insert,
+                f"{PROYECTO_BQ}.gestiones_jamar",
+                job_config=job_config
+            )
+            job.result()  # Esperar a que termine
+            
+            # Verificar cuántos se insertaron
+            table = client.get_table(f"{PROYECTO_BQ}.gestiones_jamar")
+            registros_guardados = table.num_rows
+            
+            # También insertar el conteo actualizado
+            st.success(f"✅ {registros_guardados} registros guardados correctamente")
+            
+    except Exception as e:
+        st.error(f"❌ Error al insertar en BigQuery: {str(e)}")
+        st.exception(e)
+        return 0, total, f"Error en BigQuery: {e}"
     
     elapsed_time = time.time() - start_time
     detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
@@ -313,27 +317,19 @@ def guardar_gestiones_jamar(df, proyecto_id):
 # ============================================================
 
 def leer_archivo_gestiones(uploaded_file):
-    """Lee un archivo Excel con dos hojas: CORREOS & WHATSAPP y LLAMADAS."""
     try:
-        # Intentar leer ambas hojas
         xls = pd.ExcelFile(uploaded_file)
         sheet_names = xls.sheet_names
-        
-        st.info(f"📋 Hojas encontradas: {', '.join(sheet_names)}")
         
         if 'CORREOS & WHATSAPP' in sheet_names and 'LLAMADAS' in sheet_names:
             df_correos = pd.read_excel(uploaded_file, sheet_name='CORREOS & WHATSAPP')
             df_llamadas = pd.read_excel(uploaded_file, sheet_name='LLAMADAS')
             df_combinado = pd.concat([df_correos, df_llamadas], ignore_index=True)
-            st.info(f"📊 CORREOS: {len(df_correos)} registros, LLAMADAS: {len(df_llamadas)} registros")
         else:
-            # Si no tiene las hojas exactas, intentar con la primera hoja
-            st.warning(f"⚠️ No se encontraron las hojas 'CORREOS & WHATSAPP' y 'LLAMADAS'. Usando la primera hoja: {sheet_names[0]}")
+            st.warning(f"⚠️ Usando la primera hoja: {sheet_names[0]}")
             df_combinado = pd.read_excel(uploaded_file, sheet_name=sheet_names[0])
         
-        # Normalizar nombres de columnas
         df_combinado.columns = df_combinado.columns.str.strip()
-        
         return df_combinado
         
     except Exception as e:
@@ -358,17 +354,13 @@ def render():
         .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
         .status-badge.success { background-color: #dcfce7; color: #166534; }
         .status-badge.warning { background-color: #fef3c7; color: #92400e; }
-        .status-badge.error { background-color: #fee2e2; color: #991b1b; }
     </style>
     """, unsafe_allow_html=True)
     
     st.markdown('<div class="main-header">📞 Carga de Gestiones - Jamar</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el reporte de gestiones diarias. El sistema procesará ambas hojas (CORREOS & WHATSAPP y LLAMADAS).</div>', unsafe_allow_html=True)
     
-    # ============================================================
-    # VERIFICAR CARTERA CARGADA
-    # ============================================================
-    
+    # Estado del sistema
     st.markdown('<div class="card">', unsafe_allow_html=True)
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -380,9 +372,8 @@ def render():
         else:
             st.markdown('<span class="status-badge warning">⚠️ Sin cartera</span>', unsafe_allow_html=True)
     
-    # Mostrar últimas cargas de gestiones
+    # Últimas cargas
     df_resumen = obtener_ultimas_fechas_carga()
-    
     if not df_resumen.empty:
         st.markdown("#### 📊 Últimas cargas de gestiones")
         for _, row in df_resumen.iterrows():
@@ -400,10 +391,7 @@ def render():
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # ============================================================
-    # ÁREA DE CARGA
-    # ============================================================
-    
+    # Área de carga
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">📤 Subir archivo de gestiones</div>', unsafe_allow_html=True)
     
@@ -436,18 +424,15 @@ def render():
                 with col1:
                     st.metric("Total registros", f"{len(df):,}")
                 with col2:
-                    codigos_unicos = df['codigo_gestion'].nunique() if 'codigo_gestion' in df.columns else 0
-                    st.metric("Códigos únicos", f"{codigos_unicos:,}")
+                    codigos = df['codigo_gestion'].nunique() if 'codigo_gestion' in df.columns else 0
+                    st.metric("Códigos únicos", f"{codigos:,}")
                 with col3:
-                    if 'fechahoragestion' in df.columns:
+                    if 'fechahoragestion' in df.columns and not df.empty:
                         try:
-                            primera_fecha = pd.to_datetime(df['fechahoragestion'].iloc[0])
-                            st.metric("Fecha del archivo", primera_fecha.strftime('%d/%m/%Y'))
+                            fecha = pd.to_datetime(df['fechahoragestion'].iloc[0])
+                            st.metric("Fecha del archivo", fecha.strftime('%d/%m/%Y'))
                         except:
                             st.metric("Fecha del archivo", "No disponible")
-                
-                # Mostrar columnas disponibles
-                st.caption(f"Columnas encontradas: {', '.join(df.columns.tolist()[:10])}...")
                 
                 if st.button("🚀 Guardar en BigQuery", type="primary", use_container_width=True):
                     guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID)
@@ -460,13 +445,15 @@ def render():
                     with col3:
                         st.metric("❌ Errores", f"{errores:,}")
                     
-                    if errores == 0 and guardados > 0:
+                    if guardados > 0:
                         st.success(f"🎉 {detalle}")
                         st.balloons()
-                    elif guardados == 0 and errores == 0:
-                        st.warning("⚠️ No se guardaron registros. Verifica que el archivo tenga datos válidos.")
-                    else:
+                    elif errores > 0:
                         st.warning(f"⚠️ {detalle}")
+                    else:
+                        st.warning("⚠️ No se guardaron registros. Verifica el archivo.")
+                    
+                    st.rerun()
                 
             except Exception as e:
                 st.error(f"❌ Error al procesar el archivo: {str(e)}")

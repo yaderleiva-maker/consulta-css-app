@@ -15,7 +15,7 @@ PROYECTOS = {
         "id": "JAMAR",
         "nombre": "Jamar S.A.",
         "carga": jamar_carga.render,
-        "gestiones": jamar_gestiones.render,
+        "gestiones": jamar_gestiones.render,  # ✅ Aqui va
         "reportes": jamar_reportes.REPORTES,
         "icono": "📊"
     },
@@ -35,7 +35,7 @@ PROYECTOS = {
 # ============================================================
 
 def render():
-    """Punto de entrada para Reportería"""
+    """Punto de entrada para Reporteria"""
     
     st.markdown("""
     <style>
@@ -78,19 +78,6 @@ def render():
         .btn-primary:hover {
             background-color: #b91c1c;
         }
-        .btn-outline {
-            background-color: transparent;
-            color: #dc2626;
-            border: 1px solid #dc2626;
-            padding: 8px 20px;
-            border-radius: 8px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .btn-outline:hover {
-            background-color: #fef2f2;
-        }
         .helper-text {
             font-size: 13px;
             color: #6b6b6b;
@@ -107,14 +94,29 @@ def render():
             color: #1a1a1a;
             font-size: 14px;
         }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        .status-badge.success {
+            background-color: #dcfce7;
+            color: #166534;
+        }
+        .status-badge.warning {
+            background-color: #fef3c7;
+            color: #92400e;
+        }
     </style>
     """, unsafe_allow_html=True)
     
-    st.markdown('<div class="main-header">📊 Reportería por Proyecto</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Selecciona un proyecto para cargar su cartera, gestiones diarias o generar reportes específicos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">📊 Reporteria por Proyecto</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Selecciona un proyecto para cargar su cartera, gestiones diarias o generar reportes especificos.</div>', unsafe_allow_html=True)
     
     # ============================================================
-    # SELECCIÓN DE PROYECTO (dropdown)
+    # SELECCION DE PROYECTO
     # ============================================================
     
     proyectos_lista = list(PROYECTOS.keys())
@@ -135,7 +137,7 @@ def render():
     config = PROYECTOS[proyecto_seleccionado]
     
     # ============================================================
-    # CONTENIDO DEL PROYECTO SELECCIONADO
+    # CONTENIDO DEL PROYECTO
     # ============================================================
     
     st.markdown("---")
@@ -153,7 +155,7 @@ def render():
     st.markdown("---")
     
     # ============================================================
-    # TABS: CARGA CARTERA | CARGA GESTIONES | REPORTES
+    # TABS
     # ============================================================
     
     tab1, tab2, tab3 = st.tabs([
@@ -169,7 +171,7 @@ def render():
     
     with tab2:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
-        config['gestiones']()
+        config['gestiones']()  # ✅ Aquí se ejecuta la función render de carga_gestiones.py
         st.markdown('</div>', unsafe_allow_html=True)
     
     with tab3:
@@ -219,6 +221,6 @@ def render():
     
     st.markdown("""
     <div style="text-align: center; margin-top: 32px; font-size: 12px; color: #9ca3af; border-top: 1px solid #f0f0f0; padding-top: 16px;">
-        Hexagon · Reportería · Versión 1.0
+        Hexagon · Reporteria · Version 1.0
     </div>
     """, unsafe_allow_html=True)

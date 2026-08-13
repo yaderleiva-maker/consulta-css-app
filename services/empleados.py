@@ -105,7 +105,7 @@ def obtener_estadisticas_rapidas():
 def obtener_activos_inactivos():
     """
     Obtener lista de empleados activos e inactivos.
-    Sin subconsultas correlacionadas.
+    Inactivos primero (por fecha_terminacion), luego activos (por fecha_ingreso_empresa).
     """
     query = """
     WITH historial_actual AS (
@@ -147,7 +147,8 @@ def obtener_activos_inactivos():
       CASE
         WHEN est.nombre = 'Inactivo' THEN e.fecha_terminacion
         ELSE e.fecha_ingreso_empresa
-      END ASC
+      END ASC NULLS LAST,
+      nombre_completo ASC
     """
 
     from services.bigquery import ejecutar_query
@@ -166,7 +167,6 @@ def obtener_activos_inactivos():
         )
 
     return df.to_dict('records')
-
 
 def generar_excel_activos_inactivos():
     """

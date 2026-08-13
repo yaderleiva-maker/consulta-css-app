@@ -22,13 +22,29 @@ COLUMNAS_REQUERIDAS = [
     'Codigo del Cliente', 'Nombre del Cliente', 'Rank'
 ]
 
-# Columnas opcionales
-COLUMNAS_OPCIONALES = [
-    'Saldo Total vencido', 'Fecha ultimo pago', 'VR A PAGAR DCTO 1',
-    'VR A PAGAR DCTO 2', 'PLAZO DCTO 1', 'PLAZO DCTO 2',
-    'Vr a pagar PLAN AL DIA', 'CUOTA INICIAL ARREGLO',
-    'Saldo a diferir por cuotas'
-]
+# ============================================================
+# FUNCIONES DE BIGQUERY
+# ============================================================
+
+def obtener_ultima_carga_cartera():
+    """Obtiene la fecha de la última carga de cartera"""
+    try:
+        query = f"""
+            SELECT 
+                MAX(fecha_carga) AS ultima_carga,
+                COUNT(*) AS total_registros
+            FROM {TABLA_DESTINO}
+            WHERE id_proyecto = '{PROYECTO_ID}'
+        """
+        df = ejecutar_query(query)
+        if not df.empty and df['ultima_carga'].iloc[0] is not None:
+            return {
+                'fecha': df['ultima_carga'].iloc[0],
+                'total': df['total_registros'].iloc[0]
+            }
+        return None
+    except:
+        return None
 
 # ============================================================
 # FUNCIONES DE NORMALIZACIÓN
@@ -45,30 +61,20 @@ def normalizar_numero(valor):
     if isinstance(valor, (int, float)):
         return float(valor)
     if isinstance(valor, str):
-        # Limpiar: eliminar B/., espacios, comas
-        limpio = re.sub(r'[^\d.,-]', '', valor)
-        limpio = limpio.replace(',', '.')
+        limpiar = re.sub(r'[^\d.,-]', '', valor)
+        limpiar = limpiar.replace(',', '.')
         try:
-            return float(limpio)
+            return float(limpiar)
         except:
             return None
     return None
 
 def generar_llave(agencia, cuenta):
-    """Genera la clave compuesta: agencia + cuenta"""
     if pd.isna(agencia) or pd.isna(cuenta):
         return None
     return f"{str(agencia).strip()}{str(cuenta).strip()}"
 
-# ============================================================
-# FUNCIONES DE BIGQUERY
-# ============================================================
-
 def guardar_cartera_jamar(df, proyecto_id):
-    """
-    Guarda la cartera de Jamar en BigQuery.
-    Primero elimina todos los registros del proyecto, luego inserta los nuevos.
-    """
     import time
     start_time = time.time()
     
@@ -77,26 +83,18 @@ def guardar_cartera_jamar(df, proyecto_id):
     detalles = []
     registros_guardados = 0
 
-    # ============================================================
-    # PASO 1: ELIMINAR TODOS LOS REGISTROS DEL PROYECTO
-    # ============================================================
-    
-    with st.spinner("🗑️ Eliminando datos anteriores de Jamar..."):
+    # Eliminar datos anteriores
+    with st.spinner("Eliminando datos anteriores de Jamar..."):
         delete_query = f"""
             DELETE FROM {TABLA_DESTINO}
             WHERE id_proyecto = '{PROYECTO_ID}'
         """
         try:
             ejecutar_query(delete_query)
-            st.info("✅ Datos anteriores eliminados correctamente")
         except Exception as e:
-            st.error(f"❌ Error al eliminar datos anteriores: {e}")
             return 0, total, f"Error en eliminación: {e}"
 
-    # ============================================================
-    # PASO 2: PREPARAR NUEVOS REGISTROS
-    # ============================================================
-    
+    # Preparar nuevos registros
     valores = []
     
     for idx, row in df.iterrows():
@@ -115,7 +113,6 @@ def guardar_cartera_jamar(df, proyecto_id):
                 detalles.append(f"Fila {idx+2}: No se pudo generar llave")
                 continue
             
-            # Limpiar y normalizar campos
             estado_inicial = normalizar_texto(row.get('Estado inicial'))
             tramo_inicial = normalizar_texto(row.get('Tramo inicial'))
             tipo_credito = normalizar_texto(row.get('Tipo credito'))
@@ -124,7 +121,6 @@ def guardar_cartera_jamar(df, proyecto_id):
             rank = normalizar_texto(row.get('Rank'))
             entidad = normalizar_texto(row.get('ENTIDAD', 'HEXAGON'))
             
-            # Números
             saldo_total = normalizar_numero(row.get('Saldo Total adeudado'))
             saldo_vencido = normalizar_numero(row.get('Saldo Total vencido'))
             vr_pagar_dcto_1 = normalizar_numero(row.get('VR A PAGAR DCTO 1'))
@@ -133,7 +129,6 @@ def guardar_cartera_jamar(df, proyecto_id):
             cuota_inicial = normalizar_numero(row.get('CUOTA INICIAL ARREGLO'))
             saldo_diferir = normalizar_numero(row.get('Saldo a diferir por cuotas'))
             
-            # Fecha
             fecha_ultimo_pago = None
             if pd.notna(row.get('Fecha ultimo pago')):
                 try:
@@ -141,7 +136,6 @@ def guardar_cartera_jamar(df, proyecto_id):
                 except:
                     pass
             
-            # Plazos
             plazo_dcto_1 = normalizar_texto(row.get('PLAZO DCTO 1'))
             plazo_dcto_2 = normalizar_texto(row.get('PLAZO DCTO 2'))
             
@@ -179,12 +173,8 @@ def guardar_cartera_jamar(df, proyecto_id):
             errores += 1
             detalles.append(f"Fila {idx+2}: {str(e)}")
     
-    # ============================================================
-    # PASO 3: INSERTAR NUEVOS REGISTROS
-    # ============================================================
-    
     if valores:
-        with st.spinner(f"📥 Insertando {len(valores)} registros en BigQuery..."):
+        with st.spinner(f"Insertando {len(valores)} registros en BigQuery..."):
             insert_query = f"""
                 INSERT INTO {TABLA_DESTINO}
                 (id_registro, id_proyecto, llave, estado_inicial, tramo_inicial,
@@ -198,12 +188,8 @@ def guardar_cartera_jamar(df, proyecto_id):
             try:
                 ejecutar_query(insert_query)
                 registros_guardados = len(valores)
-                st.success(f"✅ {registros_guardados} registros insertados correctamente")
             except Exception as e:
-                st.error(f"❌ Error al insertar datos: {e}")
                 return registros_guardados, errores, f"Error en inserción: {e}"
-    else:
-        st.warning("⚠️ No hay datos válidos para insertar")
     
     elapsed_time = time.time() - start_time
     detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
@@ -215,39 +201,48 @@ def guardar_cartera_jamar(df, proyecto_id):
 # ============================================================
 
 def render():
-    """Punto de entrada para cargar la cartera de Jamar"""
-    
     st.markdown("""
     <style>
-        .main-header { font-size: 24px; font-weight: 600; color: #1a1a1a; margin-bottom: 8px; }
-        .sub-header { font-size: 14px; color: #6b6b6b; margin-bottom: 24px; }
-        .card { background-color: #ffffff; border-radius: 12px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04); border: 1px solid #f0f0f0; margin-bottom: 16px; }
-        .card-title { font-size: 16px; font-weight: 500; color: #1a1a1a; margin-bottom: 12px; }
-        .helper-text { font-size: 13px; color: #6b6b6b; margin-top: 4px; }
-        .selected-file { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; }
+        .main-header { font-size: 22px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
+        .sub-header { font-size: 14px; color: #6b6b6b; margin-bottom: 16px; }
+        .card { background-color: #ffffff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #f0f0f0; margin-bottom: 16px; }
+        .card-title { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 8px; }
+        .selected-file { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
         .selected-file .file-name { font-weight: 500; color: #166534; }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status-badge.success { background-color: #dcfce7; color: #166534; }
+        .status-badge.warning { background-color: #fef3c7; color: #92400e; }
     </style>
     """, unsafe_allow_html=True)
     
-    st.markdown('<div class="main-header">📥 Carga de Cartera Predemanda - Jamar</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">Carga de Cartera Predemanda - Jamar</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el archivo de cartera pre-demanda de Jamar. El sistema reemplazará completamente los datos anteriores.</div>', unsafe_allow_html=True)
+    
+    # ---- Verificar si ya existe cartera cargada ----
+    ultima_carga = obtener_ultima_carga_cartera()
+    
+    if ultima_carga:
+        fecha_str = ultima_carga['fecha'].strftime('%d/%m/%Y %H:%M') if hasattr(ultima_carga['fecha'], 'strftime') else str(ultima_carga['fecha'])
+        st.success(f"📊 **Cartera ya cargada** · {ultima_carga['total']:,} registros · Última carga: {fecha_str}")
+    else:
+        st.warning("⚠️ **No hay cartera cargada.** Sube un archivo para comenzar.")
     
     # ---- Instrucciones ----
     st.markdown("""
     <div class="card">
-        <div class="card-title">📋 Instrucciones</div>
+        <div class="card-title">Instrucciones</div>
         <ul style="margin: 0; padding-left: 20px; color: #4b5563; font-size: 14px; line-height: 1.8;">
             <li>El archivo debe tener las columnas del formato de Jamar.</li>
             <li>Columnas obligatorias: <strong>Estado inicial, Tramo inicial, Codigo de la Agencia, Número de Cuenta, Saldo Total adeudado, Codigo del Cliente, Nombre del Cliente, Rank</strong></li>
             <li>Se generará automáticamente una <strong>clave compuesta</strong> (Agencia + Cuenta) para identificar cada registro.</li>
-            <li><strong>⚠️ IMPORTANTE:</strong> Esta carga reemplazará TODOS los datos anteriores de Jamar.</li>
+            <li><strong>IMPORTANTE:</strong> Esta carga reemplazará TODOS los datos anteriores de Jamar.</li>
         </ul>
     </div>
     """, unsafe_allow_html=True)
     
     # ---- Subida de archivo ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">📤 Subir archivo</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">Subir archivo</div>', unsafe_allow_html=True)
     
     uploaded_file = st.file_uploader(
         "Selecciona un archivo Excel",
@@ -266,52 +261,51 @@ def render():
         </div>
         """, unsafe_allow_html=True)
         
-        # Procesar archivo
-        with st.spinner("📊 Procesando archivo..."):
+        with st.spinner("Procesando archivo..."):
             try:
                 df = pd.read_excel(uploaded_file)
                 
-                # Validar columnas requeridas
                 faltantes = [col for col in COLUMNAS_REQUERIDAS if col not in df.columns]
                 if faltantes:
-                    st.error(f"⚠️ Faltan columnas obligatorias: {', '.join(faltantes)}")
+                    st.error(f"Faltan columnas obligatorias: {', '.join(faltantes)}")
                     st.stop()
                 
-                # Mostrar vista previa
                 st.markdown("---")
-                st.markdown("#### 📊 Vista previa del archivo")
+                st.markdown("#### Vista previa del archivo")
                 st.dataframe(df.head(10), use_container_width=True)
                 
-                # Estadísticas
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Total registros", f"{len(df):,}")
                 with col2:
                     st.metric("Columnas", f"{len(df.columns)}")
                 with col3:
-                    # Calcular cuántas llaves únicas
                     llaves = df.apply(lambda row: generar_llave(row.get('Codigo de la Agencia'), row.get('Número de Cuenta')), axis=1)
                     st.metric("Llaves únicas", f"{llaves.nunique():,}")
                 
-                # Botón para procesar
-                if st.button("🚀 Guardar en BigQuery", type="primary", use_container_width=True):
+                if st.button("Guardar en BigQuery", type="primary", use_container_width=True):
                     guardados, errores, detalle = guardar_cartera_jamar(df, PROYECTO_ID)
                     
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("📊 Total", f"{len(df):,}")
+                        st.metric("Total", f"{len(df):,}")
                     with col2:
-                        st.metric("✅ Guardados", f"{guardados:,}")
+                        st.metric("Guardados", f"{guardados:,}")
                     with col3:
-                        st.metric("❌ Errores", f"{errores:,}")
+                        st.metric("Errores", f"{errores:,}")
                     
-                    if errores == 0:
+                    if guardados > 0:
                         st.success(f"🎉 {detalle}")
+                        st.balloons()
+                        st.rerun()
                     else:
-                        st.warning(f"⚠️ {detalle}")
+                        st.error(f"❌ {detalle}")
                 
             except Exception as e:
-                st.error(f"❌ Error al procesar el archivo: {str(e)}")
+                st.error(f"Error al procesar el archivo: {str(e)}")
                 st.exception(e)
     
     st.markdown('</div>', unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    render()

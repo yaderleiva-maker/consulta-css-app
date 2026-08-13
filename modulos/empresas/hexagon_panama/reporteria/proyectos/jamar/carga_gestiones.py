@@ -90,11 +90,10 @@ def obtener_mapeo_codigos():
         """
         df = ejecutar_query(query)
         if df.empty:
-            st.warning("No se encontro la tabla de mapeo.")
             return {}
         return dict(zip(df['codigo_gestion'], zip(df['mejor_gestion_jamar'], df['resultado'])))
     except Exception as e:
-        st.error(f"Error al obtener mapeo: {e}")
+        st.warning(f"No se pudo obtener mapeo: {e}")
         return {}
 
 def verificar_cartera_cargada():
@@ -138,10 +137,14 @@ def guardar_gestiones_jamar(df, proyecto_id):
     errores = 0
     registros_guardados = 0
     
+    # CAMBIO 2: Mapeo opcional (no bloquea la carga)
     mapeo = obtener_mapeo_codigos()
     if not mapeo:
-        st.error("No se pudo obtener el mapeo de codigos.")
-        return 0, total, "Error: Tabla de mapeo vacia"
+        st.warning(
+            "No se encontró mapeo de códigos. "
+            "Las gestiones se guardarán sin mejor_gestion_jamar ni resultado_gestion."
+        )
+        mapeo = {}
 
     if df.empty:
         st.warning("El archivo no contiene datos.")
@@ -152,8 +155,20 @@ def guardar_gestiones_jamar(df, proyecto_id):
     for idx, row in df.iterrows():
         try:
             llave_raw = row.get('Llave')
-            codigo_agencia = normalizar_texto(row.get('Codigo de la Agencia'))
-            numero_cuenta = normalizar_texto(row.get('Numero de Cuenta'))
+            
+            # CAMBIO 3: Columnas tolerantes a tildes
+            codigo_agencia = normalizar_texto(
+                row.get("Codigo de la Agencia", row.get("Código de la Agencia"))
+            )
+            numero_cuenta = normalizar_texto(
+                row.get("Número de Cuenta", row.get("Numero de Cuenta"))
+            )
+            codigo_cliente = normalizar_texto(
+                row.get("Codigo del Cliente", row.get("Código del Cliente"))
+            )
+            codigo_cobrador = normalizar_texto(
+                row.get("Codigo del cobrador", row.get("Código del cobrador"))
+            )
             
             if pd.isna(llave_raw) or not str(llave_raw).strip():
                 if codigo_agencia and numero_cuenta:
@@ -163,7 +178,6 @@ def guardar_gestiones_jamar(df, proyecto_id):
             else:
                 llave = normalizar_texto(llave_raw)
             
-            codigo_cliente = normalizar_texto(row.get('Codigo del Cliente'))
             codigo_gestion = normalizar_texto(row.get('codigo_gestion'))
             
             mejor_gestion = None
@@ -194,7 +208,7 @@ def guardar_gestiones_jamar(df, proyecto_id):
                 'fechahoragestion': fechahora,
                 'codigo_gestion': codigo_gestion,
                 'observacion': normalizar_texto(row.get('Observacion')),
-                'codigo_cobrador': normalizar_texto(row.get('Codigo del cobrador')),
+                'codigo_cobrador': codigo_cobrador,
                 'area_gestion': normalizar_texto(row.get('area_gestion')),
                 'tipo_gestion': normalizar_texto(row.get('tipo_gestion')),
                 'numeromarcado': normalizar_texto(row.get('numeromarcado')),
@@ -334,7 +348,6 @@ def render():
     st.markdown('<div class="main-header">Carga de Gestiones - Jamar</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el reporte de gestiones diarias. El sistema procesara ambas hojas (CORREOS & WHATSAPP y LLAMADAS).</div>', unsafe_allow_html=True)
     
-    # Estado del sistema
     st.markdown('<div class="card">', unsafe_allow_html=True)
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -364,7 +377,6 @@ def render():
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Area de carga
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">Subir archivo de gestiones</div>', unsafe_allow_html=True)
     
@@ -433,10 +445,6 @@ def render():
                 st.exception(e)
     
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================================
-# PUNTO DE ENTRADA PARA EJECUCION DIRECTA
-# ============================================================
 
 if __name__ == "__main__":
     render()

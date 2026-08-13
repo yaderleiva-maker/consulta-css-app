@@ -190,63 +190,73 @@ def generar_excel_infoequipo(df):
 
 def procesar_infoequipo(df):
     """
-    Procesa el DataFrame para agregar enumeración y separación entre Activos e Inactivos.
+    Procesa el DataFrame para agregar secciones:
+    - PERSONAL INACTIVO (con su encabezado)
+    - Separador
+    - PERSONAL ACTIVO (con su encabezado repetido)
     """
     import pandas as pd
-    
+
     df_proc = df.copy()
-    
-    # 🔥 IDENTIFICAR ÍNDICES DE CORTE
-    idx_inactivos = df_proc[df_proc['orden_estado'] == 0].index.tolist()
-    idx_activos = df_proc[df_proc['orden_estado'] == 1].index.tolist()
-    
-    # 🔥 CREAR NUEVO DATAFRAME CON FILAS DE SEPARACIÓN
+
+    # Columnas de datos (excluyendo la auxiliar 'orden_estado')
+    columnas_datos = [col for col in df_proc.columns if col != "orden_estado"]
+    columnas_salida = ["N°"] + columnas_datos
+
+    # Separar inactivos y activos
+    inactivos = df_proc[df_proc["orden_estado"] == 0]
+    activos = df_proc[df_proc["orden_estado"] == 1]
+
     filas = []
-    
-    # 📌 ENCABEZADO "PERSONAL INACTIVO"
-    if len(idx_inactivos) > 0:
-        encabezado = {col: '' for col in df_proc.columns}
-        encabezado['Nombres y Apellidos'] = 'PERSONAL INACTIVO'  # ✅ SIN =
-        filas.append(encabezado)
-        
-        for i, idx in enumerate(idx_inactivos, 1):
-            fila = df_proc.loc[idx].to_dict()
-            fila['N°'] = i
+
+    def fila_seccion(titulo):
+        """Crea una fila con un título en la columna N°"""
+        fila = {col: "" for col in columnas_salida}
+        fila["N°"] = titulo
+        return fila
+
+    def fila_encabezados():
+        """Crea una fila con los nombres de las columnas"""
+        return {col: col for col in columnas_salida}
+
+    # ============================================================
+    # SECCIÓN: PERSONAL INACTIVO
+    # ============================================================
+    if not inactivos.empty:
+        filas.append(fila_seccion("PERSONAL INACTIVO"))
+
+        for numero, (_, registro) in enumerate(inactivos.iterrows(), start=1):
+            fila = registro.drop(labels=["orden_estado"]).to_dict()
+            fila["N°"] = numero
             filas.append(fila)
-    
-    # 📌 SEPARADOR
-    if len(idx_inactivos) > 0 and len(idx_activos) > 0:
-        separador = {col: '' for col in df_proc.columns}
-        separador['Nombres y Apellidos'] = '—'  # ✅ SIN =
-        filas.append(separador)
-    
-    # 📌 ENCABEZADO "PERSONAL ACTIVO"
-    if len(idx_activos) > 0:
-        encabezado = {col: '' for col in df_proc.columns}
-        encabezado['Nombres y Apellidos'] = 'PERSONAL ACTIVO'  # ✅ SIN =
-        filas.append(encabezado)
-        
-        for i, idx in enumerate(idx_activos, 1):
-            fila = df_proc.loc[idx].to_dict()
-            fila['N°'] = i
+
+    # ============================================================
+    # SEPARADOR (si hay ambos grupos)
+    # ============================================================
+    if not inactivos.empty and not activos.empty:
+        filas.append(fila_seccion("—"))
+
+    # ============================================================
+    # SECCIÓN: PERSONAL ACTIVO (con encabezado repetido)
+    # ============================================================
+    if not activos.empty:
+        # Título de la sección
+        filas.append(fila_seccion("PERSONAL ACTIVO"))
+
+        # Repetir encabezados antes de los activos
+        filas.append(fila_encabezados())
+
+        for numero, (_, registro) in enumerate(activos.iterrows(), start=1):
+            fila = registro.drop(labels=["orden_estado"]).to_dict()
+            fila["N°"] = numero
             filas.append(fila)
-    
-    # 🔥 CREAR NUEVO DATAFRAME
-    df_resultado = pd.DataFrame(filas)
-    
-    # 🔥 REORDENAR COLUMNAS: N° al inicio
-    cols = df_resultado.columns.tolist()
-    if 'N°' in cols:
-        cols.remove('N°')
-        cols = ['N°'] + cols
-        df_resultado = df_resultado[cols]
-    
-    # 🔥 ELIMINAR COLUMNA AUXILIAR
-    if 'orden_estado' in df_resultado.columns:
-        df_resultado = df_resultado.drop(columns=['orden_estado'])
-    
-    return df_resultado
-    
+
+    # ============================================================
+    # CREAR DATAFRAME FINAL
+    # ============================================================
+    df_resultado = pd.DataFrame(filas, columns=columnas_salida)
+
+    return df_resultado    
 # ============================================================
 # MÓDULO 2: FICHA DE EMPLEADOS
 # ============================================================

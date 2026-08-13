@@ -23,8 +23,9 @@ def normalizar_texto(valor):
     if pd.isna(valor):
         return None
     texto = str(valor).strip()
-    # Escapar comillas simples para SQL
-    texto = texto.replace("'", "''")
+    if texto == '' or texto == 'nan' or texto == 'None':
+        return None
+    texto = texto.replace("'", "''")  # Escapar comillas para SQL
     return texto
 
 def normalizar_numero(valor):
@@ -33,24 +34,28 @@ def normalizar_numero(valor):
     if isinstance(valor, (int, float)):
         return float(valor)
     if isinstance(valor, str):
-        limpio = re.sub(r'[^\d.,-]', '', valor)
-        limpio = limpio.replace(',', '.')
+        limpiar = re.sub(r'[^\d.,-]', '', valor)
+        limpiar = limpiar.replace(',', '.')
         try:
-            return float(limpio)
+            return float(limpiar)
         except:
             return None
     return None
 
 def normalizar_fecha_hora(valor):
-    """Convierte a TIMESTAMP. Formato esperado: DD-MM-YYYY HH:MM:SS"""
+    """Convierte a TIMESTAMP"""
     if pd.isna(valor):
         return None
     if isinstance(valor, pd.Timestamp):
         return valor.isoformat()
     if isinstance(valor, str):
+        valor = str(valor).strip()
+        # Si está vacío
+        if not valor or valor == 'nan' or valor == 'None':
+            return None
         for fmt in ['%d-%m-%Y %H:%M:%S', '%Y-%m-%d %H:%M:%S', '%d/%m/%Y %H:%M:%S']:
             try:
-                return datetime.strptime(valor.strip(), fmt).isoformat()
+                return datetime.strptime(valor, fmt).isoformat()
             except:
                 continue
     return None
@@ -62,9 +67,12 @@ def normalizar_fecha(valor):
     if isinstance(valor, pd.Timestamp):
         return valor.date().isoformat()
     if isinstance(valor, str):
+        valor = str(valor).strip()
+        if not valor or valor == 'nan' or valor == 'None':
+            return None
         for fmt in ['%d-%m-%Y', '%Y-%m-%d', '%d/%m/%Y']:
             try:
-                return datetime.strptime(valor.strip(), fmt).date().isoformat()
+                return datetime.strptime(valor, fmt).date().isoformat()
             except:
                 continue
     return None
@@ -76,30 +84,63 @@ def normalizar_fecha(valor):
 @st.cache_data(ttl=300)
 def obtener_mapeo_codigos():
     """Obtiene el mapeo de códigos de gestión desde BigQuery"""
-    query = f"""
-        SELECT codigo_gestion, mejor_gestion_jamar, resultado
-        FROM {TABLA_MAPEO}
-    """
-    df = ejecutar_query(query)
-    if df.empty:
+    try:
+        query = f"""
+            SELECT codigo_gestion, mejor_gestion_jamar, resultado
+            FROM {TABLA_MAPEO}
+        """
+        df = ejecutar_query(query)
+        if df.empty:
+            st.warning("⚠️ No se encontró la tabla de mapeo. Ejecuta primero el SQL de creación.")
+            return {}
+        return dict(zip(df['codigo_gestion'], zip(df['mejor_gestion_jamar'], df['resultado'])))
+    except Exception as e:
+        st.error(f"❌ Error al obtener mapeo: {e}")
         return {}
-    return dict(zip(df['codigo_gestion'], zip(df['mejor_gestion_jamar'], df['resultado'])))
+
+def obtener_cartera_llaves():
+    """Obtiene las llaves existentes en la cartera para validación"""
+    try:
+        query = f"""
+            SELECT llave
+            FROM `{PROYECTO_BQ}.cartera_predemanda_jamar`
+            WHERE id_proyecto = '{PROYECTO_ID}'
+        """
+        df = ejecutar_query(query)
+        return set(df['llave'].tolist()) if not df.empty else set()
+    except:
+        return set()
+
+def verificar_cartera_cargada():
+    """Verifica si la cartera predemanda tiene datos"""
+    try:
+        query = f"""
+            SELECT COUNT(*) AS total
+            FROM `{PROYECTO_BQ}.cartera_predemanda_jamar`
+            WHERE id_proyecto = '{PROYECTO_ID}'
+        """
+        df = ejecutar_query(query)
+        if not df.empty:
+            return df['total'].iloc[0] > 0
+        return False
+    except:
+        return False
 
 def obtener_ultimas_fechas_carga():
-    """Obtiene las fechas de las últimas cargas de gestiones para mostrar resumen"""
-    query = f"""
-        SELECT 
-            DATE(fechahoragestion) AS fecha,
-            COUNT(*) AS total_gestiones,
-            COUNT(DISTINCT llave) AS cuentas_gestionadas,
-            COUNT(DISTINCT codigo_cliente) AS clientes_gestionados
-        FROM {TABLA_GESTIONES}
-        WHERE id_proyecto = '{PROYECTO_ID}'
-        GROUP BY DATE(fechahoragestion)
-        ORDER BY fecha DESC
-        LIMIT 10
-    """
+    """Obtiene las fechas de las últimas cargas de gestiones"""
     try:
+        query = f"""
+            SELECT 
+                DATE(fechahoragestion) AS fecha,
+                COUNT(*) AS total_gestiones,
+                COUNT(DISTINCT llave) AS cuentas_gestionadas,
+                COUNT(DISTINCT codigo_cliente) AS clientes_gestionados
+            FROM {TABLA_GESTIONES}
+            WHERE id_proyecto = '{PROYECTO_ID}'
+            GROUP BY DATE(fechahoragestion)
+            ORDER BY fecha DESC
+            LIMIT 10
+        """
         df = ejecutar_query(query)
         return df
     except:
@@ -117,23 +158,42 @@ def guardar_gestiones_jamar(df, proyecto_id):
     detalles = []
     registros_guardados = 0
     
-    # Obtener mapeo de códigos
+    # 1. Obtener mapeo de códigos
     mapeo = obtener_mapeo_codigos()
+    if not mapeo:
+        st.error("❌ No se pudo obtener el mapeo de códigos. Verifica la tabla mapeo_codigos_gestion.")
+        return 0, total, "Error: Tabla de mapeo vacía o no existe"
     
+    # 2. Validar que hay datos para procesar
+    if df.empty:
+        st.warning("⚠️ El archivo no contiene datos.")
+        return 0, total, "Archivo vacío"
+    
+    st.info(f"📊 Procesando {len(df)} registros...")
+    
+    # 3. Preparar valores
     valores = []
+    registros_sin_llave = 0
     
     for idx, row in df.iterrows():
         try:
             # Extraer campos clave
-            llave = normalizar_texto(row.get('Llave'))
+            llave_raw = row.get('Llave')
             codigo_agencia = normalizar_texto(row.get('Codigo de la Agencia'))
             numero_cuenta = normalizar_texto(row.get('Número de Cuenta'))
-            codigo_cliente = normalizar_texto(row.get('Codigo del Cliente'))
-            codigo_gestion = normalizar_texto(row.get('codigo_gestion'))
             
-            if not llave:
+            # Si no tiene llave, intentar generarla
+            if pd.isna(llave_raw) or not str(llave_raw).strip():
                 if codigo_agencia and numero_cuenta:
                     llave = f"{codigo_agencia}{numero_cuenta}"
+                    registros_sin_llave += 1
+                else:
+                    llave = None
+            else:
+                llave = normalizar_texto(llave_raw)
+            
+            codigo_cliente = normalizar_texto(row.get('Codigo del Cliente'))
+            codigo_gestion = normalizar_texto(row.get('codigo_gestion'))
             
             # Obtener clasificación del código de gestión
             mejor_gestion = None
@@ -150,8 +210,9 @@ def guardar_gestiones_jamar(df, proyecto_id):
             valorpromesa = normalizar_numero(row.get('valorpromesa'))
             min_prioridad = None
             try:
-                if pd.notna(row.get('MínDePrioridad')):
-                    min_prioridad = int(row.get('MínDePrioridad'))
+                val = row.get('MínDePrioridad')
+                if pd.notna(val):
+                    min_prioridad = int(float(val))
             except:
                 pass
             
@@ -168,6 +229,8 @@ def guardar_gestiones_jamar(df, proyecto_id):
             tipo_contacto = normalizar_texto(row.get('tipo_contacto'))
             clave = normalizar_texto(row.get('Clave'))
             clave_min = normalizar_texto(row.get('ClaveMin'))
+            pais = normalizar_texto(row.get('Pais'))
+            tipo_credito = normalizar_texto(row.get('Tipo credito'))
             
             valores.append(f"""(
                 '{id_gestion}',
@@ -203,23 +266,39 @@ def guardar_gestiones_jamar(df, proyecto_id):
             errores += 1
             detalles.append(f"Fila {idx+2}: {str(e)}")
     
+    # Mostrar estadísticas de procesamiento
+    st.info(f"📊 Registros procesados: {len(valores)} para insertar, {errores} con errores")
+    if registros_sin_llave > 0:
+        st.info(f"🔑 {registros_sin_llave} registros no tenían llave y se generaron automáticamente")
+    
+    # 4. Insertar en BigQuery
     if valores:
-        with st.spinner(f"📥 Insertando {len(valores)} registros en BigQuery..."):
-            insert_query = f"""
-                INSERT INTO {TABLA_GESTIONES}
-                (id_gestion, id_proyecto, llave, codigo_agencia, numero_cuenta, codigo_cliente,
-                 fechahoragestion, codigo_gestion, observacion, codigo_cobrador, area_gestion,
-                 tipo_gestion, numeromarcado, tipo_telefono, fechapromesa, valorpromesa,
-                 mejor_gestion_jamar, resultado_gestion, lugar_contacto, tipo_contacto,
-                 clave, fecha, min_de_prioridad, clave_min, fecha_carga, created_at, updated_at)
-                VALUES {', '.join(valores)}
-            """
+        # Dividir en lotes para evitar errores de tamaño
+        batch_size = 500
+        total_insertados = 0
+        
+        for i in range(0, len(valores), batch_size):
+            batch = valores[i:i+batch_size]
             try:
+                insert_query = f"""
+                    INSERT INTO {TABLA_GESTIONES}
+                    (id_gestion, id_proyecto, llave, codigo_agencia, numero_cuenta, codigo_cliente,
+                     fechahoragestion, codigo_gestion, observacion, codigo_cobrador, area_gestion,
+                     tipo_gestion, numeromarcado, tipo_telefono, fechapromesa, valorpromesa,
+                     mejor_gestion_jamar, resultado_gestion, lugar_contacto, tipo_contacto,
+                     clave, fecha, min_de_prioridad, clave_min, fecha_carga, created_at, updated_at)
+                    VALUES {', '.join(batch)}
+                """
                 ejecutar_query(insert_query)
-                registros_guardados = len(valores)
+                total_insertados += len(batch)
+                st.success(f"✅ Lote {i//batch_size + 1}: {len(batch)} registros insertados")
             except Exception as e:
-                st.error(f"❌ Error al insertar datos: {e}")
-                return registros_guardados, errores, f"Error en inserción: {e}"
+                st.error(f"❌ Error en lote {i//batch_size + 1}: {e}")
+                errores += len(batch)
+        
+        registros_guardados = total_insertados
+    else:
+        st.warning("⚠️ No hay datos válidos para insertar")
     
     elapsed_time = time.time() - start_time
     detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
@@ -233,18 +312,30 @@ def guardar_gestiones_jamar(df, proyecto_id):
 def leer_archivo_gestiones(uploaded_file):
     """Lee un archivo Excel con dos hojas: CORREOS & WHATSAPP y LLAMADAS."""
     try:
-        df_correos = pd.read_excel(uploaded_file, sheet_name='CORREOS & WHATSAPP')
-        df_llamadas = pd.read_excel(uploaded_file, sheet_name='LLAMADAS')
+        # Intentar leer ambas hojas
+        xls = pd.ExcelFile(uploaded_file)
+        sheet_names = xls.sheet_names
+        
+        st.info(f"📋 Hojas encontradas: {', '.join(sheet_names)}")
+        
+        if 'CORREOS & WHATSAPP' in sheet_names and 'LLAMADAS' in sheet_names:
+            df_correos = pd.read_excel(uploaded_file, sheet_name='CORREOS & WHATSAPP')
+            df_llamadas = pd.read_excel(uploaded_file, sheet_name='LLAMADAS')
+            df_combinado = pd.concat([df_correos, df_llamadas], ignore_index=True)
+            st.info(f"📊 CORREOS: {len(df_correos)} registros, LLAMADAS: {len(df_llamadas)} registros")
+        else:
+            # Si no tiene las hojas exactas, intentar con la primera hoja
+            st.warning(f"⚠️ No se encontraron las hojas 'CORREOS & WHATSAPP' y 'LLAMADAS'. Usando la primera hoja: {sheet_names[0]}")
+            df_combinado = pd.read_excel(uploaded_file, sheet_name=sheet_names[0])
+        
+        # Normalizar nombres de columnas
+        df_combinado.columns = df_combinado.columns.str.strip()
+        
+        return df_combinado
+        
     except Exception as e:
-        st.error(f"❌ Error al leer el archivo. Asegúrate de que tiene las hojas 'CORREOS & WHATSAPP' y 'LLAMADAS'. Error: {e}")
+        st.error(f"❌ Error al leer el archivo: {e}")
         raise
-    
-    df_combinado = pd.concat([df_correos, df_llamadas], ignore_index=True)
-    
-    # Normalizar nombres de columnas
-    df_combinado.columns = df_combinado.columns.str.strip()
-    
-    return df_combinado
 
 # ============================================================
 # VISTA PRINCIPAL
@@ -261,9 +352,10 @@ def render():
         .card-title { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 8px; }
         .selected-file { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
         .selected-file .file-name { font-weight: 500; color: #166534; }
-        .resumen-card { background-color: #f8fafc; border-radius: 8px; padding: 12px 16px; border: 1px solid #e5e7eb; }
-        .resumen-fecha { font-weight: 600; color: #1a1a1a; }
-        .resumen-numero { font-weight: 500; color: #dc2626; }
+        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .status-badge.success { background-color: #dcfce7; color: #166534; }
+        .status-badge.warning { background-color: #fef3c7; color: #92400e; }
+        .status-badge.error { background-color: #fee2e2; color: #991b1b; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -271,16 +363,25 @@ def render():
     st.markdown('<div class="sub-header">Sube el reporte de gestiones diarias. El sistema procesará ambas hojas (CORREOS & WHATSAPP y LLAMADAS).</div>', unsafe_allow_html=True)
     
     # ============================================================
-    # RESUMEN DE ÚLTIMAS CARGAS
+    # VERIFICAR CARTERA CARGADA
     # ============================================================
     
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">📋 Últimas cargas de gestiones</div>', unsafe_allow_html=True)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown('<div class="card-title">📋 Estado del sistema</div>', unsafe_allow_html=True)
+    with col2:
+        cartera_cargada = verificar_cartera_cargada()
+        if cartera_cargada:
+            st.markdown('<span class="status-badge success">✅ Cartera cargada</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="status-badge warning">⚠️ Sin cartera</span>', unsafe_allow_html=True)
     
+    # Mostrar últimas cargas de gestiones
     df_resumen = obtener_ultimas_fechas_carga()
     
     if not df_resumen.empty:
-        # Mostrar tabla compacta
+        st.markdown("#### 📊 Últimas cargas de gestiones")
         for _, row in df_resumen.iterrows():
             fecha = row['fecha'].strftime('%d/%m/%Y') if hasattr(row['fecha'], 'strftime') else str(row['fecha'])
             col1, col2, col3 = st.columns([2, 1, 1])
@@ -335,13 +436,15 @@ def render():
                     codigos_unicos = df['codigo_gestion'].nunique() if 'codigo_gestion' in df.columns else 0
                     st.metric("Códigos únicos", f"{codigos_unicos:,}")
                 with col3:
-                    # Fecha de la carga (tomar la primera fecha del archivo)
                     if 'fechahoragestion' in df.columns:
                         try:
                             primera_fecha = pd.to_datetime(df['fechahoragestion'].iloc[0])
                             st.metric("Fecha del archivo", primera_fecha.strftime('%d/%m/%Y'))
                         except:
                             st.metric("Fecha del archivo", "No disponible")
+                
+                # Mostrar columnas disponibles
+                st.caption(f"Columnas encontradas: {', '.join(df.columns.tolist()[:10])}...")
                 
                 if st.button("🚀 Guardar en BigQuery", type="primary", use_container_width=True):
                     guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID)
@@ -354,14 +457,16 @@ def render():
                     with col3:
                         st.metric("❌ Errores", f"{errores:,}")
                     
-                    if errores == 0:
+                    if errores == 0 and guardados > 0:
                         st.success(f"🎉 {detalle}")
+                        st.balloons()
+                    elif guardados == 0 and errores == 0:
+                        st.warning("⚠️ No se guardaron registros. Verifica que el archivo tenga datos válidos.")
                     else:
                         st.warning(f"⚠️ {detalle}")
-                    
-                    st.rerun()
                 
             except Exception as e:
                 st.error(f"❌ Error al procesar el archivo: {str(e)}")
+                st.exception(e)
     
     st.markdown('</div>', unsafe_allow_html=True)

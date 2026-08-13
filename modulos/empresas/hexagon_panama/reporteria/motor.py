@@ -1,8 +1,9 @@
 import streamlit as st
 from datetime import datetime
 
-# Importar los submódulos de cada proyecto (ruta absoluta)
+# Importar los submódulos de cada proyecto
 from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import carga as jamar_carga
+from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import carga_gestiones as jamar_gestiones
 from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import reportes as jamar_reportes
 
 # ============================================================
@@ -14,9 +15,12 @@ PROYECTOS = {
         "id": "JAMAR",
         "nombre": "Jamar S.A.",
         "carga": jamar_carga.render,
+        "gestiones": jamar_gestiones.render,
         "reportes": jamar_reportes.REPORTES,
         "icono": "📊"
     },
+    # Futuros proyectos...
+}
     # Futuros proyectos:
     # "IFX": {
     #     "id": "IFX",

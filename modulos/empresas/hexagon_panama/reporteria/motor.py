@@ -185,7 +185,7 @@ def render():
     # TABS
     # ============================================================
     
-    tab1, tab2 = st.tabs(["📥 Cargar Cartera", "📄 Generar Reportes"])
+    tab1, tab2, tab3 = st.tabs(["📥 Cargar Cartera", "📞 Cargar Gestiones", "📄 Generar Reportes"])
     
     with tab1:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)

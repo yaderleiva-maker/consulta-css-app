@@ -3,11 +3,13 @@ import pandas as pd
 import uuid
 import re
 from datetime import datetime
+from google.cloud import bigquery
+from google.oauth2 import service_account
 
 from services.bigquery import ejecutar_query
 
 # ============================================================
-# CONFIGURACIÓN
+# CONFIGURACION
 # ============================================================
 
 PROYECTO_BQ = "proyecto-css-panama.cobranza"
@@ -16,17 +18,15 @@ TABLA_GESTIONES = f"`{PROYECTO_BQ}.gestiones_jamar`"
 TABLA_MAPEO = f"`{PROYECTO_BQ}.mapeo_codigos_gestion`"
 
 # ============================================================
-# FUNCIONES DE NORMALIZACIÓN (MEJORADAS)
+# FUNCIONES DE NORMALIZACION
 # ============================================================
 
 def normalizar_texto(valor):
-    """Normaliza texto y escapa caracteres especiales para SQL"""
     if pd.isna(valor):
         return None
     texto = str(valor).strip()
     if texto == '' or texto == 'nan' or texto == 'None' or texto == 'NULL':
         return None
-    # Escapar comillas simples (') y barras invertidas
     texto = texto.replace("'", "''")
     texto = texto.replace("\\", "\\\\")
     return texto
@@ -77,16 +77,6 @@ def normalizar_fecha(valor):
                 continue
     return None
 
-def formatear_valor_sql(valor):
-    """Formatea un valor para SQL: si es None devuelve 'NULL', si no devuelve comillas"""
-    if valor is None:
-        return 'NULL'
-    if isinstance(valor, (int, float)):
-        return str(valor)
-    if isinstance(valor, str):
-        return f"'{valor}'"
-    return f"'{valor}'"
-
 # ============================================================
 # FUNCIONES DE BIGQUERY
 # ============================================================
@@ -100,11 +90,11 @@ def obtener_mapeo_codigos():
         """
         df = ejecutar_query(query)
         if df.empty:
-            st.warning("⚠️ No se encontró la tabla de mapeo.")
+            st.warning("No se encontro la tabla de mapeo.")
             return {}
         return dict(zip(df['codigo_gestion'], zip(df['mejor_gestion_jamar'], df['resultado'])))
     except Exception as e:
-        st.error(f"❌ Error al obtener mapeo: {e}")
+        st.error(f"Error al obtener mapeo: {e}")
         return {}
 
 def verificar_cartera_cargada():
@@ -141,35 +131,29 @@ def obtener_ultimas_fechas_carga():
         return pd.DataFrame()
 
 def guardar_gestiones_jamar(df, proyecto_id):
-    """Guarda las gestiones de Jamar en BigQuery usando el cliente de BigQuery directamente."""
     import time
     start_time = time.time()
-    from google.cloud import bigquery
-    from google.oauth2 import service_account
     
     total = len(df)
     errores = 0
     registros_guardados = 0
     
-    # Obtener mapeo de códigos
     mapeo = obtener_mapeo_codigos()
     if not mapeo:
-        st.error("❌ No se pudo obtener el mapeo de códigos.")
-        return 0, total, "Error: Tabla de mapeo vacía"
+        st.error("No se pudo obtener el mapeo de codigos.")
+        return 0, total, "Error: Tabla de mapeo vacia"
 
     if df.empty:
-        st.warning("⚠️ El archivo no contiene datos.")
-        return 0, total, "Archivo vacío"
+        st.warning("El archivo no contiene datos.")
+        return 0, total, "Archivo vacio"
     
-    # Crear lista de diccionarios para insertar
     registros = []
     
     for idx, row in df.iterrows():
         try:
-            # Extraer y normalizar campos
             llave_raw = row.get('Llave')
             codigo_agencia = normalizar_texto(row.get('Codigo de la Agencia'))
-            numero_cuenta = normalizar_texto(row.get('Número de Cuenta'))
+            numero_cuenta = normalizar_texto(row.get('Numero de Cuenta'))
             
             if pd.isna(llave_raw) or not str(llave_raw).strip():
                 if codigo_agencia and numero_cuenta:
@@ -194,7 +178,7 @@ def guardar_gestiones_jamar(df, proyecto_id):
             valorpromesa = normalizar_numero(row.get('valorpromesa'))
             min_prioridad = None
             try:
-                val = row.get('MínDePrioridad')
+                val = row.get('MinDePrioridad')
                 if pd.notna(val):
                     min_prioridad = int(float(val))
             except:
@@ -209,7 +193,7 @@ def guardar_gestiones_jamar(df, proyecto_id):
                 'codigo_cliente': codigo_cliente,
                 'fechahoragestion': fechahora,
                 'codigo_gestion': codigo_gestion,
-                'observacion': normalizar_texto(row.get('Observación')),
+                'observacion': normalizar_texto(row.get('Observacion')),
                 'codigo_cobrador': normalizar_texto(row.get('Codigo del cobrador')),
                 'area_gestion': normalizar_texto(row.get('area_gestion')),
                 'tipo_gestion': normalizar_texto(row.get('tipo_gestion')),
@@ -233,16 +217,14 @@ def guardar_gestiones_jamar(df, proyecto_id):
             
         except Exception as e:
             errores += 1
-            st.warning(f"⚠️ Error en fila {idx+2}: {str(e)}")
+            st.warning(f"Error en fila {idx+2}: {str(e)}")
     
     if not registros:
-        st.warning("⚠️ No hay datos válidos para insertar")
-        return 0, total, "No hay datos válidos"
+        st.warning("No hay datos validos para insertar")
+        return 0, total, "No hay datos validos"
     
-    # Convertir a DataFrame para subir a BigQuery
     df_insert = pd.DataFrame(registros)
     
-    # Conectar a BigQuery con credenciales
     try:
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"]
@@ -252,7 +234,6 @@ def guardar_gestiones_jamar(df, proyecto_id):
             project=credentials.project_id
         )
         
-        # Insertar usando load_table_from_dataframe (más robusto)
         job_config = bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
             autodetect=False,
@@ -287,33 +268,28 @@ def guardar_gestiones_jamar(df, proyecto_id):
             ]
         )
         
-        with st.spinner(f"📤 Subiendo {len(df_insert)} registros a BigQuery..."):
+        with st.spinner(f"Subiendo {len(df_insert)} registros a BigQuery..."):
             job = client.load_table_from_dataframe(
                 df_insert,
                 f"{PROYECTO_BQ}.gestiones_jamar",
                 job_config=job_config
             )
-            job.result()  # Esperar a que termine
+            job.result()
             
-            # Verificar cuántos se insertaron
             table = client.get_table(f"{PROYECTO_BQ}.gestiones_jamar")
             registros_guardados = table.num_rows
             
-            # También insertar el conteo actualizado
-            st.success(f"✅ {registros_guardados} registros guardados correctamente")
-            
     except Exception as e:
-        st.error(f"❌ Error al insertar en BigQuery: {str(e)}")
-        st.exception(e)
+        st.error(f"Error al insertar en BigQuery: {str(e)}")
         return 0, total, f"Error en BigQuery: {e}"
     
     elapsed_time = time.time() - start_time
-    detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
+    detalle = f"{len(registros)} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
     
-    return registros_guardados, errores, detalle
+    return len(registros), errores, detalle
 
 # ============================================================
-# FUNCIÓN PARA LEER AMBAS HOJAS DEL EXCEL
+# FUNCION PARA LEER AMBAS HOJAS DEL EXCEL
 # ============================================================
 
 def leer_archivo_gestiones(uploaded_file):
@@ -326,14 +302,14 @@ def leer_archivo_gestiones(uploaded_file):
             df_llamadas = pd.read_excel(uploaded_file, sheet_name='LLAMADAS')
             df_combinado = pd.concat([df_correos, df_llamadas], ignore_index=True)
         else:
-            st.warning(f"⚠️ Usando la primera hoja: {sheet_names[0]}")
+            st.warning(f"Usando la primera hoja: {sheet_names[0]}")
             df_combinado = pd.read_excel(uploaded_file, sheet_name=sheet_names[0])
         
         df_combinado.columns = df_combinado.columns.str.strip()
         return df_combinado
         
     except Exception as e:
-        st.error(f"❌ Error al leer el archivo: {e}")
+        st.error(f"Error al leer el archivo: {e}")
         raise
 
 # ============================================================
@@ -341,8 +317,6 @@ def leer_archivo_gestiones(uploaded_file):
 # ============================================================
 
 def render():
-    """Punto de entrada para cargar gestiones diarias de Jamar"""
-    
     st.markdown("""
     <style>
         .main-header { font-size: 22px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
@@ -357,43 +331,42 @@ def render():
     </style>
     """, unsafe_allow_html=True)
     
-    st.markdown('<div class="main-header">📞 Carga de Gestiones - Jamar</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Sube el reporte de gestiones diarias. El sistema procesará ambas hojas (CORREOS & WHATSAPP y LLAMADAS).</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header">Carga de Gestiones - Jamar</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Sube el reporte de gestiones diarias. El sistema procesara ambas hojas (CORREOS & WHATSAPP y LLAMADAS).</div>', unsafe_allow_html=True)
     
     # Estado del sistema
     st.markdown('<div class="card">', unsafe_allow_html=True)
     col1, col2 = st.columns([3, 1])
     with col1:
-        st.markdown('<div class="card-title">📋 Estado del sistema</div>', unsafe_allow_html=True)
+        st.markdown('<div class="card-title">Estado del sistema</div>', unsafe_allow_html=True)
     with col2:
         cartera_cargada = verificar_cartera_cargada()
         if cartera_cargada:
-            st.markdown('<span class="status-badge success">✅ Cartera cargada</span>', unsafe_allow_html=True)
+            st.markdown('<span class="status-badge success">Cartera cargada</span>', unsafe_allow_html=True)
         else:
-            st.markdown('<span class="status-badge warning">⚠️ Sin cartera</span>', unsafe_allow_html=True)
+            st.markdown('<span class="status-badge warning">Sin cartera</span>', unsafe_allow_html=True)
     
-    # Últimas cargas
     df_resumen = obtener_ultimas_fechas_carga()
     if not df_resumen.empty:
-        st.markdown("#### 📊 Últimas cargas de gestiones")
+        st.markdown("#### Ultimas cargas de gestiones")
         for _, row in df_resumen.iterrows():
             fecha = row['fecha'].strftime('%d/%m/%Y') if hasattr(row['fecha'], 'strftime') else str(row['fecha'])
             col1, col2, col3 = st.columns([2, 1, 1])
             with col1:
-                st.markdown(f"📅 **{fecha}**")
+                st.markdown(f"Fecha: {fecha}")
             with col2:
-                st.markdown(f"📞 {row['total_gestiones']:,} gestiones")
+                st.markdown(f"Total: {row['total_gestiones']:,} gestiones")
             with col3:
-                st.markdown(f"👤 {row['clientes_gestionados']:,} clientes")
+                st.markdown(f"Clientes: {row['clientes_gestionados']:,}")
             st.markdown("---")
     else:
-        st.info("ℹ️ No hay cargas de gestiones registradas aún.")
+        st.info("No hay cargas de gestiones registradas aun.")
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Área de carga
+    # Area de carga
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">📤 Subir archivo de gestiones</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">Subir archivo de gestiones</div>', unsafe_allow_html=True)
     
     uploaded_file = st.file_uploader(
         "Selecciona un archivo Excel",
@@ -412,12 +385,12 @@ def render():
         </div>
         """, unsafe_allow_html=True)
         
-        with st.spinner("📊 Procesando archivo..."):
+        with st.spinner("Procesando archivo..."):
             try:
                 df = leer_archivo_gestiones(uploaded_file)
                 
                 st.markdown("---")
-                st.markdown("#### 📊 Vista previa del archivo")
+                st.markdown("#### Vista previa del archivo")
                 st.dataframe(df.head(5), use_container_width=True)
                 
                 col1, col2, col3 = st.columns(3)
@@ -425,7 +398,7 @@ def render():
                     st.metric("Total registros", f"{len(df):,}")
                 with col2:
                     codigos = df['codigo_gestion'].nunique() if 'codigo_gestion' in df.columns else 0
-                    st.metric("Códigos únicos", f"{codigos:,}")
+                    st.metric("Codigos unicos", f"{codigos:,}")
                 with col3:
                     if 'fechahoragestion' in df.columns and not df.empty:
                         try:
@@ -434,29 +407,36 @@ def render():
                         except:
                             st.metric("Fecha del archivo", "No disponible")
                 
-                if st.button("🚀 Guardar en BigQuery", type="primary", use_container_width=True):
+                if st.button("Guardar en BigQuery", type="primary", use_container_width=True):
                     guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID)
                     
                     col1, col2, col3 = st.columns(3)
                     with col1:
-                        st.metric("📊 Total", f"{len(df):,}")
+                        st.metric("Total", f"{len(df):,}")
                     with col2:
-                        st.metric("✅ Guardados", f"{guardados:,}")
+                        st.metric("Guardados", f"{guardados:,}")
                     with col3:
-                        st.metric("❌ Errores", f"{errores:,}")
+                        st.metric("Errores", f"{errores:,}")
                     
                     if guardados > 0:
-                        st.success(f"🎉 {detalle}")
+                        st.success(f"{detalle}")
                         st.balloons()
                     elif errores > 0:
-                        st.warning(f"⚠️ {detalle}")
+                        st.warning(f"{detalle}")
                     else:
-                        st.warning("⚠️ No se guardaron registros. Verifica el archivo.")
+                        st.warning("No se guardaron registros. Verifica el archivo.")
                     
                     st.rerun()
                 
             except Exception as e:
-                st.error(f"❌ Error al procesar el archivo: {str(e)}")
+                st.error(f"Error al procesar el archivo: {str(e)}")
                 st.exception(e)
     
     st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================================
+# PUNTO DE ENTRADA PARA EJECUCION DIRECTA
+# ============================================================
+
+if __name__ == "__main__":
+    render()

@@ -216,13 +216,16 @@ def procesar_infoequipo(df):
         return fila
 
     def fila_encabezados():
-        """Crea una fila con los nombres de las columnas"""
+        """Crea una fila con los nombres de las columnas (igual al primer encabezado)"""
+        # 🔥 Usar los nombres exactos de las columnas
         return {col: col for col in columnas_salida}
 
     # ============================================================
     # SECCIÓN: PERSONAL INACTIVO
     # ============================================================
     if not inactivos.empty:
+        # 🔥 ENCABEZADO PRINCIPAL (se genera automáticamente con df.to_excel)
+        # Pero agregamos el título de la sección
         filas.append(fila_seccion("PERSONAL INACTIVO"))
 
         for numero, (_, registro) in enumerate(inactivos.iterrows(), start=1):
@@ -231,7 +234,7 @@ def procesar_infoequipo(df):
             filas.append(fila)
 
     # ============================================================
-    # SEPARADOR (si hay ambos grupos)
+    # SEPARADOR
     # ============================================================
     if not inactivos.empty and not activos.empty:
         filas.append(fila_seccion("—"))
@@ -240,10 +243,9 @@ def procesar_infoequipo(df):
     # SECCIÓN: PERSONAL ACTIVO (con encabezado repetido)
     # ============================================================
     if not activos.empty:
-        # Título de la sección
         filas.append(fila_seccion("PERSONAL ACTIVO"))
 
-        # Repetir encabezados antes de los activos
+        # 🔥 REPETIR ENCABEZADO COMPLETO (con todas las columnas)
         filas.append(fila_encabezados())
 
         for numero, (_, registro) in enumerate(activos.iterrows(), start=1):
@@ -256,7 +258,8 @@ def procesar_infoequipo(df):
     # ============================================================
     df_resultado = pd.DataFrame(filas, columns=columnas_salida)
 
-    return df_resultado    
+    return df_resultado
+
 # ============================================================
 # MÓDULO 2: FICHA DE EMPLEADOS
 # ============================================================

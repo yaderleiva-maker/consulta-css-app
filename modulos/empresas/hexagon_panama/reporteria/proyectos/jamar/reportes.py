@@ -12,14 +12,6 @@ from services.bigquery import ejecutar_query
 PROYECTO_BQ = "proyecto-css-panama.cobranza"
 
 # ============================================================
-# REGISTRO DE REPORTES
-# ============================================================
-
-REPORTES = {
-    "📊 Resumen de Cuentas Pre-Demanda": generar_resumen_predemanda,
-}
-
-# ============================================================
 # REPORTE: Resumen de Cuentas Pre-Demanda
 # ============================================================
 
@@ -152,3 +144,12 @@ def generar_resumen_predemanda(proyecto_id):
     
     mensaje = f"✅ Reporte generado con {len(df):,} registros"
     return output.getvalue(), mensaje
+
+
+# ============================================================
+# REGISTRO DE REPORTES (DESPUÉS de definir la función)
+# ============================================================
+
+REPORTES = {
+    "📊 Resumen de Cuentas Pre-Demanda": generar_resumen_predemanda,
+}

@@ -19,13 +19,12 @@ PROYECTOS = {
         "reportes": jamar_reportes.REPORTES,
         "icono": "📊"
     },
-    # Futuros proyectos...
-}
     # Futuros proyectos:
     # "IFX": {
     #     "id": "IFX",
     #     "nombre": "IFX Network",
     #     "carga": ifx_carga.render,
+    #     "gestiones": ifx_gestiones.render,
     #     "reportes": ifx_reportes.REPORTES,
     #     "icono": "📈"
     # },
@@ -65,31 +64,6 @@ def render():
             color: #1a1a1a;
             margin-bottom: 12px;
         }
-        .project-card {
-            background-color: #f8fafc;
-            border-radius: 8px;
-            padding: 16px;
-            border: 1px solid #e5e7eb;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .project-card:hover {
-            border-color: #dc2626;
-            background-color: #fef2f2;
-        }
-        .project-card .icon {
-            font-size: 32px;
-            margin-bottom: 8px;
-        }
-        .project-card .name {
-            font-weight: 500;
-            color: #1a1a1a;
-        }
-        .project-card .id {
-            font-size: 12px;
-            color: #9ca3af;
-        }
         .btn-primary {
             background-color: #dc2626;
             color: white;
@@ -125,46 +99,43 @@ def render():
         .tab-content {
             margin-top: 16px;
         }
+        .project-selector {
+            margin-bottom: 16px;
+        }
+        .project-selector label {
+            font-weight: 500;
+            color: #1a1a1a;
+            font-size: 14px;
+        }
     </style>
     """, unsafe_allow_html=True)
     
     st.markdown('<div class="main-header">📊 Reportería por Proyecto</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Selecciona un proyecto para cargar su cartera o generar reportes específicos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Selecciona un proyecto para cargar su cartera, gestiones diarias o generar reportes específicos.</div>', unsafe_allow_html=True)
     
     # ============================================================
-    # SELECCIÓN DE PROYECTO
+    # SELECCIÓN DE PROYECTO (dropdown)
     # ============================================================
     
     proyectos_lista = list(PROYECTOS.keys())
     
-    proyecto_seleccionado = None
+    if not proyectos_lista:
+        st.warning("⚠️ No hay proyectos configurados.")
+        return
     
-    # Mostrar proyectos como tarjetas
-    cols = st.columns(min(3, len(proyectos_lista)))
-    
-    for idx, (nombre, config) in enumerate(PROYECTOS.items()):
-        col_idx = idx % 3
-        with cols[col_idx]:
-            if st.button(
-                f"{config['icono']}\n\n{config['nombre']}\n\n`{config['id']}`",
-                key=f"proyecto_{config['id']}",
-                use_container_width=True,
-                help=f"Seleccionar {config['nombre']}"
-            ):
-                proyecto_seleccionado = nombre
-    
-    # Si no hay selección, usar el primero
-    if proyecto_seleccionado is None and proyectos_lista:
-        proyecto_seleccionado = proyectos_lista[0]
+    proyecto_seleccionado = st.selectbox(
+        "🏢 Proyecto",
+        proyectos_lista,
+        key="reporteria_proyecto_selector"
+    )
     
     if not proyecto_seleccionado:
-        st.warning("⚠️ No hay proyectos configurados.")
         return
     
     config = PROYECTOS[proyecto_seleccionado]
     
     # ============================================================
-    # CONTENIDO DEL PROYECTO
+    # CONTENIDO DEL PROYECTO SELECCIONADO
     # ============================================================
     
     st.markdown("---")
@@ -182,10 +153,14 @@ def render():
     st.markdown("---")
     
     # ============================================================
-    # TABS
+    # TABS: CARGA CARTERA | CARGA GESTIONES | REPORTES
     # ============================================================
     
-    tab1, tab2, tab3 = st.tabs(["📥 Cargar Cartera", "📞 Cargar Gestiones", "📄 Generar Reportes"])
+    tab1, tab2, tab3 = st.tabs([
+        "📥 Cargar Cartera",
+        "📞 Cargar Gestiones",
+        "📄 Generar Reportes"
+    ])
     
     with tab1:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
@@ -193,6 +168,11 @@ def render():
         st.markdown('</div>', unsafe_allow_html=True)
     
     with tab2:
+        st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        config['gestiones']()
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with tab3:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
         
         reportes = config['reportes']

@@ -205,27 +205,25 @@ def procesar_infoequipo(df):
     
     # 📌 ENCABEZADO "PERSONAL INACTIVO"
     if len(idx_inactivos) > 0:
-        # Fila de encabezado (columna A vacía)
         encabezado = {col: '' for col in df_proc.columns}
-        encabezado['Nombres y Apellidos'] = '========== PERSONAL INACTIVO =========='
+        encabezado['Nombres y Apellidos'] = 'PERSONAL INACTIVO'  # ✅ SIN =
         filas.append(encabezado)
         
         for i, idx in enumerate(idx_inactivos, 1):
             fila = df_proc.loc[idx].to_dict()
-            # 🔥 Agregar número en una nueva columna "N°"
             fila['N°'] = i
             filas.append(fila)
     
     # 📌 SEPARADOR
     if len(idx_inactivos) > 0 and len(idx_activos) > 0:
         separador = {col: '' for col in df_proc.columns}
-        separador['Nombres y Apellidos'] = '----------------------------------------'
+        separador['Nombres y Apellidos'] = '—'  # ✅ SIN =
         filas.append(separador)
     
     # 📌 ENCABEZADO "PERSONAL ACTIVO"
     if len(idx_activos) > 0:
         encabezado = {col: '' for col in df_proc.columns}
-        encabezado['Nombres y Apellidos'] = '========== PERSONAL ACTIVO =========='
+        encabezado['Nombres y Apellidos'] = 'PERSONAL ACTIVO'  # ✅ SIN =
         filas.append(encabezado)
         
         for i, idx in enumerate(idx_activos, 1):

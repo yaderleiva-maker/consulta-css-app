@@ -145,7 +145,7 @@ def obtener_ultima_fecha_carga():
     except:
         return None
 
-def guardar_gestiones_jamar(df, proyecto_id):
+def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
     import time
     start_time = time.time()
 
@@ -224,6 +224,7 @@ def guardar_gestiones_jamar(df, proyecto_id):
             
             registro = {
                 'id_gestion': id_gestion,
+                'id_carga': id_carga,
                 'id_proyecto': PROYECTO_ID,
                 'llave': llave,
                 'codigo_agencia': codigo_agencia,
@@ -320,6 +321,72 @@ def guardar_gestiones_jamar(df, proyecto_id):
             rows_loaded = job.output_rows or len(df_insert)
             st.success(f"✅ BigQuery terminó el job. Filas cargadas: {rows_loaded}")
             registros_guardados = rows_loaded
+
+        # ============================================================
+    # 🔥 GUARDAR HISTORIAL DE CARGA
+    # ============================================================
+    # Conexión a BigQuery
+    try:
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"]
+        )
+        client = bigquery.Client(
+            credentials=credentials,
+            project=credentials.project_id
+        )
+        
+        destino = f"{PROYECTO_BQ}.gestiones_jamar"
+        
+        try:
+            tabla_destino = client.get_table(destino)
+        except Exception as e:
+            st.error(f"La tabla no existe: {e}")
+            return 0, total, f"Tabla no existe: {e}"
+        
+        # ✅ WRITE_APPEND - SOLO AGREGAR, NUNCA REEMPLAZAR
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            schema=tabla_destino.schema,
+        )
+        
+        with st.spinner(f"Subiendo {len(df_insert)} registros a BigQuery..."):
+            job = client.load_table_from_dataframe(
+                df_insert,
+                destino,
+                job_config=job_config,
+            )
+            job.result(timeout=180)
+            
+            rows_loaded = job.output_rows or len(df_insert)
+            st.success(f"✅ BigQuery terminó el job. Filas cargadas: {rows_loaded}")
+            registros_guardados = rows_loaded
+            
+            # ============================================================
+            # 🔥 GUARDAR HISTORIAL DE CARGA
+            # ============================================================
+            try:
+                historial_rows = [{
+                    "id_carga": id_carga,
+                    "id_proyecto": PROYECTO_ID,
+                    "archivo_nombre": archivo_nombre,
+                    "fecha_carga": datetime.now().isoformat(),
+                    "total_registros": total,
+                    "registros_guardados": registros_guardados,
+                    "errores": errores,
+                }]
+                
+                errores_historial = client.insert_rows_json(
+                    f"{PROYECTO_BQ}.historial_cargas_gestiones",
+                    historial_rows
+                )
+                
+                if errores_historial:
+                    st.warning(f"⚠️ Gestiones cargadas, pero no se pudo guardar historial: {errores_historial}")
+                else:
+                    st.info(f"📋 Historial actualizado: {archivo_nombre}")
+                    
+            except Exception as e_historial:
+                st.warning(f"⚠️ Gestiones cargadas, pero error al guardar historial: {e_historial}")
             
     except Exception as e:
         st.error(f"Error al insertar en BigQuery: {str(e)}")
@@ -494,7 +561,7 @@ def render():
                 
                 # ✅ SIMPLE APPEND - SIN ST.RERUN PARA VER ERROR
                 if st.button("Guardar en BigQuery", type="primary", use_container_width=True):
-                    guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID)
+                    guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID, uploaded_file.name)
                     
                     col1, col2, col3 = st.columns(3)
                     with col1:

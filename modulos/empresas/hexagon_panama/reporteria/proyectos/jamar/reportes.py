@@ -418,7 +418,7 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
 # ============================================================
 
 def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
-    """Devuelve DataFrame del Cuadro de Resultado de Gestión (CORREGIDO)"""
+    """Devuelve DataFrame del Cuadro de Resultado de Gestión (CON ORDEN CORREGIDO)"""
     
     filtro_fechas = ""
     if fecha_reporte is not None:

@@ -198,7 +198,8 @@ ROLES = {
         "CONSULTAS": True
     },
     "nalvaradohexagon@gmail.com": {
-        "CONSULTAS": True
+        "CONSULTAS": True,
+        "COBRANZA": True
     },
     "hexagonclaudia@gmail.com": {
         "CONSULTAS": True,

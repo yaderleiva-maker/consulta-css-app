@@ -13,6 +13,19 @@ PROYECTO_BQ = "proyecto-css-panama.cobranza"
 PROYECTO_ID = "JAMAR"
 
 # ============================================================
+# FUNCIÓN PARA PREPARAR DATAFRAME PARA EXCEL
+# ============================================================
+
+def preparar_para_excel(df):
+    """Excel no acepta timestamps con zona horaria. Los convierte a datetime sin zona."""
+    resultado = df.copy()
+    
+    for columna in resultado.select_dtypes(include=["datetimetz"]).columns:
+        resultado[columna] = resultado[columna].dt.tz_localize(None)
+    
+    return resultado
+
+# ============================================================
 # REPORTE 1: Resumen de Cuentas Pre-Demanda
 # ============================================================
 
@@ -90,6 +103,9 @@ def generar_resumen_predemanda(proyecto_id):
     
     df = ejecutar_query(query)
     
+    # ✅ Preparar para Excel (eliminar zona horaria)
+    df = preparar_para_excel(df)
+    
     if df.empty:
         return None, "⚠️ No hay datos disponibles para generar el reporte."
     
@@ -158,6 +174,9 @@ def generar_cartera_comercial(proyecto_id):
     
     df = ejecutar_query(query)
     
+    # ✅ Preparar para Excel (eliminar zona horaria)
+    df = preparar_para_excel(df)
+    
     if df.empty:
         return None, "⚠️ No hay datos disponibles."
     
@@ -199,6 +218,9 @@ def generar_seguimiento_cobro(proyecto_id):
     
     df = ejecutar_query(query)
     
+    # ✅ Preparar para Excel (eliminar zona horaria)
+    df = preparar_para_excel(df)
+    
     if df.empty:
         return None, "⚠️ No hay gestiones disponibles."
     
@@ -212,7 +234,7 @@ def generar_seguimiento_cobro(proyecto_id):
     return output.getvalue(), f"✅ Seguimiento generado con {len(df):,} registros"
 
 # ============================================================
-# REGISTRO DE REPORTES (DESPUÉS de definir las funciones)
+# REGISTRO DE REPORTES
 # ============================================================
 
 REPORTES = {

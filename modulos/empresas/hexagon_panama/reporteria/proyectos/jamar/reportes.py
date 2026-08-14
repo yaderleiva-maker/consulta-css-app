@@ -24,7 +24,7 @@ def preparar_para_excel(df):
     return resultado
 
 # ============================================================
-# REPORTE 1: Resumen de Cuentas Pre-Demanda
+# REPORTE ÚNICO: Resumen de Cartera (Consolidado)
 # ============================================================
 
 def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
@@ -40,7 +40,9 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     output = io.BytesIO()
     mensajes = []
     
-    # 🔥 PASO 1: CONSTRUIR DATOS COMPLETOS (TABLA MAESTRA)
+    # ============================================================
+    # PASO 1: CONSTRUIR DATOS COMPLETOS (TABLA MAESTRA)
+    # ============================================================
     
     query_datos_completos = f"""
     WITH pagos_agrupados AS (
@@ -147,7 +149,9 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             up.valorpromesa AS ultimo_valor_promesa,
             up.fechapromesa AS fecha_ultima_promesa,
             
-            -- 🔥 CATEGORÍA FINAL (misma lógica que el resumen)
+            -- ============================================================
+            -- CATEGORÍA FINAL (UNIFICADA)
+            -- ============================================================
             CASE 
                 -- Si NO tiene gestión
                 WHEN g.llave IS NULL THEN 'SIN GESTION AL CORTE'
@@ -169,21 +173,23 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                         WHEN g.ultimo_resultado = 'COMPROMISO DE PAGO' THEN 'COMPROMISO DE PAGO'
                         WHEN g.ultimo_resultado = 'NO CONTACTOS' THEN 'SIN CONTACTO'
                         WHEN g.ultimo_resultado = 'CONTACTO CON TERCERO' THEN 'CONTACTO CON TERCERO'
-                        WHEN g.ultimo_resultado IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'BUZON DE VOZ'
+                        WHEN g.ultimo_resultado IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'NO CONTACTOS'
                         ELSE 'SIN CONTACTO'
                     END
                 
                 -- Si NO tiene resultado_gestion, usar codigo_gestion
-                WHEN g.ultimo_codigo_gestion IN ('0', '00') THEN 'CONTACTO CON TERCERO'
+                WHEN g.ultimo_codigo_gestion IN ('0') THEN 'CONTACTO CON TERCERO'
                 WHEN g.ultimo_codigo_gestion IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
                 WHEN g.ultimo_codigo_gestion IN ('14', '81', '84') THEN 'CONTACTO EFECTIVO'
                 WHEN g.ultimo_codigo_gestion = '86' THEN 'SIN CONTACTO'
-                WHEN g.ultimo_codigo_gestion IN ('10', '11', '15') THEN 'BUZON DE VOZ'
+                WHEN g.ultimo_codigo_gestion IN ('10', '11', '15') THEN 'NO CONTACTOS'
                 WHEN g.ultimo_codigo_gestion = '83' THEN 'NO CONTACTOS'
                 ELSE 'SIN CONTACTO'
             END AS categoria_final,
             
-            -- 🔥 RAZÓN DE LA CATEGORÍA (para auditoría)
+            -- ============================================================
+            -- RAZÓN DE LA CATEGORÍA (para auditoría)
+            -- ============================================================
             CASE 
                 WHEN g.llave IS NULL THEN 'Sin gestión en el período'
                 WHEN g.ultimo_codigo_gestion = '90' THEN 
@@ -201,7 +207,9 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 ELSE 'Sin clasificación'
             END AS razon_categoria,
             
-            -- 🔥 ESTADO DE LA PROMESA
+            -- ============================================================
+            -- ESTADO DE LA PROMESA
+            -- ============================================================
             CASE 
                 WHEN up.fechapromesa IS NULL THEN 'SIN PROMESA'
                 WHEN up.fechapromesa >= CURRENT_DATE('America/Bogota') THEN 'ACTIVA'
@@ -267,7 +275,9 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         
-        # ----- HOJA 1: RESUMEN EJECUTIVO -----
+        # ============================================================
+        # HOJA 1: RESUMEN EJECUTIVO
+        # ============================================================
         
         resumen_data = {
             'Métrica': [
@@ -311,9 +321,10 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         df_resumen.to_excel(writer, sheet_name='Resumen Ejecutivo', index=False)
         mensajes.append("✅ Resumen ejecutivo generado")
         
-        # ----- HOJA 2: CUADRO DE GESTIÓN POR RANK -----
+        # ============================================================
+        # HOJA 2: CUADRO DE GESTIÓN POR RANK
+        # ============================================================
         
-        # Calcular desde df_datos
         df_gestion_rank = df_datos.groupby('rank').agg({
             'llave': 'count',
             'total_toques': 'sum',
@@ -328,12 +339,17 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         df_gestion_rank['llamada_intensidad'] = df_gestion_rank['total_llamadas'] / df_gestion_rank['llave']
         df_gestion_rank['total_intensidad'] = df_gestion_rank['total_toques'] / df_gestion_rank['llave']
         
-        # Renombrar columnas
-        df_gestion_rank.columns = ['rank', 'total_cuentas', 'total_toques', 'correo_cantidad', 'whatsapp_cantidad', 'llamada_cantidad', 'correo_intensidad', 'whatsapp_intensidad', 'llamada_intensidad', 'total_intensidad']
+        df_gestion_rank.columns = [
+            'rank', 'total_cuentas', 'total_toques', 
+            'correo_cantidad', 'whatsapp_cantidad', 'llamada_cantidad',
+            'correo_intensidad', 'whatsapp_intensidad', 'llamada_intensidad', 'total_intensidad'
+        ]
         df_gestion_rank.to_excel(writer, sheet_name='Cuadro Gestión', index=False)
         mensajes.append(f"✅ Cuadro Gestión: {len(df_gestion_rank)} ranks")
         
-        # ----- HOJA 3: CUADRO DE RESULTADO DE GESTIÓN -----
+        # ============================================================
+        # HOJA 3: CUADRO DE RESULTADO DE GESTIÓN
+        # ============================================================
         
         pivot_resultado = pd.crosstab(
             df_datos['categoria_final'], 
@@ -349,7 +365,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             'COMPROMISO DE PAGO', 
             'SIN CONTACTO', 
             'CONTACTO CON TERCERO', 
-            'BUZON DE VOZ', 
             'NO CONTACTOS', 
             'SIN GESTION AL CORTE'
         ]
@@ -357,18 +372,16 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         pivot_resultado['orden'] = pivot_resultado['resultado_gestion'].map(
             {cat: i for i, cat in enumerate(orden_categorias)}
         )
-        
-        # Manejar el caso donde 'TOTAL' pueda tener orden NaN
         pivot_resultado['orden'] = pivot_resultado['orden'].fillna(999)
-        
-        # Ordenar y eliminar columna de orden
         pivot_resultado = pivot_resultado.sort_values('orden').drop('orden', axis=1)
         
         pivot_resultado.to_excel(writer, sheet_name='Resultado Gestión', index=False)
         mensajes.append(f"✅ Resultado Gestión: {len(pivot_resultado)} categorías")
         
-        # ----- HOJA 4: RECAUDO Y COMPROMISOS -----
-        # 🔥 VERSIÓN CORREGIDA
+        # ============================================================
+        # HOJA 4: RECAUDO Y COMPROMISOS
+        # ============================================================
+        
         df_recaudo_final = pd.DataFrame({
             'resultado_gestion': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],
             'A': [
@@ -401,7 +414,10 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         df_recaudo_final.to_excel(writer, sheet_name='Recaudo y Compromisos', index=False)
         mensajes.append("✅ Recaudo y Compromisos generado")
         
-        # ----- HOJA 5: DATOS COMPLETOS (TABLA MAESTRA) -----
+        # ============================================================
+        # HOJA 5: DATOS COMPLETOS (TABLA MAESTRA)
+        # ============================================================
+        
         df_datos.to_excel(writer, sheet_name='Datos Completos', index=False)
         mensajes.append(f"✅ Datos completos: {len(df_datos):,} registros")
         
@@ -414,11 +430,11 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     fecha_str = fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas"
     return output.getvalue(), f"✅ Resumen de cartera generado ({fecha_str}) - {mensaje_final}"
 
+
 # ============================================================
-# REGISTRO DE REPORTES
+# REGISTRO DE REPORTES (SOLO EL CONSOLIDADO)
 # ============================================================
 
 REPORTES = {
-
     "📋 Resumen de Cartera (Consolidado)": generar_resumen_cartera,
 }

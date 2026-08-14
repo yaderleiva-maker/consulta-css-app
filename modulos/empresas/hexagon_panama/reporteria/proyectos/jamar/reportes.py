@@ -708,7 +708,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     - Hoja 1: Resumen ejecutivo
     - Hoja 2: Cuadro de Gestión por RANK (con filtro de fecha)
     - Hoja 3: Cuadro de Resultado de Gestión (con filtro de fecha)
-    - Hoja 4: Recaudo y Compromisos (sin filtro - acumulado)
+    - Hoja 4: Recaudo y Compromisos (sin filtro - acumulado) - FORMATO PIVOTE
     - Hoja 5: Datos Completos (las 1,076 cuentas con todos los datos)
     """
     
@@ -818,7 +818,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             )
         
         # ============================================================
-        # HOJA 4: RECAUDO Y COMPROMISOS
+        # HOJA 4: RECAUDO Y COMPROMISOS (FORMATO PIVOTE)
         # ============================================================
         
         df_recaudo, _ = generar_recaudo_compromisos_df(proyecto_id)
@@ -826,16 +826,23 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         if df_recaudo is not None and not df_recaudo.empty:
             df_recaudo.to_excel(writer, sheet_name='Recaudo y Compromisos', index=False)
             
-            totales = pd.DataFrame({
-                'Métrica': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],
-                'Total': [
-                    df_recaudo['recaudo'].sum(),
-                    df_recaudo['compromisos_activos'].sum(),
-                    df_recaudo['compromisos_incumplidos'].sum()
-                ]
-            })
-            totales.to_excel(writer, sheet_name='Totales Generales', index=False)
-            mensajes.append(f"✅ Recaudo: ${df_recaudo['recaudo'].sum():,.2f}")
+            # ✅ Extraer totales de la fila TOTAL del DataFrame pivotado
+            fila_total = df_recaudo[df_recaudo['resultado_gestion'] == 'TOTAL']
+            if not fila_total.empty and 'TOTAL' in fila_total.columns:
+                total_recaudo = fila_total['TOTAL'].iloc[0] if fila_total['resultado_gestion'].iloc[0] == 'RECAUDO' else 0
+                # Buscar cada fila
+                for _, row in df_recaudo.iterrows():
+                    if row['resultado_gestion'] == 'RECAUDO':
+                        mensajes.append(f"✅ Recaudo: ${row['TOTAL']:,.2f}")
+                    elif row['resultado_gestion'] == 'COMPROMISOS ACTIVOS':
+                        mensajes.append(f"✅ Compromisos Activos: ${row['TOTAL']:,.2f}")
+                    elif row['resultado_gestion'] == 'COMPROMISOS INCUMPLIDOS':
+                        mensajes.append(f"✅ Compromisos Incumplidos: ${row['TOTAL']:,.2f}")
+            else:
+                # Si no hay fila TOTAL, sumar las columnas
+                if 'TOTAL' in df_recaudo.columns:
+                    total_metricas = df_recaudo['TOTAL'].sum()
+                    mensajes.append(f"✅ Recaudo y Compromisos: ${total_metricas:,.2f}")
         else:
             pd.DataFrame({'Mensaje': ['No hay datos disponibles']}).to_excel(
                 writer, sheet_name='Recaudo y Compromisos', index=False
@@ -881,7 +888,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 fechapromesa
             FROM `{PROYECTO_BQ}.gestiones_jamar`
             WHERE id_proyecto = '{proyecto_id}'
-              AND codigo_gestion IN ('01', '88', '89')
+              AND codigo_gestion IN ('1', '88', '89')
               AND valorpromesa IS NOT NULL
               AND valorpromesa > 0
             QUALIFY ROW_NUMBER() OVER (PARTITION BY llave ORDER BY fechapromesa DESC) = 1

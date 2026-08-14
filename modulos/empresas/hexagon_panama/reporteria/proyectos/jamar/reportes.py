@@ -24,6 +24,22 @@ def preparar_para_excel(df):
     return resultado
 
 # ============================================================
+# FUNCIÓN PARA OBTENER MAPEO DE CÓDIGOS
+# ============================================================
+
+def obtener_mapeo_codigos():
+    """Obtiene el mapeo de códigos de gestión desde BigQuery"""
+    query = """
+    SELECT 
+        codigo_gestion,
+        resultado,
+        prioridad
+    FROM `proyecto-css-panama.cobranza.mapeo_codigos_gestion`
+    """
+    df = ejecutar_query(query)
+    return df
+
+# ============================================================
 # REPORTE ÚNICO: Resumen de Cartera (Consolidado)
 # ============================================================
 
@@ -39,7 +55,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     
     output = io.BytesIO()
     mensajes = []
-    
+    df_mapeo = obtener_mapeo_codigos()
     # ============================================================
     # PASO 1: CONSTRUIR DATOS COMPLETOS (TABLA MAESTRA)
     # ============================================================

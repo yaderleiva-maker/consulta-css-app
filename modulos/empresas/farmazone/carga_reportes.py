@@ -40,7 +40,8 @@ def run(usuario):
         "📊 Ventas", 
         "📦 Compras", 
         "💰 Utilidad Diaria",
-        "📦 Inventario"
+        "📦 Inventario",
+        "📄 Reportes"
     ])
     
     # =====================
@@ -598,4 +599,365 @@ def run(usuario):
                             
             except Exception as e:
                 st.error(f"❌ Error al leer el archivo: {e}")
+                st.exception(e)
+
+# =====================
+# TAB 4: REPORTES (NUEVA)
+# =====================
+with tab_reportes:
+    st.subheader("📊 Reportes Operativos")
+    st.markdown("---")
+    
+    # =====================
+    # CONFIGURACIÓN DEL REPORTE
+    # =====================
+    col_filtros1, col_filtros2, col_filtros3 = st.columns([2, 2, 1])
+    
+    with col_filtros1:
+        tipo_reporte = st.selectbox(
+            "📋 Selecciona el tipo de reporte:",
+            [
+                "Ventas por Vendedor",
+                "Ventas por Categoría",
+                "Productos más Vendidos",
+                "Utilidad por Vendedor",
+                "Resumen General de Ventas"
+            ],
+            key="tipo_reporte"
+        )
+    
+    with col_filtros2:
+        periodo = st.selectbox(
+            "📅 Selecciona el periodo:",
+            ["Hoy", "Esta semana", "Este mes", "Mes anterior", "Últimos 3 meses", "Últimos 6 meses", "Personalizado"],
+            key="periodo_reporte"
+        )
+    
+    with col_filtros3:
+        st.write("")
+        st.write("")
+        generar_btn = st.button("🚀 Generar Reporte", type="primary", use_container_width=True)
+    
+    # =====================
+    # SELECTOR DE FECHAS (si es personalizado)
+    # =====================
+    if periodo == "Personalizado":
+        col_fecha1, col_fecha2 = st.columns(2)
+        with col_fecha1:
+            fecha_inicio = st.date_input("Fecha de inicio", value=datetime.now().replace(day=1))
+        with col_fecha2:
+            fecha_fin = st.date_input("Fecha de fin", value=datetime.now())
+    else:
+        # Calcular fechas según el periodo seleccionado
+        hoy = datetime.now().date()
+        if periodo == "Hoy":
+            fecha_inicio = hoy
+            fecha_fin = hoy
+        elif periodo == "Esta semana":
+            fecha_inicio = hoy - timedelta(days=hoy.weekday())
+            fecha_fin = hoy
+        elif periodo == "Este mes":
+            fecha_inicio = hoy.replace(day=1)
+            fecha_fin = hoy
+        elif periodo == "Mes anterior":
+            primer_dia_mes_anterior = (hoy.replace(day=1) - timedelta(days=1)).replace(day=1)
+            ultimo_dia_mes_anterior = hoy.replace(day=1) - timedelta(days=1)
+            fecha_inicio = primer_dia_mes_anterior
+            fecha_fin = ultimo_dia_mes_anterior
+        elif periodo == "Últimos 3 meses":
+            fecha_inicio = hoy - timedelta(days=90)
+            fecha_fin = hoy
+        elif periodo == "Últimos 6 meses":
+            fecha_inicio = hoy - timedelta(days=180)
+            fecha_fin = hoy
+        else:
+            fecha_inicio = hoy.replace(day=1)
+            fecha_fin = hoy
+    
+    # Mostrar rango de fechas seleccionado
+    st.info(f"📅 **Periodo seleccionado:** {fecha_inicio.strftime('%d/%m/%Y')} → {fecha_fin.strftime('%d/%m/%Y')}")
+    st.markdown("---")
+    
+    # =====================
+    # FUNCIONES DE REPORTES
+    # =====================
+    def generar_reporte_vendedores(fecha_ini, fecha_fin):
+        """Reporte de ventas por vendedor"""
+        query = f"""
+        WITH ventas_vendedor AS (
+            SELECT 
+                vendedor,
+                DATE_TRUNC(fecha_factura, DAY) AS dia,
+                COUNT(DISTINCT no_factura) AS facturas,
+                SUM(unidades) AS unidades,
+                SUM(totalxcompra) AS ventas,
+                SUM(total_costo) AS costo,
+                SUM(utilidad) AS utilidad,
+                COUNT(DISTINCT codigo) AS productos_unicos
+            FROM `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}`
+            WHERE activo = TRUE
+              AND fecha_factura BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+              AND vendedor IS NOT NULL
+              AND vendedor != ''
+            GROUP BY vendedor, dia
+        )
+        SELECT 
+            vendedor,
+            COUNT(DISTINCT dia) AS dias_activos,
+            SUM(facturas) AS total_facturas,
+            SUM(unidades) AS total_unidades,
+            SUM(ventas) AS total_ventas,
+            SUM(costo) AS total_costo,
+            SUM(utilidad) AS total_utilidad,
+            ROUND(SUM(utilidad) / NULLIF(SUM(ventas), 0) * 100, 2) AS margen_utilidad,
+            ROUND(AVG(ventas), 2) AS venta_promedio_diaria,
+            SUM(productos_unicos) AS productos_unicos
+        FROM ventas_vendedor
+        GROUP BY vendedor
+        ORDER BY total_ventas DESC
+        """
+        return client.query(query).to_dataframe()
+    
+    def generar_reporte_categorias(fecha_ini, fecha_fin):
+        """Reporte de ventas por categoría"""
+        query = f"""
+        SELECT 
+            categoria_l1 AS categoria,
+            COUNT(DISTINCT no_factura) AS facturas,
+            SUM(unidades) AS unidades,
+            SUM(totalxcompra) AS ventas,
+            SUM(total_costo) AS costo,
+            SUM(utilidad) AS utilidad,
+            ROUND(SUM(utilidad) / NULLIF(SUM(totalxcompra), 0) * 100, 2) AS margen_utilidad,
+            COUNT(DISTINCT codigo) AS productos_unicos
+        FROM `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}`
+        WHERE activo = TRUE
+          AND fecha_factura BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+          AND categoria_l1 IS NOT NULL
+          AND categoria_l1 != ''
+        GROUP BY categoria_l1
+        ORDER BY ventas DESC
+        """
+        return client.query(query).to_dataframe()
+    
+    def generar_reporte_productos(fecha_ini, fecha_fin, limite=50):
+        """Reporte de productos más vendidos"""
+        query = f"""
+        SELECT 
+            codigo,
+            producto,
+            marca,
+            categoria_l1,
+            SUM(unidades) AS unidades,
+            COUNT(DISTINCT no_factura) AS facturas,
+            SUM(totalxcompra) AS ventas,
+            SUM(total_costo) AS costo,
+            SUM(utilidad) AS utilidad,
+            ROUND(SUM(utilidad) / NULLIF(SUM(totalxcompra), 0) * 100, 2) AS margen_utilidad
+        FROM `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}`
+        WHERE activo = TRUE
+          AND fecha_factura BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+          AND codigo IS NOT NULL
+          AND codigo != ''
+        GROUP BY codigo, producto, marca, categoria_l1
+        ORDER BY unidades DESC
+        LIMIT {limite}
+        """
+        return client.query(query).to_dataframe()
+    
+    def generar_reporte_utilidad_vendedor(fecha_ini, fecha_fin):
+        """Reporte de utilidad por vendedor (detallado)"""
+        query = f"""
+        SELECT 
+            vendedor,
+            DATE_TRUNC(fecha_factura, MONTH) AS mes,
+            COUNT(DISTINCT no_factura) AS facturas,
+            SUM(unidades) AS unidades,
+            SUM(totalxcompra) AS ventas,
+            SUM(total_costo) AS costo,
+            SUM(utilidad) AS utilidad,
+            ROUND(SUM(utilidad) / NULLIF(SUM(totalxcompra), 0) * 100, 2) AS margen_utilidad
+        FROM `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}`
+        WHERE activo = TRUE
+          AND fecha_factura BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+          AND vendedor IS NOT NULL
+          AND vendedor != ''
+        GROUP BY vendedor, mes
+        ORDER BY mes DESC, utilidad DESC
+        """
+        return client.query(query).to_dataframe()
+    
+    def generar_reporte_resumen(fecha_ini, fecha_fin):
+        """Resumen general de ventas"""
+        query = f"""
+        SELECT 
+            DATE_TRUNC(fecha_factura, DAY) AS dia,
+            COUNT(DISTINCT no_factura) AS facturas,
+            COUNT(DISTINCT vendedor) AS vendedores_activos,
+            SUM(unidades) AS unidades,
+            SUM(totalxcompra) AS ventas,
+            SUM(total_costo) AS costo,
+            SUM(utilidad) AS utilidad,
+            ROUND(SUM(utilidad) / NULLIF(SUM(totalxcompra), 0) * 100, 2) AS margen_utilidad
+        FROM `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}`
+        WHERE activo = TRUE
+          AND fecha_factura BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+        GROUP BY dia
+        ORDER BY dia DESC
+        """
+        return client.query(query).to_dataframe()
+    
+    # =====================
+    # GENERAR REPORTE
+    # =====================
+    if generar_btn:
+        with st.spinner("🔄 Generando reporte..."):
+            try:
+                # Convertir fechas a string para la consulta
+                fecha_ini_str = fecha_inicio.strftime('%Y-%m-%d')
+                fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
+                
+                # Generar según el tipo seleccionado
+                if tipo_reporte == "Ventas por Vendedor":
+                    df = generar_reporte_vendedores(fecha_ini_str, fecha_fin_str)
+                    titulo = f"📊 Ventas por Vendedor"
+                    columnas_mostrar = ['vendedor', 'total_facturas', 'total_unidades', 'total_ventas', 'total_utilidad', 'margen_utilidad']
+                    columnas_renombrar = {
+                        'vendedor': 'Vendedor',
+                        'total_facturas': 'Facturas',
+                        'total_unidades': 'Unidades',
+                        'total_ventas': 'Ventas ($)',
+                        'total_utilidad': 'Utilidad ($)',
+                        'margen_utilidad': 'Margen (%)'
+                    }
+                
+                elif tipo_reporte == "Ventas por Categoría":
+                    df = generar_reporte_categorias(fecha_ini_str, fecha_fin_str)
+                    titulo = f"📊 Ventas por Categoría"
+                    columnas_mostrar = ['categoria', 'facturas', 'unidades', 'ventas', 'utilidad', 'margen_utilidad']
+                    columnas_renombrar = {
+                        'categoria': 'Categoría',
+                        'facturas': 'Facturas',
+                        'unidades': 'Unidades',
+                        'ventas': 'Ventas ($)',
+                        'utilidad': 'Utilidad ($)',
+                        'margen_utilidad': 'Margen (%)'
+                    }
+                
+                elif tipo_reporte == "Productos más Vendidos":
+                    df = generar_reporte_productos(fecha_ini_str, fecha_fin_str)
+                    titulo = f"📊 Top 50 Productos más Vendidos"
+                    columnas_mostrar = ['codigo', 'producto', 'marca', 'categoria_l1', 'unidades', 'facturas', 'ventas']
+                    columnas_renombrar = {
+                        'codigo': 'Código',
+                        'producto': 'Producto',
+                        'marca': 'Marca',
+                        'categoria_l1': 'Categoría',
+                        'unidades': 'Unidades',
+                        'facturas': 'Facturas',
+                        'ventas': 'Ventas ($)'
+                    }
+                
+                elif tipo_reporte == "Utilidad por Vendedor":
+                    df = generar_reporte_utilidad_vendedor(fecha_ini_str, fecha_fin_str)
+                    titulo = f"📊 Utilidad por Vendedor (detallado)"
+                    columnas_mostrar = ['vendedor', 'mes', 'facturas', 'unidades', 'ventas', 'utilidad', 'margen_utilidad']
+                    columnas_renombrar = {
+                        'vendedor': 'Vendedor',
+                        'mes': 'Mes',
+                        'facturas': 'Facturas',
+                        'unidades': 'Unidades',
+                        'ventas': 'Ventas ($)',
+                        'utilidad': 'Utilidad ($)',
+                        'margen_utilidad': 'Margen (%)'
+                    }
+                
+                else:  # Resumen General
+                    df = generar_reporte_resumen(fecha_ini_str, fecha_fin_str)
+                    titulo = f"📊 Resumen General de Ventas"
+                    columnas_mostrar = ['dia', 'facturas', 'vendedores_activos', 'unidades', 'ventas', 'utilidad', 'margen_utilidad']
+                    columnas_renombrar = {
+                        'dia': 'Día',
+                        'facturas': 'Facturas',
+                        'vendedores_activos': 'Vendedores',
+                        'unidades': 'Unidades',
+                        'ventas': 'Ventas ($)',
+                        'utilidad': 'Utilidad ($)',
+                        'margen_utilidad': 'Margen (%)'
+                    }
+                
+                # Mostrar resultados
+                if df.empty:
+                    st.warning("⚠️ No se encontraron datos para el periodo seleccionado.")
+                else:
+                    # Mostrar métricas
+                    st.subheader(titulo)
+                    
+                    # Resumen de métricas
+                    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                    with col_m1:
+                        st.metric("Total Ventas", f"${df['ventas'].sum():,.2f}" if 'ventas' in df.columns else "N/A")
+                    with col_m2:
+                        st.metric("Total Utilidad", f"${df['utilidad'].sum():,.2f}" if 'utilidad' in df.columns else "N/A")
+                    with col_m3:
+                        if 'margen_utilidad' in df.columns:
+                            margen_prom = df['margen_utilidad'].mean()
+                            st.metric("Margen Promedio", f"{margen_prom:.1f}%")
+                        else:
+                            st.metric("Margen Promedio", "N/A")
+                    with col_m4:
+                        st.metric("Total Registros", f"{len(df):,}")
+                    
+                    st.markdown("---")
+                    
+                    # Mostrar tabla
+                    df_mostrar = df[columnas_mostrar].rename(columns=columnas_renombrar)
+                    st.dataframe(df_mostrar, use_container_width=True)
+                    
+                    # Botón para descargar Excel
+                    st.markdown("---")
+                    col_download1, col_download2 = st.columns(2)
+                    
+                    with col_download1:
+                        # Descargar como Excel
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            df_mostrar.to_excel(writer, index=False, sheet_name='Reporte')
+                            # Formatear columnas numéricas
+                            workbook = writer.book
+                            worksheet = writer.sheets['Reporte']
+                            for col in worksheet.columns:
+                                max_length = 0
+                                column = col[0].column_letter
+                                for cell in col:
+                                    try:
+                                        if len(str(cell.value)) > max_length:
+                                            max_length = len(str(cell.value))
+                                    except:
+                                        pass
+                                adjusted_width = min(max_length + 2, 50)
+                                worksheet.column_dimensions[column].width = adjusted_width
+                        
+                        excel_data = output.getvalue()
+                        st.download_button(
+                            label="📥 Descargar Excel",
+                            data=excel_data,
+                            file_name=f"{tipo_reporte.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                    
+                    with col_download2:
+                        # Descargar como CSV
+                        csv = df_mostrar.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Descargar CSV",
+                            data=csv,
+                            file_name=f"{tipo_reporte.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv",
+                            use_container_width=True
+                        )
+                    
+            except Exception as e:
+                st.error(f"❌ Error al generar el reporte: {e}")
                 st.exception(e)

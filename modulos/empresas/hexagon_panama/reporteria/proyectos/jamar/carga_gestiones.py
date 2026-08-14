@@ -160,7 +160,8 @@ def obtener_historial_cargas():
         """
         df = ejecutar_query(query)
         return df
-    except:
+    except Exception as e:
+        st.warning(f"Error al consultar historial de cargas: {e}")
         return pd.DataFrame()
 
 def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):

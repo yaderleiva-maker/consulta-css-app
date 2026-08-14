@@ -171,6 +171,7 @@ def guardar_cartera_jamar(df, proyecto_id):
                 'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),       # ✅ CORREGIDO
                 'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')        # ✅ CORREGIDO
             }
+            registros.append(registro)
             
         except Exception as e:
             errores += 1
@@ -308,7 +309,12 @@ def render():
         with st.spinner("Procesando archivo..."):
             try:
                 df = pd.read_excel(uploaded_file)
-                
+                df.columns = (
+                    df.columns.astype(str)
+                    .str.strip()
+                    .str.replace("N�mero de Cuenta", "Número de Cuenta", regex=False)
+                    .str.replace("Número de Cuenta", "Número de Cuenta", regex=False)
+                )
                 faltantes = [col for col in COLUMNAS_REQUERIDAS if col not in df.columns]
                 if faltantes:
                     st.error(f"Faltan columnas obligatorias: {', '.join(faltantes)}")

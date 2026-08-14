@@ -465,10 +465,10 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
                         ELSE 'SIN CONTACTO'
                     END
                 -- 🔥 TERCERO: Si no tiene resultado_gestion, usar codigo_gestion
-                WHEN ug.ultimo_codigo_gestion IN ('0', '1', '00', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
+                WHEN ug.ultimo_codigo_gestion IN ('0', '00') THEN 'CONTACTO CON TERCERO'
+                WHEN ug.ultimo_codigo_gestion IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
                 WHEN ug.ultimo_codigo_gestion IN ('14', '81', '84', '90') THEN 'CONTACTO EFECTIVO'
                 WHEN ug.ultimo_codigo_gestion = '86' THEN 'SIN CONTACTO'
-                WHEN ug.ultimo_codigo_gestion = '00' THEN 'CONTACTO CON TERCERO'
                 WHEN ug.ultimo_codigo_gestion IN ('10', '11', '15') THEN 'BUZON DE VOZ'
                 ELSE 'SIN CONTACTO'
             END AS categoria_resultado
@@ -503,6 +503,7 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
         return None, "⚠️ No hay datos disponibles."
     
     return df, f"✅ {len(df)} categorías"
+    
 # ============================================================
 # REPORTE 6: Recaudo y Compromisos (individual)
 # ============================================================

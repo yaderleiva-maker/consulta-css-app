@@ -301,7 +301,7 @@ def generar_cuadro_gestion_rank(proyecto_id, fecha_reporte=None):
 # ============================================================
 
 def generar_cuadro_gestion_rank_df(proyecto_id, fecha_reporte=None):
-    """Devuelve DataFrame del Cuadro de Gestión por RANK (para consolidar)"""
+    """Devuelve DataFrame del Cuadro de Gestión por RANK (con WhatsApp/Correo diferenciado)"""
     
     filtro_fechas = ""
     if fecha_reporte is not None:
@@ -316,10 +316,20 @@ def generar_cuadro_gestion_rank_df(proyecto_id, fecha_reporte=None):
             g.codigo_gestion,
             g.tipo_gestion,
             g.area_gestion,
+            g.numeromarcado,
             c.rank,
             CASE 
-                WHEN g.codigo_gestion = '90' AND g.tipo_gestion = 'T' THEN 'WHATSAPP'
-                WHEN g.codigo_gestion = '90' AND g.tipo_gestion != 'T' THEN 'CORREO'
+                -- 🔥 WhatsApp: código 90 con número de teléfono válido (no 0 ni 00000000)
+                WHEN g.codigo_gestion = '90' 
+                     AND g.numeromarcado IS NOT NULL 
+                     AND g.numeromarcado NOT IN ('0', '00000000', '')
+                     AND LENGTH(g.numeromarcado) >= 7
+                THEN 'WHATSAPP'
+                
+                -- 🔥 Correo: código 90 sin número de teléfono válido
+                WHEN g.codigo_gestion = '90' THEN 'CORREO'
+                
+                -- 🔥 Llamada: todo lo demás
                 ELSE 'LLAMADA'
             END AS tipo_gestion_real
         FROM `{PROYECTO_BQ}.gestiones_jamar` g

@@ -397,6 +397,24 @@ def leer_archivo_gestiones(uploaded_file):
         st.error(f"Error al leer el archivo: {e}")
         raise
 
+def obtener_cargas_disponibles():
+    try:
+        query = f"""
+            SELECT 
+                id_carga,
+                COUNT(*) AS registros,
+                MIN(fechahoragestion) AS primera_fecha,
+                MAX(fechahoragestion) AS ultima_fecha,
+                MIN(fecha_carga) AS fecha_carga
+            FROM {TABLA_GESTIONES}
+            WHERE id_proyecto = '{PROYECTO_ID}'
+            GROUP BY id_carga
+            ORDER BY fecha_carga DESC
+        """
+        df = ejecutar_query(query)
+        return df
+    except:
+        return pd.DataFrame()
 # ============================================================
 # VISTA PRINCIPAL
 # ============================================================
@@ -538,6 +556,56 @@ def render():
             except Exception as e:
                 st.error(f"Error al procesar el archivo: {str(e)}")
                 st.exception(e)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # ---- Eliminar cargas ----
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">🗑️ Eliminar carga</div>', unsafe_allow_html=True)
+    
+    cargas_df = obtener_cargas_disponibles()
+    
+    if not cargas_df.empty:
+        # Mostrar tabla con información clara
+        st.markdown("#### 📋 Cargas disponibles")
+        
+        # Crear una columna con información legible para el selectbox
+        cargas_df['label'] = cargas_df.apply(lambda row: 
+            f"{row['fecha_carga'].strftime('%d/%m/%Y %H:%M')} - "
+            f"{row['registros']} registros "
+            f"(del {row['primera_fecha'].strftime('%d/%m/%Y')} al {row['ultima_fecha'].strftime('%d/%m/%Y')})"
+            if hasattr(row['fecha_carga'], 'strftime') 
+            else f"{row['registros']} registros",
+            axis=1
+        )
+        
+        # Selectbox con labels legibles
+        opciones = dict(zip(cargas_df['label'], cargas_df['id_carga']))
+        
+        seleccion = st.selectbox(
+            "Selecciona la carga a eliminar",
+            list(opciones.keys()),
+            key="eliminar_carga_selector"
+        )
+        
+        if seleccion:
+            id_carga = opciones[seleccion]
+            
+            # Botón de confirmación
+            if st.button("🗑️ Eliminar carga seleccionada", type="secondary", use_container_width=True):
+                st.warning(f"⚠️ ¿Estás seguro de eliminar esta carga?")
+                st.info(f"📌 Carga: {seleccion}")
+                
+                if st.button("✅ Sí, confirmar eliminación", use_container_width=True):
+                    exito, mensaje = eliminar_carga(id_carga)
+                    if exito:
+                        st.success(f"✅ {mensaje}")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {mensaje}")
+    else:
+        st.info("No hay cargas registradas para eliminar.")
     
     st.markdown('</div>', unsafe_allow_html=True)
 

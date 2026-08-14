@@ -16,7 +16,6 @@ PROYECTO_BQ = "proyecto-css-panama.cobranza"
 PROYECTO_ID = "JAMAR"
 TABLA_DESTINO = f"{PROYECTO_BQ}.cartera_predemanda_jamar"
 
-# Columnas requeridas
 COLUMNAS_REQUERIDAS = [
     'Estado inicial', 'Tramo inicial', 'Codigo de la Agencia', 
     'Número de Cuenta', 'Tipo credito', 'Saldo Total adeudado',
@@ -24,7 +23,7 @@ COLUMNAS_REQUERIDAS = [
 ]
 
 # ============================================================
-# FUNCIONES DE BIGQUERY
+# FUNCIONES
 # ============================================================
 
 def obtener_ultima_carga_cartera():
@@ -50,10 +49,6 @@ def obtener_ultima_carga_cartera():
     except Exception as e:
         st.warning(f"⚠️ No se pudo obtener información de la cartera: {e}")
         return None
-
-# ============================================================
-# FUNCIONES DE NORMALIZACIÓN
-# ============================================================
 
 def normalizar_texto(valor):
     if pd.isna(valor):
@@ -93,10 +88,8 @@ def guardar_cartera_jamar(df, proyecto_id):
     registros_guardados = 0
     detalles = []
     
-    # 🔥 Generar ID de carga único
     id_carga = str(uuid.uuid4())
     
-    # Preparar datos
     registros = []
     
     for idx, row in df.iterrows():
@@ -142,6 +135,7 @@ def guardar_cartera_jamar(df, proyecto_id):
             plazo_dcto_2 = normalizar_texto(row.get('PLAZO DCTO 2'))
             
             id_registro = str(uuid.uuid4())
+            ahora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             registro = {
                 'id_registro': id_registro,
@@ -167,11 +161,11 @@ def guardar_cartera_jamar(df, proyecto_id):
                 'vr_pagar_plan_al_dia': vr_pagar_plan_al_dia,
                 'cuota_inicial_arreglo': cuota_inicial,
                 'saldo_diferir_cuotas': saldo_diferir,
-                'fecha_carga': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),      # ✅ CORREGIDO
-                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),       # ✅ CORREGIDO
-                'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')        # ✅ CORREGIDO
+                'fecha_carga': ahora,
+                'created_at': ahora,
+                'updated_at': ahora
             }
-            registros.append(registro)
+            registros.append(registro)  # ← ESTA LÍNEA ES CRÍTICA
             
         except Exception as e:
             errores += 1
@@ -183,7 +177,30 @@ def guardar_cartera_jamar(df, proyecto_id):
     
     df_insert = pd.DataFrame(registros)
     
-    # Conexión a BigQuery
+    # ============================================================
+    # CONVERTIR FECHAS A TIPOS REALES DE BIGQUERY
+    # ============================================================
+    
+    # TIMESTAMP: convertir a fechas UTC reales, no strings
+    for columna in ["fecha_carga", "created_at", "updated_at"]:
+        if columna in df_insert.columns:
+            df_insert[columna] = pd.to_datetime(
+                df_insert[columna],
+                errors="coerce",
+                utc=True,
+            )
+    
+    # DATE: convertir a date real
+    if "fecha_ultimo_pago" in df_insert.columns:
+        df_insert["fecha_ultimo_pago"] = pd.to_datetime(
+            df_insert["fecha_ultimo_pago"],
+            errors="coerce",
+        ).dt.date
+    
+    # ============================================================
+    # CONEXIÓN A BIGQUERY
+    # ============================================================
+    
     try:
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"]
@@ -200,21 +217,9 @@ def guardar_cartera_jamar(df, proyecto_id):
             st.error(f"La tabla no existe: {e}")
             return 0, total, f"Tabla no existe: {e}"
         
-        # 🔥 PRIMERO ELIMINAR DATOS ANTERIORES DEL PROYECTO
-        delete_query = f"""
-            DELETE FROM `{TABLA_DESTINO}`
-            WHERE id_proyecto = '{PROYECTO_ID}'
-        """
-        try:
-            client.query(delete_query).result()
-            st.info("🗑️ Datos anteriores eliminados")
-        except Exception as e:
-            st.error(f"Error al eliminar datos: {e}")
-            return 0, total, f"Error en eliminación: {e}"
-        
-        # 🔥 INSERTAR NUEVOS DATOS
+        # ✅ WRITE_TRUNCATE - Reemplaza la tabla completa (más seguro que DELETE)
         job_config = bigquery.LoadJobConfig(
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             autodetect=True
         )
         
@@ -309,12 +314,15 @@ def render():
         with st.spinner("Procesando archivo..."):
             try:
                 df = pd.read_excel(uploaded_file)
+                
+                # Normalizar nombres de columnas (especialmente caracteres dañados)
                 df.columns = (
                     df.columns.astype(str)
                     .str.strip()
                     .str.replace("N�mero de Cuenta", "Número de Cuenta", regex=False)
                     .str.replace("Número de Cuenta", "Número de Cuenta", regex=False)
                 )
+                
                 faltantes = [col for col in COLUMNAS_REQUERIDAS if col not in df.columns]
                 if faltantes:
                     st.error(f"Faltan columnas obligatorias: {', '.join(faltantes)}")

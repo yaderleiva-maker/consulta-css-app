@@ -224,7 +224,6 @@ def guardar_gestiones_jamar(df, proyecto_id):
             
             registro = {
                 'id_gestion': id_gestion,
-                'id_carga': id_carga,
                 'id_proyecto': PROYECTO_ID,
                 'llave': llave,
                 'codigo_agencia': codigo_agencia,
@@ -248,9 +247,9 @@ def guardar_gestiones_jamar(df, proyecto_id):
                 'fecha': fecha,
                 'min_de_prioridad': min_prioridad,
                 'clave_min': normalizar_texto(row.get('ClaveMin')),
-                'fecha_carga': datetime.now().isoformat(),
-                'created_at': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
+                'fecha_carga': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),      # ✅ CORREGIDO
+                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),       # ✅ CORREGIDO
+                'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')        # ✅ CORREGIDO
             }
             registros.append(registro)
             

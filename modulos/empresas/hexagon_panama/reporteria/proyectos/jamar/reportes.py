@@ -17,7 +17,7 @@ PROYECTO_ID = "JAMAR"
 # ============================================================
 
 def preparar_para_excel(df):
-    """Excel no acepta timestamps con zona horaria. Los convierte a datetime sin zona."""
+    """Excel no acepta timestamps con zona horaria."""
     resultado = df.copy()
     for columna in resultado.select_dtypes(include=["datetimetz"]).columns:
         resultado[columna] = resultado[columna].dt.tz_localize(None)
@@ -27,20 +27,9 @@ def preparar_para_excel(df):
 # REPORTE 1: Resumen de Cuentas Pre-Demanda
 # ============================================================
 
-def generar_resumen_predemanda(proyecto_id, fecha_inicio=None, fecha_fin=None):
-    """
-    Genera el reporte consolidado de Jamar:
-    - Cartera pre-demanda
-    - Última gestión
-    - Mejor gestión
-    - Pagos realizados
-    """
-    filtro_fechas = ""
-    if fecha_inicio is not None and fecha_fin is not None:
-        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
-        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
-        filtro_fechas = f"AND DATE(g.fechahoragestion) BETWEEN '{fecha_inicio_str}' AND '{fecha_fin_str}'"
-
+def generar_resumen_predemanda(proyecto_id, fecha_reporte=None):
+    """Resumen de cuentas pre-demanda (acumulado)"""
+    # No usa fecha, es acumulado
     query = f"""
     WITH pagos_agrupados AS (
         SELECT 
@@ -65,7 +54,6 @@ def generar_resumen_predemanda(proyecto_id, fecha_inicio=None, fecha_fin=None):
             COUNT(CASE WHEN resultado_gestion = 'CONTACTO CON TERCERO' THEN 1 END) AS total_contactos_tercero
         FROM `{PROYECTO_BQ}.gestiones_jamar` g
         WHERE g.id_proyecto = '{proyecto_id}'
-          {filtro_fechas}
         GROUP BY llave
     )
     SELECT 
@@ -80,11 +68,9 @@ def generar_resumen_predemanda(proyecto_id, fecha_inicio=None, fecha_fin=None):
         c.saldo_total_adeudado,
         c.saldo_total_vencido,
         c.fecha_ultimo_pago AS fecha_ultimo_pago_cartera,
-        -- Pagos
         p.cantidad_pagos,
         p.total_recaudo,
         p.ultimo_pago AS fecha_ultimo_pago_real,
-        -- Gestiones
         g.ultima_gestion_fecha,
         g.ultima_promesa,
         g.total_gestiones,
@@ -92,7 +78,6 @@ def generar_resumen_predemanda(proyecto_id, fecha_inicio=None, fecha_fin=None):
         g.total_contactos,
         g.total_no_contactos,
         g.total_contactos_tercero,
-        -- Indicadores
         CASE 
             WHEN g.total_promesas > 0 AND p.cantidad_pagos > 0 THEN 'CUMPLE'
             WHEN g.total_promesas > 0 AND p.cantidad_pagos = 0 THEN 'PROMESA SIN PAGO'
@@ -110,7 +95,7 @@ def generar_resumen_predemanda(proyecto_id, fecha_inicio=None, fecha_fin=None):
     df = preparar_para_excel(df)
     
     if df.empty:
-        return None, "⚠️ No hay datos disponibles para generar el reporte."
+        return None, "⚠️ No hay datos disponibles."
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -143,14 +128,13 @@ def generar_resumen_predemanda(proyecto_id, fecha_inicio=None, fecha_fin=None):
             worksheet = writer.sheets[sheet_name]
             worksheet.set_column(0, 20, 18)
     
-    periodo = f"{fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}" if fecha_inicio and fecha_fin else "Todas las fechas"
-    return output.getvalue(), f"✅ Reporte generado con {len(df):,} registros ({periodo})"
+    return output.getvalue(), f"✅ Reporte generado con {len(df):,} registros"
 
 # ============================================================
 # REPORTE 2: Cartera Comercial
 # ============================================================
 
-def generar_cartera_comercial(proyecto_id, fecha_inicio=None, fecha_fin=None):
+def generar_cartera_comercial(proyecto_id, fecha_reporte=None):
     """Reporte simple de cartera comercial"""
     query = f"""
     SELECT 
@@ -189,14 +173,8 @@ def generar_cartera_comercial(proyecto_id, fecha_inicio=None, fecha_fin=None):
 # REPORTE 3: Seguimiento de Cobro
 # ============================================================
 
-def generar_seguimiento_cobro(proyecto_id, fecha_inicio=None, fecha_fin=None):
-    """Reporte de seguimiento de cobro con todas las gestiones"""
-    filtro_fechas = ""
-    if fecha_inicio is not None and fecha_fin is not None:
-        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
-        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
-        filtro_fechas = f"AND DATE(g.fechahoragestion) BETWEEN '{fecha_inicio_str}' AND '{fecha_fin_str}'"
-
+def generar_seguimiento_cobro(proyecto_id, fecha_reporte=None):
+    """Reporte de seguimiento de cobro"""
     query = f"""
     SELECT 
         g.llave,
@@ -215,7 +193,6 @@ def generar_seguimiento_cobro(proyecto_id, fecha_inicio=None, fecha_fin=None):
     LEFT JOIN `{PROYECTO_BQ}.cartera_predemanda_jamar` c 
         ON g.llave = c.llave AND c.id_proyecto = '{proyecto_id}'
     WHERE g.id_proyecto = '{proyecto_id}'
-      {filtro_fechas}
     ORDER BY g.llave, g.fechahoragestion DESC
     """
     
@@ -232,15 +209,14 @@ def generar_seguimiento_cobro(proyecto_id, fecha_inicio=None, fecha_fin=None):
             worksheet = writer.sheets[sheet_name]
             worksheet.set_column(0, 20, 18)
     
-    periodo = f"{fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}" if fecha_inicio and fecha_fin else "Todas las fechas"
-    return output.getvalue(), f"✅ Seguimiento generado con {len(df):,} registros ({periodo})"
+    return output.getvalue(), f"✅ Seguimiento generado con {len(df):,} registros"
 
 # ============================================================
-# REPORTE 4: Cuadro de Gestión por RANK
+# REPORTE 4: Cuadro de Gestión por RANK (CON DÍA)
 # ============================================================
 
-def generar_cuadro_gestion_rank(proyecto_id, fecha_inicio=None, fecha_fin=None):
-    """Cuadro de gestión por RANK"""
+def generar_cuadro_gestion_rank(proyecto_id, fecha_reporte=None):
+    """Cuadro de gestión por RANK para un día específico"""
     
     filtro_fechas = ""
     if fecha_reporte is not None:
@@ -309,7 +285,7 @@ def generar_cuadro_gestion_rank(proyecto_id, fecha_inicio=None, fecha_fin=None):
     df = preparar_para_excel(df)
     
     if df.empty:
-        return None, "⚠️ No hay datos disponibles para el período seleccionado."
+        return None, "⚠️ No hay datos disponibles para la fecha seleccionada."
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -318,15 +294,15 @@ def generar_cuadro_gestion_rank(proyecto_id, fecha_inicio=None, fecha_fin=None):
             worksheet = writer.sheets[sheet_name]
             worksheet.set_column(0, 20, 18)
     
-    periodo = f"{fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}" if fecha_inicio and fecha_fin else "Todas las fechas"
-    return output.getvalue(), f"✅ Cuadro de gestión generado ({periodo})"
+    fecha_str = fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas"
+    return output.getvalue(), f"✅ Cuadro de gestión generado ({fecha_str})"
 
 # ============================================================
-# REPORTE 5: Cuadro de Resultado de Gestión
+# REPORTE 5: Cuadro de Resultado de Gestión (CON DÍA)
 # ============================================================
 
-def generar_cuadro_resultado_gestion(proyecto_id, fecha_inicio=None, fecha_fin=None):
-    """Cuadro de resultado de gestión por RANK"""
+def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
+    """Cuadro de resultado de gestión por RANK para un día específico"""
     
     filtro_fechas = ""
     if fecha_reporte is not None:
@@ -394,7 +370,7 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_inicio=None, fecha_fin=N
     df = preparar_para_excel(df)
     
     if df.empty:
-        return None, "⚠️ No hay datos disponibles para el período seleccionado."
+        return None, "⚠️ No hay datos disponibles para la fecha seleccionada."
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -417,23 +393,18 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_inicio=None, fecha_fin=N
             worksheet = writer.sheets[sheet_name]
             worksheet.set_column(0, 25, 18)
     
-    periodo = f"{fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}" if fecha_inicio and fecha_fin else "Todas las fechas"
-    return output.getvalue(), f"✅ Cuadro de resultado generado ({periodo})"
+    fecha_str = fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas"
+    return output.getvalue(), f"✅ Cuadro de resultado generado ({fecha_str})"
 
 # ============================================================
-# REPORTE 6: Recaudo y Compromisos
+# REPORTE 6: Recaudo y Compromisos (SIN FECHA - ACUMULADO)
 # ============================================================
 
-def generar_recaudo_compromisos(proyecto_id, fecha_inicio=None, fecha_fin=None):
-    """Cuadro de recaudo y compromisos por RANK"""
-    
-    filtro_pagos = ""
-    filtro_promesas = ""
-    if fecha_inicio is not None and fecha_fin is not None:
-        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
-        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
-        filtro_pagos = f"AND DATE(p.fecha_up) BETWEEN '{fecha_inicio_str}' AND '{fecha_fin_str}'"
-        filtro_promesas = f"AND DATE(g.fechapromesa) BETWEEN '{fecha_inicio_str}' AND '{fecha_fin_str}'"
+def generar_recaudo_compromisos(proyecto_id, fecha_reporte=None):
+    """
+    Cuadro de recaudo y compromisos por RANK.
+    SIN FILTRO DE FECHA - muestra datos acumulados hasta hoy.
+    """
     
     query = f"""
     WITH recaudo_por_rank AS (
@@ -444,7 +415,6 @@ def generar_recaudo_compromisos(proyecto_id, fecha_inicio=None, fecha_fin=None):
         LEFT JOIN `{PROYECTO_BQ}.pagos_jamar` p 
             ON c.llave = p.llave AND p.id_proyecto = '{proyecto_id}'
         WHERE c.id_proyecto = '{proyecto_id}'
-          {filtro_pagos}
         GROUP BY c.rank
     ),
     ultima_promesa_por_cuenta AS (
@@ -459,7 +429,6 @@ def generar_recaudo_compromisos(proyecto_id, fecha_inicio=None, fecha_fin=None):
           AND g.codigo_gestion IN ('01', '88', '89')
           AND g.valorpromesa IS NOT NULL
           AND g.valorpromesa > 0
-          {filtro_promesas}
     ),
     ultima_promesa AS (
         SELECT 
@@ -503,7 +472,7 @@ def generar_recaudo_compromisos(proyecto_id, fecha_inicio=None, fecha_fin=None):
     df = preparar_para_excel(df)
     
     if df.empty:
-        return None, "⚠️ No hay datos disponibles para el período seleccionado."
+        return None, "⚠️ No hay datos disponibles."
     
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -523,8 +492,7 @@ def generar_recaudo_compromisos(proyecto_id, fecha_inicio=None, fecha_fin=None):
             worksheet = writer.sheets[sheet_name]
             worksheet.set_column(0, 25, 18)
     
-    periodo = f"{fecha_inicio.strftime('%d/%m/%Y')} - {fecha_fin.strftime('%d/%m/%Y')}" if fecha_inicio and fecha_fin else "Todas las fechas"
-    return output.getvalue(), f"✅ Recaudo y compromisos generado ({periodo})"
+    return output.getvalue(), f"✅ Recaudo y compromisos generado (datos acumulados)"
 
 # ============================================================
 # REGISTRO DE REPORTES

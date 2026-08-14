@@ -47,26 +47,25 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     """
     Genera un Excel consolidado con:
     - Hoja 1: Resumen ejecutivo (métricas clave)
-    - Hoja 2: Cuadro de Gestión por RANK
-    - Hoja 3: Cuadro de Resultado de Gestión
-    - Hoja 4: Recaudo y Compromisos
+    - Hoja 2: Cuadro de Gestión por RANK (SOLO gestiones del día)
+    - Hoja 3: Cuadro de Resultado de Gestión (SOLO gestiones del día)
+    - Hoja 4: Recaudo y Compromisos (TODOS los datos históricos)
     - Hoja 5: DATOS COMPLETOS (TABLA MAESTRA - Fuente de la verdad)
     """
     
     output = io.BytesIO()
     mensajes = []
-    df_mapeo = obtener_mapeo_codigos()
-    # 🔥 CONSTRUIR FILTRO DE FECHA
-    filtro_fechas = ""
+    
+    # 🔥 CONSTRUIR FILTRO DE FECHA PARA GESTIONES
+    filtro_fechas_gestiones = ""
     if fecha_reporte is not None:
         fecha_reporte_str = fecha_reporte.strftime('%Y-%m-%d')
-        filtro_fechas = f"""
+        filtro_fechas_gestiones = f"""
         AND DATE(g.fechahoragestion) = '{fecha_reporte_str}'
-        AND DATE(p.fecha_up) = '{fecha_reporte_str}'
         """
     
     # ============================================================
-    # PASO 1: CONSTRUIR DATOS COMPLETOS (TABLA MAESTRA) CON FILTRO
+    # PASO 1: CONSTRUIR DATOS COMPLETOS (CON FILTRO DE GESTIONES POR DÍA)
     # ============================================================
     
     query_datos_completos = f"""
@@ -79,8 +78,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             SUM(saldo) AS saldo_pagos
         FROM `{PROYECTO_BQ}.pagos_jamar`
         WHERE id_proyecto = '{proyecto_id}'
-          -- 🔥 FILTRO DE FECHA PARA PAGOS
-          {filtro_fechas.replace('DATE(g.fechahoragestion)', 'DATE(fecha_up)').replace("AND DATE(p.fecha_up)", "AND DATE(fecha_up)") if fecha_reporte else ''}
         GROUP BY llave
     ),
     
@@ -112,14 +109,13 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 LIMIT 1
             )[OFFSET(0)] AS ultimo_canal,
             
-            -- Totales por canal
+            -- Totales por canal (SOLO DEL DÍA)
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 1 END) AS total_correos,
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND numeromarcado IS NOT NULL AND numeromarcado NOT IN ('0', '00000000', '') AND LENGTH(numeromarcado) >= 7 THEN 1 END) AS total_whatsapps,
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) != '90' THEN 1 END) AS total_llamadas
         FROM `{PROYECTO_BQ}.gestiones_jamar` g
         WHERE g.id_proyecto = '{proyecto_id}'
-          -- 🔥 FILTRO DE FECHA PARA GESTIONES
-          {filtro_fechas.replace('DATE(p.fecha_up)', 'DATE(g.fechahoragestion)').replace("AND DATE(g.fechahoragestion)", "AND DATE(g.fechahoragestion)") if fecha_reporte else ''}
+          {filtro_fechas_gestiones}  -- 🔥 FILTRO POR DÍA
         GROUP BY llave
     ),
     
@@ -133,8 +129,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
           AND SAFE_CAST(codigo_gestion AS STRING) IN ('1', '88', '89')
           AND valorpromesa IS NOT NULL
           AND valorpromesa > 0
-          -- 🔥 FILTRO DE FECHA PARA PROMESAS
-          {filtro_fechas.replace('DATE(p.fecha_up)', 'DATE(fechapromesa)').replace('DATE(g.fechahoragestion)', 'DATE(fechapromesa)').replace("AND DATE(g.fechahoragestion)", "AND DATE(fechapromesa)") if fecha_reporte else ''}
+          -- 🔥 SIN FILTRO DE FECHA (TODAS LAS PROMESAS)
         QUALIFY ROW_NUMBER() OVER (PARTITION BY llave ORDER BY fechapromesa DESC) = 1
     ),
     
@@ -152,12 +147,12 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             c.saldo_total_vencido,
             c.fecha_ultimo_pago AS fecha_ultimo_pago_cartera,
             
-            -- Datos de pagos
+            -- Datos de pagos (TODOS)
             p.cantidad_pagos,
             p.total_recaudo,
             p.fecha_ultimo_pago_real,
             
-            -- Datos de gestiones (raw)
+            -- Datos de gestiones (SOLO DEL DÍA)
             g.total_toques,
             g.fecha_ultima_gestion,
             g.promesas,
@@ -170,17 +165,17 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             g.ultima_fecha_gestion,
             g.ultimo_numeromarcado,
             
-            -- Datos de canal
+            -- Datos de canal (SOLO DEL DÍA)
             g.ultimo_canal,
             g.total_correos,
             g.total_whatsapps,
             g.total_llamadas,
             
-            -- Promesas
+            -- Promesas (TODAS)
             up.valorpromesa AS ultimo_valor_promesa,
             up.fechapromesa AS fecha_ultima_promesa,
             
-            -- CATEGORÍA FINAL
+            -- CATEGORÍA FINAL (con gestión del día o SIN GESTION AL CORTE)
             CASE 
                 WHEN g.llave IS NULL THEN 'SIN GESTION AL CORTE'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
@@ -227,7 +222,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 ELSE 'Sin clasificación'
             END AS razon_categoria,
             
-            -- ESTADO DE LA PROMESA
+            -- ESTADO DE LA PROMESA (TODAS)
             CASE 
                 WHEN up.fechapromesa IS NULL THEN 'SIN PROMESA'
                 WHEN up.fechapromesa >= CURRENT_DATE('America/Bogota') THEN 'ACTIVA'
@@ -286,7 +281,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         return None, "⚠️ No hay datos disponibles."
     
     mensajes.append(f"✅ Datos completos: {len(df_datos):,} cuentas")
-
     
     # ============================================================
     # PASO 2: GENERAR RESÚMENES A PARTIR DE df_datos
@@ -298,35 +292,40 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         # HOJA 1: RESUMEN EJECUTIVO
         # ============================================================
         
+        # 🔥 Calcular total de gestiones del día
+        total_gestiones_dia = df_datos['total_toques'].sum()
+        
         resumen_data = {
             'Métrica': [
                 'Proyecto',
                 'Fecha de generación',
+                'Fecha de gestión (filtro)',
                 'Total de cuentas',
                 'Saldo total adeudado',
                 'Saldo promedio',
                 'Saldo máximo',
                 'Saldo mínimo',
                 'Total de ranks',
-                'Total de gestiones',
-                'Cuentas gestionadas',
-                'Cuentas sin gestión',
-                'Total de pagos',
-                'Total recaudado',
-                'Cuentas con pago',
+                'Total de gestiones del día',
+                'Cuentas gestionadas del día',
+                'Cuentas sin gestión del día',
+                'Total de pagos (histórico)',
+                'Total recaudado (histórico)',
+                'Cuentas con pago (histórico)',
                 'Cuentas con promesa activa',
                 'Cuentas con promesa incumplida'
             ],
             'Valor': [
                 proyecto_id,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
+                fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas",
                 f"{len(df_datos):,}",
                 f"${df_datos['saldo_total_adeudado'].sum():,.2f}",
                 f"${df_datos['saldo_total_adeudado'].mean():,.2f}",
                 f"${df_datos['saldo_total_adeudado'].max():,.2f}",
                 f"${df_datos['saldo_total_adeudado'].min():,.2f}",
                 f"{df_datos['rank'].nunique():,}",
-                f"{df_datos['total_toques'].sum():,}",
+                f"{total_gestiones_dia:,.0f}",
                 f"{df_datos[df_datos['total_toques'] > 0].shape[0]:,}",
                 f"{df_datos[df_datos['total_toques'].isna()].shape[0]:,}",
                 f"{df_datos['cantidad_pagos'].sum():,}",
@@ -341,7 +340,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         mensajes.append("✅ Resumen ejecutivo generado")
         
         # ============================================================
-        # HOJA 2: CUADRO DE GESTIÓN POR RANK
+        # HOJA 2: CUADRO DE GESTIÓN POR RANK (SOLO DEL DÍA)
         # ============================================================
         
         df_gestion_rank = df_datos.groupby('rank').agg({
@@ -367,7 +366,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         mensajes.append(f"✅ Cuadro Gestión: {len(df_gestion_rank)} ranks")
         
         # ============================================================
-        # HOJA 3: CUADRO DE RESULTADO DE GESTIÓN
+        # HOJA 3: CUADRO DE RESULTADO DE GESTIÓN (SOLO DEL DÍA)
         # ============================================================
         
         pivot_resultado = pd.crosstab(
@@ -398,8 +397,11 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         mensajes.append(f"✅ Resultado Gestión: {len(pivot_resultado)} categorías")
         
         # ============================================================
-        # HOJA 4: RECAUDO Y COMPROMISOS
+        # HOJA 4: RECAUDO Y COMPROMISOS (TODOS LOS DATOS HISTÓRICOS)
         # ============================================================
+        
+        # 🔥 IMPORTANTE: Esta hoja se calcula con TODOS los datos,
+        # NO se filtra por día. Los datos ya están en df_datos desde la consulta.
         
         df_recaudo_final = pd.DataFrame({
             'resultado_gestion': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],

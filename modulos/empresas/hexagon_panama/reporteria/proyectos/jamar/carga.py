@@ -167,11 +167,10 @@ def guardar_cartera_jamar(df, proyecto_id):
                 'vr_pagar_plan_al_dia': vr_pagar_plan_al_dia,
                 'cuota_inicial_arreglo': cuota_inicial,
                 'saldo_diferir_cuotas': saldo_diferir,
-                'fecha_carga': datetime.now().isoformat(),
-                'created_at': datetime.now().isoformat(),
-                'updated_at': datetime.now().isoformat()
+                'fecha_carga': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),      # ✅ CORREGIDO
+                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),       # ✅ CORREGIDO
+                'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')        # ✅ CORREGIDO
             }
-            registros.append(registro)
             
         except Exception as e:
             errores += 1

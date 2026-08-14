@@ -495,6 +495,392 @@ def generar_recaudo_compromisos(proyecto_id, fecha_reporte=None):
     return output.getvalue(), f"✅ Recaudo y compromisos generado (datos acumulados)"
 
 # ============================================================
+# REPORTE 7: Resumen de Cartera (CONSOLIDADO)
+# ============================================================
+
+def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
+    """
+    Genera un Excel consolidado con:
+    - Hoja 1: Resumen ejecutivo
+    - Hoja 2: Cuadro de Gestión por RANK (con filtro de fecha)
+    - Hoja 3: Cuadro de Resultado de Gestión (con filtro de fecha)
+    - Hoja 4: Recaudo y Compromisos (sin filtro - acumulado)
+    """
+    
+    output = io.BytesIO()
+    mensajes = []
+    
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        
+        # ============================================================
+        # HOJA 1: RESUMEN EJECUTIVO
+        # ============================================================
+        
+        # Obtener datos de la cartera
+        query_cartera = f"""
+            SELECT 
+                COUNT(*) AS total_cuentas,
+                SUM(saldo_total_adeudado) AS saldo_total,
+                AVG(saldo_total_adeudado) AS saldo_promedio,
+                MAX(saldo_total_adeudado) AS saldo_max,
+                MIN(saldo_total_adeudado) AS saldo_min,
+                COUNT(DISTINCT rank) AS total_ranks
+            FROM `{PROYECTO_BQ}.cartera_predemanda_jamar`
+            WHERE id_proyecto = '{proyecto_id}'
+        """
+        df_cartera = ejecutar_query(query_cartera)
+        
+        # Obtener total de gestiones
+        query_gestiones = f"""
+            SELECT 
+                COUNT(*) AS total_gestiones,
+                COUNT(DISTINCT llave) AS cuentas_gestionadas
+            FROM `{PROYECTO_BQ}.gestiones_jamar`
+            WHERE id_proyecto = '{proyecto_id}'
+        """
+        df_gestiones = ejecutar_query(query_gestiones)
+        
+        # Obtener total de pagos
+        query_pagos = f"""
+            SELECT 
+                COUNT(*) AS total_pagos,
+                SUM(recaudo_periodo) AS total_recaudo,
+                COUNT(DISTINCT llave) AS cuentas_con_pago
+            FROM `{PROYECTO_BQ}.pagos_jamar`
+            WHERE id_proyecto = '{proyecto_id}'
+        """
+        df_pagos = ejecutar_query(query_pagos)
+        
+        # Construir resumen
+        resumen_data = {
+            'Métrica': [
+                'Proyecto',
+                'Fecha de generación',
+                'Total de cuentas',
+                'Saldo total adeudado',
+                'Saldo promedio',
+                'Saldo máximo',
+                'Saldo mínimo',
+                'Total de ranks',
+                'Total de gestiones',
+                'Cuentas gestionadas',
+                'Total de pagos',
+                'Total recaudado',
+                'Cuentas con pago'
+            ],
+            'Valor': [
+                proyecto_id,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                f"{df_cartera['total_cuentas'].iloc[0]:,}" if not df_cartera.empty else "0",
+                f"${df_cartera['saldo_total'].iloc[0]:,.2f}" if not df_cartera.empty else "$0.00",
+                f"${df_cartera['saldo_promedio'].iloc[0]:,.2f}" if not df_cartera.empty else "$0.00",
+                f"${df_cartera['saldo_max'].iloc[0]:,.2f}" if not df_cartera.empty else "$0.00",
+                f"${df_cartera['saldo_min'].iloc[0]:,.2f}" if not df_cartera.empty else "$0.00",
+                f"{df_cartera['total_ranks'].iloc[0]:,}" if not df_cartera.empty else "0",
+                f"{df_gestiones['total_gestiones'].iloc[0]:,}" if not df_gestiones.empty else "0",
+                f"{df_gestiones['cuentas_gestionadas'].iloc[0]:,}" if not df_gestiones.empty else "0",
+                f"{df_pagos['total_pagos'].iloc[0]:,}" if not df_pagos.empty else "0",
+                f"${df_pagos['total_recaudo'].iloc[0]:,.2f}" if not df_pagos.empty else "$0.00",
+                f"{df_pagos['cuentas_con_pago'].iloc[0]:,}" if not df_pagos.empty else "0"
+            ]
+        }
+        df_resumen = pd.DataFrame(resumen_data)
+        df_resumen.to_excel(writer, sheet_name='Resumen', index=False)
+        mensajes.append("✅ Resumen generado")
+        
+        # ============================================================
+        # HOJA 2: CUADRO DE GESTIÓN POR RANK (con fecha)
+        # ============================================================
+        
+        # Llamar a la función existente
+        df_gestion_rank, msg_gestion_rank = generar_cuadro_gestion_rank_df(proyecto_id, fecha_reporte)
+        
+        if df_gestion_rank is not None and not df_gestion_rank.empty:
+            df_gestion_rank.to_excel(writer, sheet_name='Cuadro Gestión', index=False)
+            mensajes.append(f"✅ Cuadro de Gestión: {len(df_gestion_rank)} ranks")
+        else:
+            # Crear hoja con mensaje
+            pd.DataFrame({'Mensaje': ['No hay datos disponibles para Cuadro de Gestión']}).to_excel(
+                writer, sheet_name='Cuadro Gestión', index=False
+            )
+            mensajes.append("⚠️ Cuadro de Gestión: Sin datos")
+        
+        # ============================================================
+        # HOJA 3: CUADRO DE RESULTADO DE GESTIÓN (con fecha)
+        # ============================================================
+        
+        df_resultado, msg_resultado = generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte)
+        
+        if df_resultado is not None and not df_resultado.empty:
+            df_resultado.to_excel(writer, sheet_name='Resultado Gestión', index=False)
+            mensajes.append(f"✅ Resultado Gestión: {len(df_resultado)} categorías")
+        else:
+            pd.DataFrame({'Mensaje': ['No hay datos disponibles para Resultado de Gestión']}).to_excel(
+                writer, sheet_name='Resultado Gestión', index=False
+            )
+            mensajes.append("⚠️ Resultado Gestión: Sin datos")
+        
+        # ============================================================
+        # HOJA 4: RECAUDO Y COMPROMISOS (sin fecha - acumulado)
+        # ============================================================
+        
+        df_recaudo, msg_recaudo = generar_recaudo_compromisos_df(proyecto_id)
+        
+        if df_recaudo is not None and not df_recaudo.empty:
+            df_recaudo.to_excel(writer, sheet_name='Recaudo y Compromisos', index=False)
+            
+            # Agregar totales generales
+            totales = pd.DataFrame({
+                'Métrica': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],
+                'Total': [
+                    df_recaudo['recaudo'].sum(),
+                    df_recaudo['compromisos_activos'].sum(),
+                    df_recaudo['compromisos_incumplidos'].sum()
+                ]
+            })
+            totales.to_excel(writer, sheet_name='Totales Generales', index=False)
+            mensajes.append(f"✅ Recaudo: ${df_recaudo['recaudo'].sum():,.2f}")
+        else:
+            pd.DataFrame({'Mensaje': ['No hay datos disponibles para Recaudo y Compromisos']}).to_excel(
+                writer, sheet_name='Recaudo y Compromisos', index=False
+            )
+            mensajes.append("⚠️ Recaudo: Sin datos")
+        
+        # Ajustar ancho de columnas para todas las hojas
+        for sheet_name in writer.sheets:
+            worksheet = writer.sheets[sheet_name]
+            worksheet.set_column(0, 25, 18)
+    
+    # Mensaje consolidado
+    mensaje_final = " | ".join(mensajes)
+    fecha_str = fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas"
+    return output.getvalue(), f"✅ Resumen de cartera generado ({fecha_str}) - {mensaje_final}"
+
+# ============================================================
+# FUNCIONES AUXILIARES PARA REUTILIZAR (DEVUELVEN DATAFRAME)
+# ============================================================
+
+def generar_cuadro_gestion_rank_df(proyecto_id, fecha_reporte=None):
+    """Devuelve DataFrame del Cuadro de Gestión por RANK"""
+    
+    filtro_fechas = ""
+    if fecha_reporte is not None:
+        fecha_reporte_str = fecha_reporte.strftime('%Y-%m-%d')
+        filtro_fechas = f"AND DATE(g.fechahoragestion) = '{fecha_reporte_str}'"
+    
+    query = f"""
+    WITH gestiones_filtradas AS (
+        SELECT 
+            g.llave,
+            g.codigo_cliente,
+            g.codigo_gestion,
+            g.tipo_gestion,
+            g.area_gestion,
+            c.rank,
+            CASE 
+                WHEN g.codigo_gestion = '90' AND g.tipo_gestion = 'T' THEN 'WHATSAPP'
+                WHEN g.codigo_gestion = '90' AND g.tipo_gestion != 'T' THEN 'CORREO'
+                ELSE 'LLAMADA'
+            END AS tipo_gestion_real
+        FROM `{PROYECTO_BQ}.gestiones_jamar` g
+        LEFT JOIN `{PROYECTO_BQ}.cartera_predemanda_jamar` c 
+            ON g.llave = c.llave AND c.id_proyecto = '{proyecto_id}'
+        WHERE g.id_proyecto = '{proyecto_id}'
+          {filtro_fechas}
+    ),
+    conteo_rank AS (
+        SELECT 
+            rank,
+            tipo_gestion_real,
+            COUNT(*) AS cantidad,
+            COUNT(DISTINCT llave) AS cuentas_gestionadas
+        FROM gestiones_filtradas
+        WHERE rank IS NOT NULL
+        GROUP BY rank, tipo_gestion_real
+    ),
+    total_cuentas_rank AS (
+        SELECT 
+            rank,
+            COUNT(DISTINCT llave) AS total_cuentas
+        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar`
+        WHERE id_proyecto = '{proyecto_id}'
+          AND rank IS NOT NULL
+        GROUP BY rank
+    )
+    SELECT 
+        c.rank,
+        COALESCE(SUM(CASE WHEN tipo_gestion_real = 'CORREO' THEN cantidad ELSE 0 END), 0) AS correo_cantidad,
+        ROUND(COALESCE(SUM(CASE WHEN tipo_gestion_real = 'CORREO' THEN cantidad ELSE 0 END), 0) * 1.0 / NULLIF(t.total_cuentas, 0), 2) AS correo_intensidad,
+        0 AS mensaje_cantidad,
+        0.00 AS mensaje_intensidad,
+        COALESCE(SUM(CASE WHEN tipo_gestion_real = 'WHATSAPP' THEN cantidad ELSE 0 END), 0) AS whatsapp_cantidad,
+        ROUND(COALESCE(SUM(CASE WHEN tipo_gestion_real = 'WHATSAPP' THEN cantidad ELSE 0 END), 0) * 1.0 / NULLIF(t.total_cuentas, 0), 2) AS whatsapp_intensidad,
+        COALESCE(SUM(CASE WHEN tipo_gestion_real = 'LLAMADA' THEN cantidad ELSE 0 END), 0) AS llamada_cantidad,
+        ROUND(COALESCE(SUM(CASE WHEN tipo_gestion_real = 'LLAMADA' THEN cantidad ELSE 0 END), 0) * 1.0 / NULLIF(t.total_cuentas, 0), 2) AS llamada_intensidad,
+        COALESCE(SUM(cantidad), 0) AS total_cantidad,
+        ROUND(COALESCE(SUM(cantidad), 0) * 1.0 / NULLIF(t.total_cuentas, 0), 2) AS total_intensidad,
+        t.total_cuentas
+    FROM conteo_rank c
+    LEFT JOIN total_cuentas_rank t ON c.rank = t.rank
+    GROUP BY c.rank, t.total_cuentas
+    ORDER BY c.rank
+    """
+    
+    df = ejecutar_query(query)
+    df = preparar_para_excel(df)
+    
+    if df.empty:
+        return None, "⚠️ No hay datos disponibles."
+    
+    return df, f"✅ {len(df)} ranks"
+
+def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
+    """Devuelve DataFrame del Cuadro de Resultado de Gestión"""
+    
+    filtro_fechas = ""
+    if fecha_reporte is not None:
+        fecha_reporte_str = fecha_reporte.strftime('%Y-%m-%d')
+        filtro_fechas = f"AND DATE(g.fechahoragestion) = '{fecha_reporte_str}'"
+    
+    query = f"""
+    WITH ultima_gestion_por_cuenta AS (
+        SELECT 
+            g.llave,
+            g.resultado_gestion,
+            g.fechahoragestion,
+            ROW_NUMBER() OVER (PARTITION BY g.llave ORDER BY g.fechahoragestion DESC) AS rn
+        FROM `{PROYECTO_BQ}.gestiones_jamar` g
+        WHERE g.id_proyecto = '{proyecto_id}'
+          {filtro_fechas}
+    ),
+    ultima_gestion AS (
+        SELECT 
+            llave,
+            resultado_gestion,
+            fechahoragestion
+        FROM ultima_gestion_por_cuenta
+        WHERE rn = 1
+    ),
+    cuentas_con_gestion AS (
+        SELECT 
+            c.llave,
+            c.rank,
+            CASE 
+                WHEN ug.resultado_gestion IS NULL THEN 'SIN GESTION AL CORTE'
+                WHEN ug.resultado_gestion = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
+                WHEN ug.resultado_gestion = 'COMPROMISO DE PAGO' THEN 'COMPROMISO DE PAGO'
+                WHEN ug.resultado_gestion = 'NO CONTACTOS' THEN 'SIN CONTACTO'
+                WHEN ug.resultado_gestion = 'CONTACTO CON TERCERO' THEN 'CONTACTO TERCERO'
+                WHEN ug.resultado_gestion IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'BUZON DE VOZ'
+                ELSE 'SIN CONTACTO'
+            END AS categoria_resultado
+        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
+        LEFT JOIN ultima_gestion ug ON c.llave = ug.llave
+        WHERE c.id_proyecto = '{proyecto_id}'
+    )
+    SELECT 
+        categoria_resultado AS resultado_gestion,
+        COALESCE(SUM(CASE WHEN rank = 'A' THEN 1 ELSE 0 END), 0) AS A,
+        COALESCE(SUM(CASE WHEN rank = 'B' THEN 1 ELSE 0 END), 0) AS B,
+        COALESCE(SUM(CASE WHEN rank = 'C' THEN 1 ELSE 0 END), 0) AS C,
+        COALESCE(SUM(CASE WHEN rank = 'D' THEN 1 ELSE 0 END), 0) AS D,
+        COALESCE(COUNT(*), 0) AS TOTAL
+    FROM cuentas_con_gestion
+    GROUP BY categoria_resultado
+    ORDER BY 
+        CASE categoria_resultado
+            WHEN 'CONTACTO EFECTIVO' THEN 1
+            WHEN 'COMPROMISO DE PAGO' THEN 2
+            WHEN 'SIN CONTACTO' THEN 3
+            WHEN 'CONTACTO TERCERO' THEN 4
+            WHEN 'BUZON DE VOZ' THEN 5
+            WHEN 'SIN GESTION AL CORTE' THEN 6
+            ELSE 7
+        END
+    """
+    
+    df = ejecutar_query(query)
+    df = preparar_para_excel(df)
+    
+    if df.empty:
+        return None, "⚠️ No hay datos disponibles."
+    
+    return df, f"✅ {len(df)} categorías"
+
+def generar_recaudo_compromisos_df(proyecto_id):
+    """Devuelve DataFrame de Recaudo y Compromisos"""
+    
+    query = f"""
+    WITH recaudo_por_rank AS (
+        SELECT 
+            c.rank,
+            SUM(p.recaudo_periodo) AS total_recaudo
+        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
+        LEFT JOIN `{PROYECTO_BQ}.pagos_jamar` p 
+            ON c.llave = p.llave AND p.id_proyecto = '{proyecto_id}'
+        WHERE c.id_proyecto = '{proyecto_id}'
+        GROUP BY c.rank
+    ),
+    ultima_promesa_por_cuenta AS (
+        SELECT 
+            g.llave,
+            g.valorpromesa,
+            g.fechapromesa,
+            g.codigo_gestion,
+            ROW_NUMBER() OVER (PARTITION BY g.llave ORDER BY g.fechapromesa DESC) AS rn
+        FROM `{PROYECTO_BQ}.gestiones_jamar` g
+        WHERE g.id_proyecto = '{proyecto_id}'
+          AND g.codigo_gestion IN ('01', '88', '89')
+          AND g.valorpromesa IS NOT NULL
+          AND g.valorpromesa > 0
+    ),
+    ultima_promesa AS (
+        SELECT 
+            llave,
+            valorpromesa,
+            fechapromesa
+        FROM ultima_promesa_por_cuenta
+        WHERE rn = 1
+    ),
+    compromisos_por_rank AS (
+        SELECT 
+            c.rank,
+            SUM(CASE 
+                WHEN up.fechapromesa >= CURRENT_DATE() THEN up.valorpromesa 
+                ELSE 0 
+            END) AS compromisos_activos,
+            SUM(CASE 
+                WHEN up.fechapromesa < CURRENT_DATE() THEN up.valorpromesa 
+                ELSE 0 
+            END) AS compromisos_incumplidos
+        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
+        LEFT JOIN ultima_promesa up ON c.llave = up.llave
+        WHERE c.id_proyecto = '{proyecto_id}'
+        GROUP BY c.rank
+    )
+    SELECT 
+        COALESCE(r.rank, c.rank) AS rank,
+        ROUND(COALESCE(r.total_recaudo, 0), 2) AS recaudo,
+        ROUND(COALESCE(cp.compromisos_activos, 0), 2) AS compromisos_activos,
+        ROUND(COALESCE(cp.compromisos_incumplidos, 0), 2) AS compromisos_incumplidos,
+        COUNT(DISTINCT c.llave) AS total_cuentas
+    FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
+    LEFT JOIN recaudo_por_rank r ON c.rank = r.rank
+    LEFT JOIN compromisos_por_rank cp ON c.rank = cp.rank
+    WHERE c.id_proyecto = '{proyecto_id}'
+    GROUP BY c.rank, r.total_recaudo, cp.compromisos_activos, cp.compromisos_incumplidos
+    ORDER BY c.rank
+    """
+    
+    df = ejecutar_query(query)
+    df = preparar_para_excel(df)
+    
+    if df.empty:
+        return None, "⚠️ No hay datos disponibles."
+    
+    return df, f"✅ {len(df)} ranks"
+
+# ============================================================
 # REGISTRO DE REPORTES
 # ============================================================
 
@@ -505,4 +891,5 @@ REPORTES = {
     "📊 Cuadro de Gestión por RANK": generar_cuadro_gestion_rank,
     "📊 Cuadro de Resultado de Gestión": generar_cuadro_resultado_gestion,
     "💰 Recaudo y Compromisos": generar_recaudo_compromisos,
+    "📋 Resumen de Cartera (Consolidado)": generar_resumen_cartera,  # ✅ NUEVO
 }

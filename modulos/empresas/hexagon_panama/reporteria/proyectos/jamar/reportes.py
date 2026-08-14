@@ -400,33 +400,113 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
 # REPORTE 6: Recaudo y Compromisos (SIN FECHA - ACUMULADO)
 # ============================================================
 
+def generar_recaudo_compromisos_df(proyecto_id):
+    """Devuelve DataFrame de Recaudo y Compromisos (CORREGIDO)"""
+    
+    query = f"""
+    WITH recaudo_por_rank AS (
+        SELECT
+            c.rank,
+            SUM(COALESCE(p.recaudo_periodo, 0)) AS recaudo,
+            COUNTIF(COALESCE(p.recaudo_periodo, 0) > 0) AS cuentas_con_recaudo
+        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
+        LEFT JOIN `{PROYECTO_BQ}.pagos_jamar` p
+            ON c.llave = p.llave
+           AND p.id_proyecto = '{proyecto_id}'
+        WHERE c.id_proyecto = '{proyecto_id}'
+        GROUP BY c.rank
+    ),
+
+    ultima_promesa AS (
+        SELECT
+            llave,
+            valorpromesa,
+            fechapromesa
+        FROM `{PROYECTO_BQ}.gestiones_jamar`
+        WHERE id_proyecto = '{proyecto_id}'
+          AND resultado_gestion = 'COMPROMISO DE PAGO'
+          AND valorpromesa > 0
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY llave
+            ORDER BY fechahoragestion DESC
+        ) = 1
+    ),
+
+    compromisos_por_rank AS (
+        SELECT
+            c.rank,
+            SUM(
+                IF(
+                    up.fechapromesa >= CURRENT_DATE('America/Bogota'),
+                    COALESCE(up.valorpromesa, 0),
+                    0
+                )
+            ) AS compromisos_activos,
+            SUM(
+                IF(
+                    up.fechapromesa < CURRENT_DATE('America/Bogota'),
+                    COALESCE(up.valorpromesa, 0),
+                    0
+                )
+            ) AS compromisos_incumplidos
+        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
+        LEFT JOIN ultima_promesa up ON c.llave = up.llave
+        WHERE c.id_proyecto = '{proyecto_id}'
+        GROUP BY c.rank
+    )
+
+    SELECT
+        c.rank,
+        ROUND(COALESCE(r.recaudo, 0), 2) AS recaudo,
+        COALESCE(r.cuentas_con_recaudo, 0) AS cuentas_con_recaudo,
+        ROUND(COALESCE(cp.compromisos_activos, 0), 2) AS compromisos_activos,
+        ROUND(COALESCE(cp.compromisos_incumplidos, 0), 2) AS compromisos_incumplidos,
+        COUNT(DISTINCT c.llave) AS total_cuentas
+    FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
+    LEFT JOIN recaudo_por_rank r ON c.rank = r.rank
+    LEFT JOIN compromisos_por_rank cp ON c.rank = cp.rank
+    WHERE c.id_proyecto = '{proyecto_id}'
+    GROUP BY
+        c.rank,
+        r.recaudo,
+        r.cuentas_con_recaudo,
+        cp.compromisos_activos,
+        cp.compromisos_incumplidos
+    ORDER BY c.rank
+    """
+
+    df = preparar_para_excel(ejecutar_query(query))
+
+    if df.empty:
+        return None, "⚠️ No hay datos disponibles."
+
+    return df, f"✅ {len(df)} ranks"
+
+# ============================================================
+# REPORTE 6b: Recaudo y Compromisos (para reporte individual)
+# ============================================================
+
 def generar_recaudo_compromisos(proyecto_id, fecha_reporte=None):
     """Genera el Excel de Recaudo y Compromisos (reporte individual)"""
     
-    df, msg = generar_recaudo_compromisos_df(proyecto_id)
-    
-    if df is None or df.empty:
-        return None, "⚠️ No hay datos disponibles."
-    
+    df, mensaje = generar_recaudo_compromisos_df(proyecto_id)
+
+    if df is None:
+        return None, mensaje
+
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='Recaudo y Compromisos', index=False)
-        
-        totales = pd.DataFrame({
-            'Métrica': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],
-            'Total': [
-                df['recaudo'].sum(),
-                df['compromisos_activos'].sum(),
-                df['compromisos_incumplidos'].sum()
-            ]
-        })
-        totales.to_excel(writer, sheet_name='Totales Generales', index=False)
-        
-        for sheet_name in writer.sheets:
-            worksheet = writer.sheets[sheet_name]
-            worksheet.set_column(0, 25, 18)
-    
-    return output.getvalue(), f"✅ Recaudo y compromisos generado"
+
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(
+            writer,
+            sheet_name="Recaudo y Compromisos",
+            index=False,
+        )
+
+        worksheet = writer.sheets["Recaudo y Compromisos"]
+        worksheet.set_column(0, 10, 22)
+
+    return output.getvalue(), "✅ Reporte de recaudo y compromisos generado"
 # ============================================================
 # REPORTE 7: Resumen de Cartera (CONSOLIDADO CON DATOS COMPLETOS)
 # ============================================================

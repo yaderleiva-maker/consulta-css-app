@@ -400,79 +400,33 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
 # REPORTE 6: Recaudo y Compromisos (SIN FECHA - ACUMULADO)
 # ============================================================
 
-def generar_recaudo_compromisos_df(proyecto_id):
-    """Devuelve DataFrame de Recaudo y Compromisos (CORREGIDO)"""
+def generar_recaudo_compromisos(proyecto_id, fecha_reporte=None):
+    """Genera el Excel de Recaudo y Compromisos (reporte individual)"""
     
-    query = f"""
-    WITH recaudo_por_rank AS (
-        SELECT 
-            c.rank,
-            SUM(p.recaudo_periodo) AS total_recaudo
-        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
-        LEFT JOIN `{PROYECTO_BQ}.pagos_jamar` p 
-            ON c.llave = p.llave AND p.id_proyecto = '{proyecto_id}'
-        WHERE c.id_proyecto = '{proyecto_id}'
-        GROUP BY c.rank
-    ),
-    ultima_promesa_por_cuenta AS (
-        SELECT 
-            g.llave,
-            g.valorpromesa,
-            g.fechapromesa,
-            g.codigo_gestion,
-            ROW_NUMBER() OVER (PARTITION BY g.llave ORDER BY g.fechapromesa DESC) AS rn
-        FROM `{PROYECTO_BQ}.gestiones_jamar` g
-        WHERE g.id_proyecto = '{proyecto_id}'
-          AND g.codigo_gestion IN ('01', '88', '89')
-          AND g.valorpromesa IS NOT NULL
-          AND g.valorpromesa > 0
-    ),
-    ultima_promesa AS (
-        SELECT 
-            llave,
-            valorpromesa,
-            fechapromesa
-        FROM ultima_promesa_por_cuenta
-        WHERE rn = 1
-    ),
-    compromisos_por_rank AS (
-        SELECT 
-            c.rank,
-            SUM(CASE 
-                WHEN up.fechapromesa >= CURRENT_DATE() THEN up.valorpromesa 
-                ELSE 0 
-            END) AS compromisos_activos,
-            SUM(CASE 
-                WHEN up.fechapromesa < CURRENT_DATE() THEN up.valorpromesa 
-                ELSE 0 
-            END) AS compromisos_incumplidos
-        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
-        LEFT JOIN ultima_promesa up ON c.llave = up.llave
-        WHERE c.id_proyecto = '{proyecto_id}'
-        GROUP BY c.rank
-    )
-    SELECT 
-        c.rank,
-        ROUND(COALESCE(r.total_recaudo, 0), 2) AS recaudo,
-        ROUND(COALESCE(cp.compromisos_activos, 0), 2) AS compromisos_activos,
-        ROUND(COALESCE(cp.compromisos_incumplidos, 0), 2) AS compromisos_incumplidos,
-        COUNT(DISTINCT c.llave) AS total_cuentas
-    FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
-    LEFT JOIN recaudo_por_rank r ON c.rank = r.rank
-    LEFT JOIN compromisos_por_rank cp ON c.rank = cp.rank
-    WHERE c.id_proyecto = '{proyecto_id}'
-    GROUP BY c.rank, r.total_recaudo, cp.compromisos_activos, cp.compromisos_incumplidos
-    ORDER BY c.rank
-    """
+    df, msg = generar_recaudo_compromisos_df(proyecto_id)
     
-    df = ejecutar_query(query)
-    df = preparar_para_excel(df)
-    
-    if df.empty:
+    if df is None or df.empty:
         return None, "⚠️ No hay datos disponibles."
     
-    return df, f"✅ {len(df)} ranks"
-
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, sheet_name='Recaudo y Compromisos', index=False)
+        
+        totales = pd.DataFrame({
+            'Métrica': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],
+            'Total': [
+                df['recaudo'].sum(),
+                df['compromisos_activos'].sum(),
+                df['compromisos_incumplidos'].sum()
+            ]
+        })
+        totales.to_excel(writer, sheet_name='Totales Generales', index=False)
+        
+        for sheet_name in writer.sheets:
+            worksheet = writer.sheets[sheet_name]
+            worksheet.set_column(0, 25, 18)
+    
+    return output.getvalue(), f"✅ Recaudo y compromisos generado"
 # ============================================================
 # REPORTE 7: Resumen de Cartera (CONSOLIDADO CON DATOS COMPLETOS)
 # ============================================================

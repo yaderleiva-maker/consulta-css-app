@@ -335,12 +335,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         
         # ----- HOJA 3: CUADRO DE RESULTADO DE GESTIÓN -----
         
-        df_resultado = df_datos.groupby('categoria_final').agg({
-            'llave': 'count',
-            'rank': lambda x: pd.crosstab(x, columns='count')  # Esto necesita ajuste
-        }).reset_index()
-        
-        # Mejor: pivote simple
         pivot_resultado = pd.crosstab(
             df_datos['categoria_final'], 
             df_datos['rank'],
@@ -350,35 +344,31 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         
         # Reordenar según prioridad
         orden_categorias = [
-            'CONTACTO EFECTIVO', 'WHATSAPP', 'COMPROMISO DE PAGO', 
-            'SIN CONTACTO', 'CONTACTO CON TERCERO', 'BUZON DE VOZ', 
-            'NO CONTACTOS', 'SIN GESTION AL CORTE'
+            'CONTACTO EFECTIVO', 
+            'WHATSAPP', 
+            'COMPROMISO DE PAGO', 
+            'SIN CONTACTO', 
+            'CONTACTO CON TERCERO', 
+            'BUZON DE VOZ', 
+            'NO CONTACTOS', 
+            'SIN GESTION AL CORTE'
         ]
+        
         pivot_resultado['orden'] = pivot_resultado['resultado_gestion'].map(
             {cat: i for i, cat in enumerate(orden_categorias)}
         )
+        
+        # Manejar el caso donde 'TOTAL' pueda tener orden NaN
+        pivot_resultado['orden'] = pivot_resultado['orden'].fillna(999)
+        
+        # Ordenar y eliminar columna de orden
         pivot_resultado = pivot_resultado.sort_values('orden').drop('orden', axis=1)
         
         pivot_resultado.to_excel(writer, sheet_name='Resultado Gestión', index=False)
         mensajes.append(f"✅ Resultado Gestión: {len(pivot_resultado)} categorías")
         
         # ----- HOJA 4: RECAUDO Y COMPROMISOS -----
-        
-        # Calcular recaudo por rank
-        df_recaudo = df_datos.groupby('rank').agg({
-            'total_recaudo': 'sum',
-            'ultimo_valor_promesa': lambda x: x[df_datos['estado_promesa'] == 'ACTIVA'].sum(),
-            'ultimo_valor_promesa': lambda x: x[df_datos['estado_promesa'] == 'INCUMPLIDA'].sum()
-        }).reset_index()
-        
-        # Reestructurar en formato pivote
-        recaudo_row = df_recaudo.pivot(index='rank', columns='rank', values='total_recaudo').T
-        recaudo_row.index = ['RECAUDO']
-        
-        promesas_activas = df_datos[df_datos['estado_promesa'] == 'ACTIVA'].groupby('rank')['ultimo_valor_promesa'].sum()
-        promesas_incumplidas = df_datos[df_datos['estado_promesa'] == 'INCUMPLIDA'].groupby('rank')['ultimo_valor_promesa'].sum()
-        
-        # Construir DataFrame final
+        # 🔥 VERSIÓN CORREGIDA
         df_recaudo_final = pd.DataFrame({
             'resultado_gestion': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],
             'A': [
@@ -412,7 +402,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         mensajes.append("✅ Recaudo y Compromisos generado")
         
         # ----- HOJA 5: DATOS COMPLETOS (TABLA MAESTRA) -----
-        
         df_datos.to_excel(writer, sheet_name='Datos Completos', index=False)
         mensajes.append(f"✅ Datos completos: {len(df_datos):,} registros")
         

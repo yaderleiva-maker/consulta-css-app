@@ -144,24 +144,26 @@ def obtener_ultima_fecha_carga():
         return None
 
 def obtener_historial_cargas():
+    """
+    Obtiene el resumen de gestiones cargadas por fecha del archivo (fechahoragestion)
+    No confundir con fecha_carga (cuándo se subió el archivo)
+    """
     try:
         query = f"""
             SELECT 
-                id_carga,
-                archivo_nombre,
-                fecha_carga,
-                total_registros,
-                registros_guardados,
-                errores
-            FROM `{PROYECTO_BQ}.historial_cargas_gestiones`
+                DATE(fechahoragestion) AS fecha_archivo,
+                COUNT(*) AS gestiones_subidas,
+                COUNT(DISTINCT codigo_cliente) AS clientes_unicos,
+                COUNT(DISTINCT llave) AS cuentas_unicas
+            FROM {TABLA_GESTIONES}
             WHERE id_proyecto = '{PROYECTO_ID}'
-            ORDER BY fecha_carga DESC
-            LIMIT 20
+            GROUP BY DATE(fechahoragestion)
+            ORDER BY fecha_archivo DESC
         """
         df = ejecutar_query(query)
         return df
     except Exception as e:
-        st.warning(f"Error al consultar historial de cargas: {e}")
+        st.warning(f"Error al consultar historial: {e}")
         return pd.DataFrame()
 
 def obtener_resumen_por_fecha_carga():
@@ -428,6 +430,7 @@ def render():
     st.markdown('<div class="main-header">Carga de Gestiones - Jamar</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el reporte de gestiones diarias. El sistema procesará ambas hojas (CORREOS & WHATSAPP y LLAMADAS) y las anexará al histórico.</div>', unsafe_allow_html=True)
     
+    # ---- Estado del sistema ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -445,48 +448,38 @@ def render():
     ultima = obtener_ultima_fecha_carga()
     if ultima:
         fecha_str = ultima['fecha'].strftime('%d/%m/%Y %H:%M') if hasattr(ultima['fecha'], 'strftime') else str(ultima['fecha'])
-        st.caption(f"Última gestión registrada: {fecha_str} · Total en tabla: {ultima['total']:,}")
+        st.caption(f"Última gestión registrada: {fecha_str}")
     
     st.markdown('</div>', unsafe_allow_html=True)
     
+    # ---- Historial de cargas (por fecha del archivo) ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">📋 Historial de cargas</div>', unsafe_allow_html=True)
     
     historial_df = obtener_historial_cargas()
     
     if not historial_df.empty:
-        for _, row in historial_df.iterrows():
-            fecha = row['fecha_carga'].strftime('%d/%m/%Y %H:%M') if hasattr(row['fecha_carga'], 'strftime') else str(row['fecha_carga'])
-            archivo = row['archivo_nombre'] if 'archivo_nombre' in row else 'No disponible'
-            
-            st.markdown(f"""
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6;">
-                <div>
-                    <span style="font-weight: 500;">{archivo}</span>
-                    <span style="color: #6b6b6b; font-size: 13px; margin-left: 12px;">{fecha}</span>
-                </div>
-                <div>
-                    <span style="color: #16a34a;">✅ {row['registros_guardados']} registros</span>
-                    {f"<span style='color: #dc2626; margin-left: 12px;'>❌ {row['errores']} errores</span>" if row['errores'] > 0 else ""}
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+        st.dataframe(
+            historial_df.rename(columns={
+                "fecha_archivo": "Fecha del archivo",
+                "gestiones_subidas": "Gestiones subidas",
+                "clientes_unicos": "Clientes únicos",
+                "cuentas_unicas": "Cuentas únicas"
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+        
+        total_gestiones = historial_df['gestiones_subidas'].sum()
+        total_clientes = historial_df['clientes_unicos'].sum()
+        st.caption(f"📊 Total acumulado: {total_gestiones:,} gestiones · {total_clientes:,} clientes únicos")
+        
     else:
-        resumen = obtener_resumen_por_fecha_carga()
-        if not resumen.empty:
-            st.dataframe(
-                resumen.rename(columns={
-                    "fecha_carga": "Fecha de carga",
-                    "total_registros": "Gestiones cargadas",
-                }),
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.info("No hay cargas registradas aún.")
+        st.info("No hay cargas registradas aún.")
     
     st.markdown('</div>', unsafe_allow_html=True)
     
+    # ---- Área de carga ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">Subir archivo de gestiones</div>', unsafe_allow_html=True)
     
@@ -544,6 +537,7 @@ def render():
                         st.success(f"✅ {detalle}")
                         st.balloons()
                         st.cache_data.clear()
+                        st.rerun()
                     else:
                         st.error(f"❌ La carga falló: {detalle}")
                         st.stop()
@@ -553,6 +547,3 @@ def render():
                 st.exception(e)
     
     st.markdown('</div>', unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    render()

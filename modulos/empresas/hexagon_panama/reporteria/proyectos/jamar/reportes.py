@@ -67,10 +67,10 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             COUNT(CASE WHEN resultado_gestion = 'NO CONTACTOS' THEN 1 END) AS no_contactos,
             COUNT(CASE WHEN resultado_gestion = 'CONTACTO CON TERCERO' THEN 1 END) AS contactos_tercero,
             
-            -- Últimos valores
+            -- 🔥 FORZAR TEXTO DESDE EL ORIGEN (con SAFE_CAST dentro del ARRAY_AGG)
             ARRAY_AGG(resultado_gestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_resultado,
             ARRAY_AGG(mejor_gestion_jamar ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_mejor_gestion,
-            ARRAY_AGG(codigo_gestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_codigo_gestion,
+            ARRAY_AGG(SAFE_CAST(codigo_gestion AS STRING) ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_codigo_gestion,
             ARRAY_AGG(fechahoragestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_fecha_gestion,
             ARRAY_AGG(numeromarcado ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_numeromarcado,
             
@@ -177,7 +177,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                         ELSE 'SIN CONTACTO'
                     END
                 
-                -- Si NO tiene resultado_gestion, usar codigo_gestion (SIEMPRE COMO TEXTO)
+                -- Si NO tiene resultado_gestion, usar codigo_gestion
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('0') THEN 'CONTACTO CON TERCERO'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('14', '81', '84') THEN 'CONTACTO EFECTIVO'
@@ -188,7 +188,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             END AS categoria_final,
             
             -- ============================================================
-            -- RAZÓN DE LA CATEGORÍA (CON SAFE_CAST)
+            -- RAZÓN DE LA CATEGORÍA
             -- ============================================================
             CASE 
                 WHEN g.llave IS NULL THEN 'Sin gestión en el período'

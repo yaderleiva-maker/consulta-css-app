@@ -131,6 +131,7 @@ def guardar_pagos_jamar(df, proyecto_id):
     
     for idx, row in df.iterrows():
         try:
+            # Extraer y normalizar campos
             estado_inicial = normalizar_texto(row.get('Estado inicial'))
             tramo_inicial = normalizar_texto(row.get('Tramo inicial'))
             tramo_nuevo = normalizar_texto(row.get('Tramo Nuevo'))
@@ -148,15 +149,24 @@ def guardar_pagos_jamar(df, proyecto_id):
             cobrador = normalizar_texto(row.get('Cobrador'))
             nombre_cobrador = normalizar_texto(row.get('Nombre del cobrador'))
             
+            # Fecha
             fecha_up = normalizar_fecha(row.get('FECHA UP'))
             if fecha_up is None:
                 errores += 1
                 detalles.append(f"Fila {idx+2}: Fecha invalida")
                 continue
             
+            # 🔥 GENERAR LLAVE (Agencia + Cuenta)
             llave = None
             if codigo_agencia and numero_cuenta:
                 llave = f"{codigo_agencia}{numero_cuenta}"
+            else:
+                errores += 1
+                if not codigo_agencia:
+                    detalles.append(f"Fila {idx+2}: Falta Codigo de la Agencia")
+                if not numero_cuenta:
+                    detalles.append(f"Fila {idx+2}: Falta Número de Cuenta")
+                # No hacemos continue para que el registro se guarde aunque sin llave (pero con error)
             
             id_pago = str(uuid.uuid4())
             
@@ -164,7 +174,7 @@ def guardar_pagos_jamar(df, proyecto_id):
                 'id_pago': id_pago,
                 'id_carga': id_carga,
                 'id_proyecto': PROYECTO_ID,
-                'llave': llave,
+                'llave': llave,  # ✅ NUEVO CAMPO
                 'estado_inicial': estado_inicial,
                 'tramo_inicial': tramo_inicial,
                 'tramo_nuevo': tramo_nuevo,
@@ -190,11 +200,20 @@ def guardar_pagos_jamar(df, proyecto_id):
             
         except Exception as e:
             errores += 1
-            st.warning(f"Error en fila {idx+2}: {str(e)}")
+            detalles.append(f"Fila {idx+2}: {str(e)}")
     
     if not registros:
         st.warning("No hay datos validos para insertar")
         return 0, total, "No hay datos validos"
+    
+    # Mostrar estadísticas
+    st.info(f"📊 Registros procesados: {len(registros)} para insertar, {errores} con errores")
+    if errores > 0 and len(detalles) > 0:
+        with st.expander(f"Ver detalles de {errores} errores"):
+            for detalle in detalles[:20]:
+                st.warning(detalle)
+            if len(detalles) > 20:
+                st.info(f"... y {len(detalles) - 20} errores más")
     
     df_insert = pd.DataFrame(registros)
     
@@ -209,10 +228,12 @@ def guardar_pagos_jamar(df, proyecto_id):
         
         try:
             tabla_destino = client.get_table(TABLA_PAGOS)
+            st.info(f"✅ Tabla encontrada: {TABLA_PAGOS}")
         except Exception as e:
-            st.error(f"La tabla no existe: {e}")
+            st.error(f"❌ La tabla no existe: {e}")
             return 0, total, f"Tabla no existe: {e}"
         
+        # ✅ WRITE_TRUNCATE - Reemplaza la tabla completa (foto diaria)
         job_config = bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             schema=tabla_destino.schema,

@@ -17,7 +17,7 @@ PROYECTO_BQ = "proyecto-css-panama.cobranza"
 PROYECTO_ID = "JAMAR"
 TABLA_PAGOS = f"{PROYECTO_BQ}.pagos_jamar"
 
-# Columnas requeridas (con nombres exactos del Excel despues de limpiar)
+# Columnas requeridas
 COLUMNAS_REQUERIDAS = [
     "Estado inicial",
     "Tramo inicial",
@@ -43,7 +43,6 @@ COLUMNAS_REQUERIDAS = [
 # ============================================================
 
 def normalizar_encabezado(nombre):
-    """Normaliza encabezados: elimina acentos, espacios, caracteres especiales"""
     nombre = unicodedata.normalize("NFKD", str(nombre))
     nombre = nombre.encode("ascii", "ignore").decode("ascii")
     nombre = nombre.strip().lower()
@@ -94,7 +93,6 @@ def normalizar_fecha(valor):
 # ============================================================
 
 def obtener_ultima_carga_pagos():
-    """Obtiene informacion de la ultima carga de pagos"""
     try:
         query = f"""
             SELECT 
@@ -126,16 +124,13 @@ def guardar_pagos_jamar(df, proyecto_id):
     registros_guardados = 0
     detalles = []
     
-    # Generar ID de carga
     id_carga = str(uuid.uuid4())
     ahora = datetime.now()
     
-    # Preparar registros
     registros = []
     
     for idx, row in df.iterrows():
         try:
-            # Extraer y normalizar campos
             estado_inicial = normalizar_texto(row.get('Estado inicial'))
             tramo_inicial = normalizar_texto(row.get('Tramo inicial'))
             tramo_nuevo = normalizar_texto(row.get('Tramo Nuevo'))
@@ -153,14 +148,12 @@ def guardar_pagos_jamar(df, proyecto_id):
             cobrador = normalizar_texto(row.get('Cobrador'))
             nombre_cobrador = normalizar_texto(row.get('Nombre del cobrador'))
             
-            # Fecha
             fecha_up = normalizar_fecha(row.get('FECHA UP'))
             if fecha_up is None:
                 errores += 1
                 detalles.append(f"Fila {idx+2}: Fecha invalida")
                 continue
             
-            # Generar llave (Agencia + Cuenta)
             llave = None
             if codigo_agencia and numero_cuenta:
                 llave = f"{codigo_agencia}{numero_cuenta}"
@@ -205,10 +198,6 @@ def guardar_pagos_jamar(df, proyecto_id):
     
     df_insert = pd.DataFrame(registros)
     
-    # ============================================================
-    # CONEXION A BIGQUERY
-    # ============================================================
-    
     try:
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"]
@@ -218,16 +207,12 @@ def guardar_pagos_jamar(df, proyecto_id):
             project=credentials.project_id
         )
         
-        # Verificar que la tabla existe
         try:
             tabla_destino = client.get_table(TABLA_PAGOS)
-            st.info(f"✅ Tabla encontrada: {TABLA_PAGOS}")
         except Exception as e:
-            st.error(f"❌ La tabla no existe: {e}")
-            st.info("Ejecuta el SQL de creacion de la tabla pagos_jamar")
+            st.error(f"La tabla no existe: {e}")
             return 0, total, f"Tabla no existe: {e}"
         
-        # ✅ WRITE_TRUNCATE - Reemplaza la tabla completa (foto diaria)
         job_config = bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             schema=tabla_destino.schema,
@@ -276,7 +261,6 @@ def render():
     st.markdown('<div class="main-header">Carga de Pagos - Jamar</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el archivo de pagos diario. El sistema reemplazará completamente los datos anteriores (foto diaria).</div>', unsafe_allow_html=True)
     
-    # ---- Estado de la ultima carga ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">Estado de pagos</div>', unsafe_allow_html=True)
     
@@ -287,8 +271,16 @@ def render():
         fecha_corte = ultima_carga['fecha_corte']
         total = ultima_carga['total']
         
-        fecha_carga_str = fecha_carga.strftime('%d/%m/%Y %H:%M') if hasattr(fecha_carga, 'strftime') else str(fecha_carga)
-        fecha_corte_str = fecha_corte.strftime('%d/%m/%Y') if hasattr(fecha_corte, 'strftime') else str(fecha_corte)
+        # 🔥 Manejar NaT correctamente
+        if pd.notna(fecha_carga):
+            fecha_carga_str = pd.Timestamp(fecha_carga).strftime("%d/%m/%Y %H:%M")
+        else:
+            fecha_carga_str = "Sin cargas registradas"
+        
+        if pd.notna(fecha_corte):
+            fecha_corte_str = pd.Timestamp(fecha_corte).strftime("%d/%m/%Y")
+        else:
+            fecha_corte_str = "Sin fecha de corte"
         
         st.success(f"📊 **Pagos cargados** · {total:,} registros · Corte: {fecha_corte_str} · Última carga: {fecha_carga_str}")
     else:
@@ -296,7 +288,6 @@ def render():
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # ---- Instrucciones ----
     st.markdown("""
     <div class="card">
         <div class="card-title">Instrucciones</div>
@@ -308,7 +299,6 @@ def render():
     </div>
     """, unsafe_allow_html=True)
     
-    # ---- Subida de archivo ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">Subir archivo de pagos</div>', unsafe_allow_html=True)
     
@@ -331,17 +321,14 @@ def render():
         
         with st.spinner("Procesando archivo..."):
             try:
-                # Leer archivo
                 df = pd.read_excel(uploaded_file)
                 
-                # Limpiar nombres de columnas (caracteres dañados)
                 df.columns = (
                     df.columns.astype(str)
                     .str.replace("\ufffd", "ú", regex=False)
                     .str.strip()
                 )
                 
-                # Validar columnas requeridas
                 faltantes = [col for col in COLUMNAS_REQUERIDAS if col not in df.columns]
                 if faltantes:
                     st.error(f"Faltan columnas obligatorias: {', '.join(faltantes)}")
@@ -351,14 +338,12 @@ def render():
                 st.markdown("#### Vista previa del archivo")
                 st.dataframe(df.head(5), use_container_width=True)
                 
-                # Estadisticas
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.metric("Total registros", f"{len(df):,}")
                 with col2:
                     st.metric("Columnas", f"{len(df.columns)}")
                 with col3:
-                    # Fecha del archivo (FECHA UP)
                     if 'FECHA UP' in df.columns:
                         try:
                             fecha = pd.to_datetime(df['FECHA UP'].iloc[0])

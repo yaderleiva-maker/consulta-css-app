@@ -164,71 +164,83 @@ def render():
     with tab4:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
         
-    # ---- Selector de día único ----
-    st.markdown("#### 📅 Seleccionar día para el reporte")
-    
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        fecha_reporte = st.date_input(
-            "Selecciona el día",
-            value=datetime.now().date() - pd.Timedelta(days=1),
-            key="fecha_reporte_unica"
-        )
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("📊 Aplicar filtro", use_container_width=True):
-            st.session_state["fecha_filtro_aplicado"] = True
-            st.rerun()
-    
-    # Opción para ver todas las fechas (sin filtro)
-    ver_todas = st.checkbox("📅 Ver todas las fechas (sin filtro)", key="ver_todas_fechas")
-    
-    # Mostrar la fecha seleccionada
-    if not ver_todas:
-        st.info(f"📌 Reporte para el día: **{fecha_reporte.strftime('%d/%m/%Y')}**")
-    else:
-        st.info("📌 Reporte sin filtro de fecha (todas las fechas)")
-    
-    st.markdown("---")
-    
-    reportes = config["reportes"]
-    
-    if not reportes:
-        st.info("ℹ️ No hay reportes configurados para este proyecto.")
-    else:
-        st.markdown("#### 📋 Reportes disponibles")
+        # ---- Selector de día único (SOLO EN REPORTES) ----
+        st.markdown("#### 📅 Seleccionar día para el reporte")
+        st.caption("Nota: El reporte de Recaudo y Compromisos NO usa esta fecha, muestra datos acumulados.")
         
-        for nombre_reporte, funcion in reportes.items():
-            with st.container():
-                col1, col2, col3 = st.columns([3, 1, 1])
-                with col1:
-                    st.markdown(f"**{nombre_reporte}**")
-                with col2:
-                    if st.button(f"📊 Generar", key=f"gen_{nombre_reporte}"):
-                        with st.spinner(f"Generando {nombre_reporte}..."):
-                            # Pasar fecha única a la función
-                            if ver_todas:
-                                excel_bytes, mensaje = funcion(config["id"])
-                            else:
-                                excel_bytes, mensaje = funcion(config["id"], fecha_reporte)
-                            if excel_bytes:
-                                st.session_state[f"reporte_{nombre_reporte}"] = excel_bytes
-                                st.session_state[f"mensaje_{nombre_reporte}"] = mensaje
-                                st.rerun()
-                            else:
-                                st.warning(mensaje)
-                with col3:
-                    if st.session_state.get(f"reporte_{nombre_reporte}"):
-                        st.download_button(
-                            label="📥 Descargar",
-                            data=st.session_state[f"reporte_{nombre_reporte}"],
-                            file_name=f"{config['id']}_{nombre_reporte.replace(' ', '_')}_{fecha_reporte.strftime('%Y%m%d')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key=f"download_{nombre_reporte}"
-                        )
-                        if st.session_state.get(f"mensaje_{nombre_reporte}"):
-                            st.success(st.session_state[f"mensaje_{nombre_reporte}"])
-                
-                st.markdown("---")
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fecha_reporte = st.date_input(
+                "Selecciona el día",
+                value=datetime.now().date() - pd.Timedelta(days=1),
+                key="fecha_reporte_unica"
+            )
+        with col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("📊 Aplicar filtro", use_container_width=True):
+                st.session_state["fecha_filtro_aplicado"] = True
+                st.rerun()
+        
+        # Opción para ver todas las fechas
+        ver_todas = st.checkbox("📅 Ver todas las fechas (sin filtro)", key="ver_todas_fechas")
+        
+        if not ver_todas:
+            st.info(f"📌 Reporte para el día: **{fecha_reporte.strftime('%d/%m/%Y')}**")
+        else:
+            st.info("📌 Reporte sin filtro de fecha (todas las fechas)")
+        
+        st.markdown("---")
+        
+        reportes = config["reportes"]
+        
+        if not reportes:
+            st.info("ℹ️ No hay reportes configurados para este proyecto.")
+        else:
+            st.markdown("#### 📋 Reportes disponibles")
+            
+            for nombre_reporte, funcion in reportes.items():
+                with st.container():
+                    col1, col2, col3 = st.columns([3, 1, 1])
+                    with col1:
+                        st.markdown(f"**{nombre_reporte}**")
+                    with col2:
+                        if st.button(f"📊 Generar", key=f"gen_{nombre_reporte}"):
+                            with st.spinner(f"Generando {nombre_reporte}..."):
+                                # ✅ Lógica de fecha por tipo de reporte
+                                if "Recaudo" in nombre_reporte or "Compromisos" in nombre_reporte:
+                                    # Reporte 6: SIN fecha (acumulado)
+                                    excel_bytes, mensaje = funcion(config["id"])
+                                else:
+                                    # Reportes 1-5: CON fecha (si está activa)
+                                    if ver_todas:
+                                        excel_bytes, mensaje = funcion(config["id"])
+                                    else:
+                                        excel_bytes, mensaje = funcion(config["id"], fecha_reporte)
+                                
+                                if excel_bytes:
+                                    st.session_state[f"reporte_{nombre_reporte}"] = excel_bytes
+                                    st.session_state[f"mensaje_{nombre_reporte}"] = mensaje
+                                    st.rerun()
+                                else:
+                                    st.warning(mensaje)
+                    with col3:
+                        if st.session_state.get(f"reporte_{nombre_reporte}"):
+                            st.download_button(
+                                label="📥 Descargar",
+                                data=st.session_state[f"reporte_{nombre_reporte}"],
+                                file_name=f"{config['id']}_{nombre_reporte.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key=f"download_{nombre_reporte}"
+                            )
+                            if st.session_state.get(f"mensaje_{nombre_reporte}"):
+                                st.success(st.session_state[f"mensaje_{nombre_reporte}"])
+                    
+                    st.markdown("---")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="text-align: center; margin-top: 32px; font-size: 12px; color: #9ca3af; border-top: 1px solid #f0f0f0; padding-top: 16px;">
+        Hexagon · Reporteria · Version 1.0
+    </div>
+    """, unsafe_allow_html=True)

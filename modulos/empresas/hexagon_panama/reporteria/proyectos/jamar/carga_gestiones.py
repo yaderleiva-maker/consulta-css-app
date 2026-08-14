@@ -516,7 +516,7 @@ def render():
                         except:
                             st.metric("Fecha del archivo", "No disponible")
                 
-                if st.button("Guardar en BigQuery", type="primary", use_container_width=True):
+                if st.button("Guardar Datos", type="primary", use_container_width=True):
                     guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID, uploaded_file.name)
                     
                     col1, col2, col3 = st.columns(3)

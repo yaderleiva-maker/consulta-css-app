@@ -165,7 +165,6 @@ def obtener_historial_cargas():
         return pd.DataFrame()
 
 def obtener_resumen_por_fecha_carga():
-    """Resumen de gestiones por fecha de carga (para historial visual)"""
     query = f"""
         SELECT
             DATE(fecha_carga) AS fecha_carga,
@@ -186,7 +185,6 @@ def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
     registros_guardados = 0
     detalles = []
     
-    # Generar ID de carga único para este lote
     id_carga = str(uuid.uuid4())
     
     mapeo = obtener_mapeo_codigos()
@@ -298,10 +296,6 @@ def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
     
     df_insert = pd.DataFrame(registros)
     
-    # ============================================================
-    # CONVERTIR FECHAS A TIPOS REALES DE BIGQUERY
-    # ============================================================
-    
     try:
         if 'fechahoragestion' in df_insert.columns:
             df_insert["fechahoragestion"] = pd.to_datetime(
@@ -324,10 +318,6 @@ def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
     except Exception as e:
         st.error(f"Error al convertir fechas: {e}")
         return 0, total, f"Error en fechas: {e}"
-    
-    # ============================================================
-    # CONEXIÓN A BIGQUERY
-    # ============================================================
     
     try:
         credentials = service_account.Credentials.from_service_account_info(
@@ -363,9 +353,6 @@ def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
             st.success(f"✅ BigQuery terminó el job. Filas cargadas: {rows_loaded}")
             registros_guardados = rows_loaded
             
-            # ============================================================
-            # GUARDAR HISTORIAL DE CARGA
-            # ============================================================
             try:
                 historial_rows = [{
                     "id_carga": id_carga,
@@ -439,4 +426,133 @@ def render():
     """, unsafe_allow_html=True)
     
     st.markdown('<div class="main-header">Carga de Gestiones - Jamar</div>', unsafe_allow_html=True)
-    st.mark
+    st.markdown('<div class="sub-header">Sube el reporte de gestiones diarias. El sistema procesará ambas hojas (CORREOS & WHATSAPP y LLAMADAS) y las anexará al histórico.</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown('<div class="card-title">Estado del sistema</div>', unsafe_allow_html=True)
+    with col2:
+        cartera_cargada = verificar_cartera_cargada()
+        if cartera_cargada:
+            st.markdown('<span class="status-badge success">Cartera cargada</span>', unsafe_allow_html=True)
+        else:
+            st.markdown('<span class="status-badge warning">Sin cartera</span>', unsafe_allow_html=True)
+    
+    total_historico = obtener_total_historico()
+    st.metric("Total histórico de gestiones", f"{total_historico:,}")
+    
+    ultima = obtener_ultima_fecha_carga()
+    if ultima:
+        fecha_str = ultima['fecha'].strftime('%d/%m/%Y %H:%M') if hasattr(ultima['fecha'], 'strftime') else str(ultima['fecha'])
+        st.caption(f"Última gestión registrada: {fecha_str} · Total en tabla: {ultima['total']:,}")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">📋 Historial de cargas</div>', unsafe_allow_html=True)
+    
+    historial_df = obtener_historial_cargas()
+    
+    if not historial_df.empty:
+        for _, row in historial_df.iterrows():
+            fecha = row['fecha_carga'].strftime('%d/%m/%Y %H:%M') if hasattr(row['fecha_carga'], 'strftime') else str(row['fecha_carga'])
+            archivo = row['archivo_nombre'] if 'archivo_nombre' in row else 'No disponible'
+            
+            st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6;">
+                <div>
+                    <span style="font-weight: 500;">{archivo}</span>
+                    <span style="color: #6b6b6b; font-size: 13px; margin-left: 12px;">{fecha}</span>
+                </div>
+                <div>
+                    <span style="color: #16a34a;">✅ {row['registros_guardados']} registros</span>
+                    {f"<span style='color: #dc2626; margin-left: 12px;'>❌ {row['errores']} errores</span>" if row['errores'] > 0 else ""}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        resumen = obtener_resumen_por_fecha_carga()
+        if not resumen.empty:
+            st.dataframe(
+                resumen.rename(columns={
+                    "fecha_carga": "Fecha de carga",
+                    "total_registros": "Gestiones cargadas",
+                }),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No hay cargas registradas aún.")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">Subir archivo de gestiones</div>', unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader(
+        "Selecciona un archivo Excel",
+        type=["xlsx", "xls"],
+        key="gestiones_uploader",
+        label_visibility="collapsed"
+    )
+    
+    if uploaded_file is not None:
+        size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
+        st.markdown(f"""
+        <div class="selected-file">
+            <span>📄</span>
+            <span class="file-name">{uploaded_file.name}</span>
+            <span class="file-size">({size_mb:.1f} MB)</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        with st.spinner("Procesando archivo..."):
+            try:
+                df = leer_archivo_gestiones(uploaded_file)
+                
+                st.markdown("---")
+                st.markdown("#### Vista previa del archivo")
+                st.dataframe(df.head(5), use_container_width=True)
+                
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total registros", f"{len(df):,}")
+                with col2:
+                    codigos = df['codigo_gestion'].nunique() if 'codigo_gestion' in df.columns else 0
+                    st.metric("Codigos unicos", f"{codigos:,}")
+                with col3:
+                    if 'fechahoragestion' in df.columns and not df.empty:
+                        try:
+                            fecha = pd.to_datetime(df['fechahoragestion'].iloc[0])
+                            st.metric("Fecha del archivo", fecha.strftime('%d/%m/%Y'))
+                        except:
+                            st.metric("Fecha del archivo", "No disponible")
+                
+                if st.button("Guardar en BigQuery", type="primary", use_container_width=True):
+                    guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID, uploaded_file.name)
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total", f"{len(df):,}")
+                    with col2:
+                        st.metric("Guardados", f"{guardados:,}")
+                    with col3:
+                        st.metric("Errores", f"{errores:,}")
+                    
+                    if guardados > 0:
+                        st.success(f"✅ {detalle}")
+                        st.balloons()
+                        st.cache_data.clear()
+                    else:
+                        st.error(f"❌ La carga falló: {detalle}")
+                        st.stop()
+                
+            except Exception as e:
+                st.error(f"Error al procesar el archivo: {str(e)}")
+                st.exception(e)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    render()

@@ -243,10 +243,9 @@ def generar_cuadro_gestion_rank(proyecto_id, fecha_inicio=None, fecha_fin=None):
     """Cuadro de gestión por RANK"""
     
     filtro_fechas = ""
-    if fecha_inicio is not None and fecha_fin is not None:
-        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
-        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
-        filtro_fechas = f"AND DATE(g.fechahoragestion) BETWEEN '{fecha_inicio_str}' AND '{fecha_fin_str}'"
+    if fecha_reporte is not None:
+        fecha_reporte_str = fecha_reporte.strftime('%Y-%m-%d')
+        filtro_fechas = f"AND DATE(g.fechahoragestion) = '{fecha_reporte_str}'"
     
     query = f"""
     WITH gestiones_filtradas AS (
@@ -330,10 +329,9 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_inicio=None, fecha_fin=N
     """Cuadro de resultado de gestión por RANK"""
     
     filtro_fechas = ""
-    if fecha_inicio is not None and fecha_fin is not None:
-        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
-        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
-        filtro_fechas = f"AND DATE(g.fechahoragestion) BETWEEN '{fecha_inicio_str}' AND '{fecha_fin_str}'"
+    if fecha_reporte is not None:
+        fecha_reporte_str = fecha_reporte.strftime('%Y-%m-%d')
+        filtro_fechas = f"AND DATE(g.fechahoragestion) = '{fecha_reporte_str}'"
     
     query = f"""
     WITH ultima_gestion_por_cuenta AS (

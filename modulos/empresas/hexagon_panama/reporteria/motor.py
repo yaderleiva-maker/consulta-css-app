@@ -1,5 +1,6 @@
 import streamlit as st
 from datetime import datetime
+import pandas as pd
 
 # Importar los submódulos de cada proyecto
 from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import carga as jamar_carga
@@ -17,20 +18,10 @@ PROYECTOS = {
         "nombre": "Jamar S.A.",
         "carga": jamar_carga.render,
         "gestiones": jamar_gestiones.render,
-        "pagos": jamar_pagos.render,  # ✅ AQUÍ VA
+        "pagos": jamar_pagos.render,
         "reportes": jamar_reportes.REPORTES,
         "icono": "📊"
     },
-    # Futuros proyectos:
-    # "IFX": {
-    #     "id": "IFX",
-    #     "nombre": "IFX Network",
-    #     "carga": ifx_carga.render,
-    #     "gestiones": ifx_gestiones.render,
-    #     "pagos": ifx_pagos.render,
-    #     "reportes": ifx_reportes.REPORTES,
-    #     "icono": "📈"
-    # },
 }
 
 # ============================================================
@@ -81,19 +72,6 @@ def render():
         .btn-primary:hover {
             background-color: #b91c1c;
         }
-        .btn-outline {
-            background-color: transparent;
-            color: #dc2626;
-            border: 1px solid #dc2626;
-            padding: 8px 20px;
-            border-radius: 8px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-        .btn-outline:hover {
-            background-color: #fef2f2;
-        }
         .helper-text {
             font-size: 13px;
             color: #6b6b6b;
@@ -104,11 +82,6 @@ def render():
         }
         .project-selector {
             margin-bottom: 16px;
-        }
-        .project-selector label {
-            font-weight: 500;
-            color: #1a1a1a;
-            font-size: 14px;
         }
         .status-badge {
             display: inline-block;
@@ -131,10 +104,6 @@ def render():
     st.markdown('<div class="main-header">📊 Reporteria por Proyecto</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Selecciona un proyecto para cargar su cartera, gestiones diarias, pagos o generar reportes especificos.</div>', unsafe_allow_html=True)
     
-    # ============================================================
-    # SELECCION DE PROYECTO
-    # ============================================================
-    
     proyectos_lista = list(PROYECTOS.keys())
     
     if not proyectos_lista:
@@ -152,10 +121,6 @@ def render():
     
     config = PROYECTOS[proyecto_seleccionado]
     
-    # ============================================================
-    # CONTENIDO DEL PROYECTO
-    # ============================================================
-    
     st.markdown("---")
     
     col1, col2, col3 = st.columns([1, 3, 1])
@@ -171,7 +136,7 @@ def render():
     st.markdown("---")
     
     # ============================================================
-    # TABS (reemplaza el selector de seccion)
+    # TABS
     # ============================================================
     
     tab1, tab2, tab3, tab4 = st.tabs([
@@ -199,6 +164,32 @@ def render():
     with tab4:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
         
+        # ---- Selector de fecha ----
+        st.markdown("#### 📅 Seleccionar período")
+        
+        col1, col2, col3 = st.columns([2, 2, 1])
+        with col1:
+            fecha_inicio = st.date_input(
+                "Fecha de inicio",
+                value=datetime.now().date() - pd.Timedelta(days=30),
+                key="fecha_inicio_reportes"
+            )
+        with col2:
+            fecha_fin = st.date_input(
+                "Fecha de fin",
+                value=datetime.now().date(),
+                key="fecha_fin_reportes"
+            )
+        with col3:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("📊 Aplicar filtro", use_container_width=True):
+                st.session_state["fecha_filtro_aplicado"] = True
+                st.rerun()
+        
+        ver_todas = st.checkbox("📅 Ver todas las fechas (sin filtro)", key="ver_todas_fechas")
+        
+        st.markdown("---")
+        
         reportes = config["reportes"]
         
         if not reportes:
@@ -214,7 +205,10 @@ def render():
                     with col2:
                         if st.button(f"📊 Generar", key=f"gen_{nombre_reporte}"):
                             with st.spinner(f"Generando {nombre_reporte}..."):
-                                excel_bytes, mensaje = funcion(config["id"])
+                                if ver_todas:
+                                    excel_bytes, mensaje = funcion(config["id"])
+                                else:
+                                    excel_bytes, mensaje = funcion(config["id"], fecha_inicio, fecha_fin)
                                 if excel_bytes:
                                     st.session_state[f"reporte_{nombre_reporte}"] = excel_bytes
                                     st.session_state[f"mensaje_{nombre_reporte}"] = mensaje
@@ -236,10 +230,6 @@ def render():
                     st.markdown("---")
         
         st.markdown('</div>', unsafe_allow_html=True)
-    
-    # ============================================================
-    # FOOTER
-    # ============================================================
     
     st.markdown("""
     <div style="text-align: center; margin-top: 32px; font-size: 12px; color: #9ca3af; border-top: 1px solid #f0f0f0; padding-top: 16px;">

@@ -363,6 +363,26 @@ def leer_archivo_gestiones(uploaded_file):
         st.error(f"Error al leer el archivo: {e}")
         raise
 
+def obtener_historial_cargas():
+    """Obtiene el historial de cargas con nombre de archivo"""
+    try:
+        query = f"""
+            SELECT 
+                id_carga,
+                archivo_nombre,
+                fecha_carga,
+                total_registros,
+                registros_guardados,
+                errores
+            FROM `{PROYECTO_BQ}.historial_cargas_gestiones`
+            WHERE id_proyecto = '{PROYECTO_ID}'
+            ORDER BY fecha_carga DESC
+            LIMIT 20
+        """
+        df = ejecutar_query(query)
+        return df
+    except:
+        return pd.DataFrame()
 # ============================================================
 # VISTA PRINCIPAL
 # ============================================================
@@ -401,13 +421,33 @@ def render():
     total_historico = obtener_total_historico()
     st.metric("Total histórico de gestiones", f"{total_historico:,}")
     
-    # Última fecha de carga (solo informativo)
-    ultima = obtener_ultima_fecha_carga()
-    if ultima:
-        fecha_str = ultima['fecha'].strftime('%d/%m/%Y %H:%M') if hasattr(ultima['fecha'], 'strftime') else str(ultima['fecha'])
-        st.caption(f"Última gestión registrada: {fecha_str} · Total en tabla: {ultima['total']:,}")
+    st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">📋 Historial de cargas</div>', unsafe_allow_html=True)
+    
+    historial_df = obtener_historial_cargas()
+    
+    if not historial_df.empty:
+        for _, row in historial_df.iterrows():
+            fecha = row['fecha_carga'].strftime('%d/%m/%Y %H:%M') if hasattr(row['fecha_carga'], 'strftime') else str(row['fecha_carga'])
+            archivo = row['archivo_nombre'] if 'archivo_nombre' in row else 'No disponible'
+            
+            st.markdown(f"""
+            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f4f6;">
+                <div>
+                    <span style="font-weight: 500;">{archivo}</span>
+                    <span style="color: #6b6b6b; font-size: 13px; margin-left: 12px;">{fecha}</span>
+                </div>
+                <div>
+                    <span style="color: #16a34a;">✅ {row['registros_guardados']} registros</span>
+                    {f"<span style='color: #dc2626; margin-left: 12px;'>❌ {row['errores']} errores</span>" if row['errores'] > 0 else ""}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("No hay cargas registradas aún.")
     
     st.markdown('</div>', unsafe_allow_html=True)
+
     
     # ---- Área de carga ----
     st.markdown('<div class="card">', unsafe_allow_html=True)

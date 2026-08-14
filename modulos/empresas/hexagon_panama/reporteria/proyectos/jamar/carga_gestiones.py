@@ -148,7 +148,8 @@ def obtener_ultima_fecha_carga():
 def guardar_gestiones_jamar(df, proyecto_id):
     import time
     start_time = time.time()
-    
+
+    id_carga = str(uuid.uuid4())
     total = len(df)
     errores = 0
     registros_guardados = 0
@@ -223,6 +224,7 @@ def guardar_gestiones_jamar(df, proyecto_id):
             
             registro = {
                 'id_gestion': id_gestion,
+                'id_carga': id_carga,
                 'id_proyecto': PROYECTO_ID,
                 'llave': llave,
                 'codigo_agencia': codigo_agencia,
@@ -328,6 +330,19 @@ def guardar_gestiones_jamar(df, proyecto_id):
     detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
     
     return registros_guardados, errores, detalle
+
+def eliminar_carga_por_id(id_carga):
+    """Elimina una carga específica por su ID"""
+    try:
+        query = f"""
+            DELETE FROM `{PROYECTO_BQ}.gestiones_jamar`
+            WHERE id_proyecto = '{PROYECTO_ID}'
+              AND id_carga = '{id_carga}'
+        """
+        ejecutar_query(query)
+        return True, "Carga eliminada correctamente"
+    except Exception as e:
+        return False, f"Error al eliminar: {e}"
 
 def leer_archivo_gestiones(uploaded_file):
     try:

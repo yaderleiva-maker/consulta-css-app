@@ -20,7 +20,42 @@ TABLA_MAPEO = f"`{PROYECTO_BQ}.mapeo_codigos_gestion`"
 # ============================================================
 # FUNCIONES DE NORMALIZACION
 # ============================================================
+def eliminar_carga(id_carga):
+    """Elimina una carga específica por su ID usando parámetros seguros"""
+    try:
+        from google.cloud import bigquery
+        from google.oauth2 import service_account
+        
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"]
+        )
+        client = bigquery.Client(
+            credentials=credentials,
+            project=credentials.project_id,
+        )
 
+        query = f"""
+            DELETE FROM `{PROYECTO_BQ}.gestiones_jamar`
+            WHERE id_proyecto = @id_proyecto
+              AND id_carga = @id_carga
+        """
+
+        job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+                bigquery.ScalarQueryParameter("id_proyecto", "STRING", PROYECTO_ID),
+                bigquery.ScalarQueryParameter("id_carga", "STRING", id_carga),
+            ]
+        )
+
+        job = client.query(query, job_config=job_config)
+        job.result()
+
+        eliminados = job.num_dml_affected_rows or 0
+        return True, f"Se eliminaron {eliminados:,} registros."
+
+    except Exception as e:
+        return False, f"Error al eliminar: {e}"
+        
 def normalizar_texto(valor):
     if pd.isna(valor):
         return None
@@ -562,14 +597,11 @@ def render():
     # ---- Eliminar cargas ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">🗑️ Eliminar carga</div>', unsafe_allow_html=True)
-    
+
     cargas_df = obtener_cargas_disponibles()
-    
+
     if not cargas_df.empty:
-        # Mostrar tabla con información clara
-        st.markdown("#### 📋 Cargas disponibles")
-        
-        # Crear una columna con información legible para el selectbox
+        # Crear labels amigables
         cargas_df['label'] = cargas_df.apply(lambda row: 
             f"{row['fecha_carga'].strftime('%d/%m/%Y %H:%M')} - "
             f"{row['registros']} registros "
@@ -578,8 +610,7 @@ def render():
             else f"{row['registros']} registros",
             axis=1
         )
-        
-        # Selectbox con labels legibles
+
         opciones = dict(zip(cargas_df['label'], cargas_df['id_carga']))
         
         seleccion = st.selectbox(
@@ -591,22 +622,29 @@ def render():
         if seleccion:
             id_carga = opciones[seleccion]
             
-            # Botón de confirmación
-            if st.button("🗑️ Eliminar carga seleccionada", type="secondary", use_container_width=True):
-                st.warning(f"⚠️ ¿Estás seguro de eliminar esta carga?")
-                st.info(f"📌 Carga: {seleccion}")
+            # Checkbox de confirmación (no botón anidado)
+            confirmar = st.checkbox(
+                "⚠️ Entiendo que esta acción eliminará permanentemente la carga seleccionada.",
+                key="confirmar_eliminacion"
+            )
+            
+            if st.button(
+                "🗑️ Eliminar carga seleccionada",
+                type="secondary",
+                use_container_width=True,
+                disabled=not confirmar,
+            ):
+                exito, mensaje = eliminar_carga(id_carga)
                 
-                if st.button("✅ Sí, confirmar eliminación", use_container_width=True):
-                    exito, mensaje = eliminar_carga(id_carga)
-                    if exito:
-                        st.success(f"✅ {mensaje}")
-                        st.cache_data.clear()
-                        st.rerun()
-                    else:
-                        st.error(f"❌ {mensaje}")
+                if exito:
+                    st.success(f"✅ {mensaje}")
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error(f"❌ {mensaje}")
     else:
         st.info("No hay cargas registradas para eliminar.")
-    
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":

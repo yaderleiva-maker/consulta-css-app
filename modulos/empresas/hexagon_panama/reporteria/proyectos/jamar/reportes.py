@@ -10,34 +10,7 @@ from services.bigquery import ejecutar_query
 # ============================================================
 
 PROYECTO_BQ = "proyecto-css-panama.cobranza"
-
-# ============================================================
-# REPORTE: Resumen de Cuentas Pre-Demanda
-# ============================================================
-
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-import io
-
-from services.bigquery import ejecutar_query
-
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
-
-PROYECTO_BQ = "proyecto-css-panama.cobranza"
 PROYECTO_ID = "JAMAR"
-
-# ============================================================
-# REGISTRO DE REPORTES
-# ============================================================
-
-REPORTES = {
-    "📊 Resumen de Cuentas Pre-Demanda": generar_resumen_predemanda,
-    "📋 Cartera Comercial": generar_cartera_comercial,
-    "📈 Seguimiento de Cobro": generar_seguimiento_cobro,
-}
 
 # ============================================================
 # REPORTE 1: Resumen de Cuentas Pre-Demanda
@@ -239,9 +212,11 @@ def generar_seguimiento_cobro(proyecto_id):
     return output.getvalue(), f"✅ Seguimiento generado con {len(df):,} registros"
 
 # ============================================================
-# REGISTRO DE REPORTES (DESPUÉS de definir la función)
+# REGISTRO DE REPORTES (DESPUÉS de definir las funciones)
 # ============================================================
 
 REPORTES = {
     "📊 Resumen de Cuentas Pre-Demanda": generar_resumen_predemanda,
+    "📋 Cartera Comercial": generar_cartera_comercial,
+    "📈 Seguimiento de Cobro": generar_seguimiento_cobro,
 }

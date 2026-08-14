@@ -456,7 +456,17 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
                 -- 🔥 PRIMERO: Si NO tiene gestión en la fecha, es SIN GESTION AL CORTE
                 WHEN ug.llave IS NULL THEN 'SIN GESTION AL CORTE'
                 
-                -- 🔥 SEGUNDO: Si tiene resultado_gestion, usarlo (pero corregir CONTACTO CON TERCERO)
+                -- 🔥 SEGUNDO: Si tiene codigo_gestion = '90', CORREO/WHATSAPP (NUNCA COMPROMISO)
+                WHEN ug.ultimo_codigo_gestion = '90' THEN 
+                    CASE 
+                        WHEN ug.numeromarcado IS NOT NULL 
+                             AND ug.numeromarcado NOT IN ('0', '00000000', '')
+                             AND LENGTH(ug.numeromarcado) >= 7 
+                        THEN 'WHATSAPP'
+                        ELSE 'CONTACTO EFECTIVO'
+                    END
+                
+                -- 🔥 TERCERO: Si tiene resultado_gestion, usarlo
                 WHEN ug.resultado_gestion IS NOT NULL THEN
                     CASE 
                         WHEN ug.resultado_gestion = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
@@ -466,18 +476,10 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
                         WHEN ug.resultado_gestion IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'BUZON DE VOZ'
                         ELSE 'SIN CONTACTO'
                     END
-                -- 🔥 TERCERO: Si NO tiene resultado_gestion, usar codigo_gestion
-                -- 🔥 IMPORTANTE: codigo_gestion = '90' NUNCA es COMPROMISO DE PAGO
+                
+                -- 🔥 CUARTO: Si NO tiene resultado_gestion, usar codigo_gestion
                 WHEN ug.ultimo_codigo_gestion IN ('0', '00') THEN 'CONTACTO CON TERCERO'
                 WHEN ug.ultimo_codigo_gestion IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
-                WHEN ug.ultimo_codigo_gestion = '90' THEN 
-                    CASE 
-                        WHEN ug.numeromarcado IS NOT NULL 
-                             AND ug.numeromarcado NOT IN ('0', '00000000', '')
-                             AND LENGTH(ug.numeromarcado) >= 7 
-                        THEN 'WHATSAPP'  -- 🔥 WhatsApp se clasifica como CONTACTO EFECTIVO, pero lo diferenciamos
-                        ELSE 'CONTACTO EFECTIVO'  -- 🔥 Correo es CONTACTO EFECTIVO
-                    END
                 WHEN ug.ultimo_codigo_gestion IN ('14', '81', '84') THEN 'CONTACTO EFECTIVO'
                 WHEN ug.ultimo_codigo_gestion = '86' THEN 'SIN CONTACTO'
                 WHEN ug.ultimo_codigo_gestion IN ('10', '11', '15') THEN 'BUZON DE VOZ'

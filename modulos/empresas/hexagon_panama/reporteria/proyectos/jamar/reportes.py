@@ -418,7 +418,7 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
 # ============================================================
 
 def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
-    """Devuelve DataFrame del Cuadro de Resultado de Gestión (CON ORDEN CORREGIDO)"""
+    """Devuelve DataFrame del Cuadro de Resultado de Gestión (CORREGIDO)"""
     
     filtro_fechas = ""
     if fecha_reporte is not None:
@@ -432,6 +432,7 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
             g.resultado_gestion,
             g.codigo_gestion AS ultimo_codigo_gestion,
             g.fechahoragestion,
+            g.numeromarcado,
             ROW_NUMBER() OVER (PARTITION BY g.llave ORDER BY g.fechahoragestion DESC) AS rn
         FROM `{PROYECTO_BQ}.gestiones_jamar` g
         WHERE g.id_proyecto = '{proyecto_id}'
@@ -442,7 +443,8 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
             llave,
             resultado_gestion,
             ultimo_codigo_gestion,
-            fechahoragestion
+            fechahoragestion,
+            numeromarcado
         FROM ultima_gestion_por_cuenta
         WHERE rn = 1
     ),
@@ -454,7 +456,7 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
                 -- 🔥 PRIMERO: Si NO tiene gestión en la fecha, es SIN GESTION AL CORTE
                 WHEN ug.llave IS NULL THEN 'SIN GESTION AL CORTE'
                 
-                -- 🔥 SEGUNDO: Si tiene gestión, clasificar por resultado_gestion
+                -- 🔥 SEGUNDO: Si tiene resultado_gestion, usarlo (pero corregir CONTACTO CON TERCERO)
                 WHEN ug.resultado_gestion IS NOT NULL THEN
                     CASE 
                         WHEN ug.resultado_gestion = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
@@ -464,12 +466,22 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
                         WHEN ug.resultado_gestion IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'BUZON DE VOZ'
                         ELSE 'SIN CONTACTO'
                     END
-                -- 🔥 TERCERO: Si no tiene resultado_gestion, usar codigo_gestion
+                -- 🔥 TERCERO: Si NO tiene resultado_gestion, usar codigo_gestion
+                -- 🔥 IMPORTANTE: codigo_gestion = '90' NUNCA es COMPROMISO DE PAGO
                 WHEN ug.ultimo_codigo_gestion IN ('0', '00') THEN 'CONTACTO CON TERCERO'
                 WHEN ug.ultimo_codigo_gestion IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
-                WHEN ug.ultimo_codigo_gestion IN ('14', '81', '84', '90') THEN 'CONTACTO EFECTIVO'
+                WHEN ug.ultimo_codigo_gestion = '90' THEN 
+                    CASE 
+                        WHEN ug.numeromarcado IS NOT NULL 
+                             AND ug.numeromarcado NOT IN ('0', '00000000', '')
+                             AND LENGTH(ug.numeromarcado) >= 7 
+                        THEN 'WHATSAPP'  -- 🔥 WhatsApp se clasifica como CONTACTO EFECTIVO, pero lo diferenciamos
+                        ELSE 'CONTACTO EFECTIVO'  -- 🔥 Correo es CONTACTO EFECTIVO
+                    END
+                WHEN ug.ultimo_codigo_gestion IN ('14', '81', '84') THEN 'CONTACTO EFECTIVO'
                 WHEN ug.ultimo_codigo_gestion = '86' THEN 'SIN CONTACTO'
                 WHEN ug.ultimo_codigo_gestion IN ('10', '11', '15') THEN 'BUZON DE VOZ'
+                WHEN ug.ultimo_codigo_gestion = '83' THEN 'NO CONTACTOS'
                 ELSE 'SIN CONTACTO'
             END AS categoria_resultado
         FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
@@ -488,12 +500,14 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
     ORDER BY 
         CASE categoria_resultado
             WHEN 'CONTACTO EFECTIVO' THEN 1
-            WHEN 'COMPROMISO DE PAGO' THEN 2
-            WHEN 'SIN CONTACTO' THEN 3
-            WHEN 'CONTACTO TERCERO' THEN 4
-            WHEN 'BUZON DE VOZ' THEN 5
-            WHEN 'SIN GESTION AL CORTE' THEN 6
-            ELSE 7
+            WHEN 'WHATSAPP' THEN 2
+            WHEN 'COMPROMISO DE PAGO' THEN 3
+            WHEN 'SIN CONTACTO' THEN 4
+            WHEN 'CONTACTO TERCERO' THEN 5
+            WHEN 'BUZON DE VOZ' THEN 6
+            WHEN 'NO CONTACTOS' THEN 7
+            WHEN 'SIN GESTION AL CORTE' THEN 8
+            ELSE 9
         END
     """
     

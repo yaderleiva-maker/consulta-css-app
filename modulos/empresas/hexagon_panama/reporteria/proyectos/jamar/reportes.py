@@ -474,7 +474,7 @@ def generar_recaudo_compromisos_df(proyecto_id):
     return df, f"✅ {len(df)} ranks"
 
 # ============================================================
-# REPORTE 7: Resumen de Cartera (CONSOLIDADO)
+# REPORTE 7: Resumen de Cartera (CONSOLIDADO CON DATOS COMPLETOS)
 # ============================================================
 
 def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
@@ -484,6 +484,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     - Hoja 2: Cuadro de Gestión por RANK (con filtro de fecha)
     - Hoja 3: Cuadro de Resultado de Gestión (con filtro de fecha)
     - Hoja 4: Recaudo y Compromisos (sin filtro - acumulado)
+    - Hoja 5: Datos Completos (las 1,076 cuentas con todos los datos)
     """
     
     output = io.BytesIO()
@@ -495,7 +496,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         # HOJA 1: RESUMEN EJECUTIVO
         # ============================================================
         
-        # Obtener datos de la cartera
         query_cartera = f"""
             SELECT 
                 COUNT(*) AS total_cuentas,
@@ -509,7 +509,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         """
         df_cartera = ejecutar_query(query_cartera)
         
-        # Obtener total de gestiones
         query_gestiones = f"""
             SELECT 
                 COUNT(*) AS total_gestiones,
@@ -519,7 +518,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         """
         df_gestiones = ejecutar_query(query_gestiones)
         
-        # Obtener total de pagos
         query_pagos = f"""
             SELECT 
                 COUNT(*) AS total_pagos,
@@ -530,7 +528,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         """
         df_pagos = ejecutar_query(query_pagos)
         
-        # Construir resumen
         resumen_data = {
             'Métrica': [
                 'Proyecto',
@@ -568,47 +565,42 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         mensajes.append("✅ Resumen generado")
         
         # ============================================================
-        # HOJA 2: CUADRO DE GESTIÓN POR RANK (con fecha)
+        # HOJA 2: CUADRO DE GESTIÓN POR RANK
         # ============================================================
         
-        # Llamar a la función existente
-        df_gestion_rank, msg_gestion_rank = generar_cuadro_gestion_rank_df(proyecto_id, fecha_reporte)
+        df_gestion_rank, _ = generar_cuadro_gestion_rank_df(proyecto_id, fecha_reporte)
         
         if df_gestion_rank is not None and not df_gestion_rank.empty:
             df_gestion_rank.to_excel(writer, sheet_name='Cuadro Gestión', index=False)
-            mensajes.append(f"✅ Cuadro de Gestión: {len(df_gestion_rank)} ranks")
+            mensajes.append(f"✅ Cuadro Gestión: {len(df_gestion_rank)} ranks")
         else:
-            # Crear hoja con mensaje
-            pd.DataFrame({'Mensaje': ['No hay datos disponibles para Cuadro de Gestión']}).to_excel(
+            pd.DataFrame({'Mensaje': ['No hay datos disponibles']}).to_excel(
                 writer, sheet_name='Cuadro Gestión', index=False
             )
-            mensajes.append("⚠️ Cuadro de Gestión: Sin datos")
         
         # ============================================================
-        # HOJA 3: CUADRO DE RESULTADO DE GESTIÓN (con fecha)
+        # HOJA 3: CUADRO DE RESULTADO DE GESTIÓN
         # ============================================================
         
-        df_resultado, msg_resultado = generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte)
+        df_resultado, _ = generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte)
         
         if df_resultado is not None and not df_resultado.empty:
             df_resultado.to_excel(writer, sheet_name='Resultado Gestión', index=False)
             mensajes.append(f"✅ Resultado Gestión: {len(df_resultado)} categorías")
         else:
-            pd.DataFrame({'Mensaje': ['No hay datos disponibles para Resultado de Gestión']}).to_excel(
+            pd.DataFrame({'Mensaje': ['No hay datos disponibles']}).to_excel(
                 writer, sheet_name='Resultado Gestión', index=False
             )
-            mensajes.append("⚠️ Resultado Gestión: Sin datos")
         
         # ============================================================
-        # HOJA 4: RECAUDO Y COMPROMISOS (sin fecha - acumulado)
+        # HOJA 4: RECAUDO Y COMPROMISOS
         # ============================================================
         
-        df_recaudo, msg_recaudo = generar_recaudo_compromisos_df(proyecto_id)
+        df_recaudo, _ = generar_recaudo_compromisos_df(proyecto_id)
         
         if df_recaudo is not None and not df_recaudo.empty:
             df_recaudo.to_excel(writer, sheet_name='Recaudo y Compromisos', index=False)
             
-            # Agregar totales generales
             totales = pd.DataFrame({
                 'Métrica': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],
                 'Total': [
@@ -620,17 +612,105 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             totales.to_excel(writer, sheet_name='Totales Generales', index=False)
             mensajes.append(f"✅ Recaudo: ${df_recaudo['recaudo'].sum():,.2f}")
         else:
-            pd.DataFrame({'Mensaje': ['No hay datos disponibles para Recaudo y Compromisos']}).to_excel(
+            pd.DataFrame({'Mensaje': ['No hay datos disponibles']}).to_excel(
                 writer, sheet_name='Recaudo y Compromisos', index=False
             )
-            mensajes.append("⚠️ Recaudo: Sin datos")
+        
+        # ============================================================
+        # HOJA 5: DATOS COMPLETOS (LAS 1,076 CUENTAS)
+        # ============================================================
+        
+        query_datos_completos = f"""
+        WITH pagos_agrupados AS (
+            SELECT 
+                llave,
+                COUNT(*) AS cantidad_pagos,
+                SUM(recaudo_periodo) AS total_recaudo,
+                MAX(fecha_up) AS fecha_ultimo_pago_real,
+                SUM(saldo) AS saldo_pagos
+            FROM `{PROYECTO_BQ}.pagos_jamar`
+            WHERE id_proyecto = '{proyecto_id}'
+            GROUP BY llave
+        ),
+        gestiones_agrupadas AS (
+            SELECT 
+                llave,
+                COUNT(*) AS total_toques,
+                MAX(fechahoragestion) AS fecha_ultima_gestion,
+                COUNT(CASE WHEN resultado_gestion = 'COMPROMISO DE PAGO' THEN 1 END) AS promesas,
+                COUNT(CASE WHEN resultado_gestion = 'CONTACTO EFECTIVO' THEN 1 END) AS contactos,
+                COUNT(CASE WHEN resultado_gestion = 'NO CONTACTOS' THEN 1 END) AS no_contactos,
+                COUNT(CASE WHEN resultado_gestion = 'CONTACTO CON TERCERO' THEN 1 END) AS contactos_tercero,
+                ARRAY_AGG(resultado_gestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_resultado,
+                ARRAY_AGG(mejor_gestion_jamar ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_mejor_gestion,
+                ARRAY_AGG(codigo_gestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_codigo_gestion,
+                ARRAY_AGG(fechahoragestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_fecha_gestion
+            FROM `{PROYECTO_BQ}.gestiones_jamar` g
+            WHERE g.id_proyecto = '{proyecto_id}'
+            GROUP BY llave
+        ),
+        ultima_promesa_valor AS (
+            SELECT 
+                llave,
+                valorpromesa,
+                fechapromesa
+            FROM `{PROYECTO_BQ}.gestiones_jamar`
+            WHERE id_proyecto = '{proyecto_id}'
+              AND codigo_gestion IN ('01', '88', '89')
+              AND valorpromesa IS NOT NULL
+              AND valorpromesa > 0
+            QUALIFY ROW_NUMBER() OVER (PARTITION BY llave ORDER BY fechapromesa DESC) = 1
+        )
+        SELECT 
+            c.llave,
+            c.codigo_agencia,
+            c.numero_cuenta,
+            c.codigo_cliente,
+            c.nombre_cliente,
+            c.estado_inicial,
+            c.tramo_inicial,
+            c.rank,
+            c.saldo_total_adeudado,
+            c.saldo_total_vencido,
+            c.fecha_ultimo_pago AS fecha_ultimo_pago_cartera,
+            p.cantidad_pagos,
+            p.total_recaudo,
+            p.fecha_ultimo_pago_real,
+            g.total_toques,
+            g.fecha_ultima_gestion,
+            g.promesas,
+            g.contactos,
+            g.no_contactos,
+            g.contactos_tercero,
+            g.ultimo_resultado,
+            g.ultima_mejor_gestion,
+            g.ultimo_codigo_gestion,
+            up.valorpromesa AS ultimo_valor_promesa,
+            up.fechapromesa AS fecha_ultima_promesa_valor
+        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
+        LEFT JOIN pagos_agrupados p ON c.llave = p.llave
+        LEFT JOIN gestiones_agrupadas g ON c.llave = g.llave
+        LEFT JOIN ultima_promesa_valor up ON c.llave = up.llave
+        WHERE c.id_proyecto = '{proyecto_id}'
+        ORDER BY c.saldo_total_adeudado DESC
+        """
+        
+        df_datos = ejecutar_query(query_datos_completos)
+        df_datos = preparar_para_excel(df_datos)
+        
+        if not df_datos.empty:
+            df_datos.to_excel(writer, sheet_name='Datos Completos', index=False)
+            mensajes.append(f"✅ Datos completos: {len(df_datos):,} cuentas")
+        else:
+            pd.DataFrame({'Mensaje': ['No hay datos disponibles']}).to_excel(
+                writer, sheet_name='Datos Completos', index=False
+            )
         
         # Ajustar ancho de columnas para todas las hojas
         for sheet_name in writer.sheets:
             worksheet = writer.sheets[sheet_name]
             worksheet.set_column(0, 25, 18)
     
-    # Mensaje consolidado
     mensaje_final = " | ".join(mensajes)
     fecha_str = fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas"
     return output.getvalue(), f"✅ Resumen de cartera generado ({fecha_str}) - {mensaje_final}"

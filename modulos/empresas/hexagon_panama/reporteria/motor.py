@@ -4,6 +4,7 @@ from datetime import datetime
 # Importar los submódulos de cada proyecto
 from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import carga as jamar_carga
 from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import carga_gestiones as jamar_gestiones
+from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import pagos as jamar_pagos
 from modulos.empresas.hexagon_panama.reporteria.proyectos.jamar import reportes as jamar_reportes
 
 # ============================================================
@@ -16,9 +17,20 @@ PROYECTOS = {
         "nombre": "Jamar S.A.",
         "carga": jamar_carga.render,
         "gestiones": jamar_gestiones.render,
+        "pagos": jamar_pagos.render,  # ✅ AQUÍ VA
         "reportes": jamar_reportes.REPORTES,
         "icono": "📊"
     },
+    # Futuros proyectos:
+    # "IFX": {
+    #     "id": "IFX",
+    #     "nombre": "IFX Network",
+    #     "carga": ifx_carga.render,
+    #     "gestiones": ifx_gestiones.render,
+    #     "pagos": ifx_pagos.render,
+    #     "reportes": ifx_reportes.REPORTES,
+    #     "icono": "📈"
+    # },
 }
 
 # ============================================================
@@ -69,6 +81,19 @@ def render():
         .btn-primary:hover {
             background-color: #b91c1c;
         }
+        .btn-outline {
+            background-color: transparent;
+            color: #dc2626;
+            border: 1px solid #dc2626;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .btn-outline:hover {
+            background-color: #fef2f2;
+        }
         .helper-text {
             font-size: 13px;
             color: #6b6b6b;
@@ -104,7 +129,7 @@ def render():
     """, unsafe_allow_html=True)
     
     st.markdown('<div class="main-header">📊 Reporteria por Proyecto</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Selecciona un proyecto para cargar su cartera, gestiones diarias o generar reportes especificos.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Selecciona un proyecto para cargar su cartera, gestiones diarias, pagos o generar reportes especificos.</div>', unsafe_allow_html=True)
     
     # ============================================================
     # SELECCION DE PROYECTO
@@ -146,30 +171,34 @@ def render():
     st.markdown("---")
     
     # ============================================================
-    # SELECCION DE ACCION (reemplaza los tabs)
+    # TABS (reemplaza el selector de seccion)
     # ============================================================
     
-    seccion = st.radio(
-        "Accion",
-        ["Cargar Cartera", "Cargar Gestiones", "Generar Reportes"],
-        horizontal=True,
-        key="reporteria_seccion",
-    )
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "📥 Cargar Cartera",
+        "📞 Cargar Gestiones",
+        "💰 Cargar Pagos",
+        "📄 Generar Reportes"
+    ])
     
-    st.markdown("---")
-    
-    if seccion == "Cargar Cartera":
+    with tab1:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
         config["carga"]()
         st.markdown('</div>', unsafe_allow_html=True)
     
-    elif seccion == "Cargar Gestiones":
+    with tab2:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
         config["gestiones"]()
         st.markdown('</div>', unsafe_allow_html=True)
     
-    else:  # Generar Reportes
+    with tab3:
         st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        config["pagos"]()
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    with tab4:
+        st.markdown('<div class="tab-content">', unsafe_allow_html=True)
+        
         reportes = config["reportes"]
         
         if not reportes:
@@ -217,11 +246,3 @@ def render():
         Hexagon · Reporteria · Version 1.0
     </div>
     """, unsafe_allow_html=True)
-
-
-# ============================================================
-# PUNTO DE ENTRADA PARA EJECUCION DIRECTA
-# ============================================================
-
-if __name__ == "__main__":
-    render()

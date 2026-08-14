@@ -408,7 +408,7 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
 # ============================================================
 
 def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
-    """Devuelve DataFrame del Cuadro de Resultado de Gestión (para consolidar)"""
+    """Devuelve DataFrame del Cuadro de Resultado de Gestión (CORREGIDO)"""
     
     filtro_fechas = ""
     if fecha_reporte is not None:
@@ -441,6 +441,10 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
             c.llave,
             c.rank,
             CASE 
+                -- 🔥 PRIMERO: Si NO tiene gestión en la fecha, es SIN GESTION AL CORTE
+                WHEN ug.llave IS NULL THEN 'SIN GESTION AL CORTE'
+                
+                -- 🔥 SEGUNDO: Si tiene gestión, clasificar por resultado_gestion
                 WHEN ug.resultado_gestion IS NOT NULL THEN
                     CASE 
                         WHEN ug.resultado_gestion = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
@@ -450,6 +454,7 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
                         WHEN ug.resultado_gestion IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'BUZON DE VOZ'
                         ELSE 'SIN CONTACTO'
                     END
+                -- 🔥 TERCERO: Si no tiene resultado_gestion, usar codigo_gestion
                 WHEN ug.ultimo_codigo_gestion IN ('0', '1', '00', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
                 WHEN ug.ultimo_codigo_gestion IN ('14', '81', '84', '90') THEN 'CONTACTO EFECTIVO'
                 WHEN ug.ultimo_codigo_gestion = '86' THEN 'SIN CONTACTO'
@@ -488,7 +493,6 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
         return None, "⚠️ No hay datos disponibles."
     
     return df, f"✅ {len(df)} categorías"
-
 # ============================================================
 # REPORTE 6: Recaudo y Compromisos (individual)
 # ============================================================

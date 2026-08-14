@@ -300,8 +300,8 @@ def generar_cuadro_gestion_rank(proyecto_id, fecha_reporte=None):
 # REPORTE 5: Cuadro de Resultado de Gestión (CON DÍA)
 # ============================================================
 
-def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
-    """Cuadro de resultado de gestión por RANK para un día específico"""
+def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
+    """Devuelve DataFrame del Cuadro de Resultado de Gestión"""
     
     filtro_fechas = ""
     if fecha_reporte is not None:
@@ -313,6 +313,7 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
         SELECT 
             g.llave,
             g.resultado_gestion,
+            g.codigo_gestion AS ultimo_codigo_gestion,
             g.fechahoragestion,
             ROW_NUMBER() OVER (PARTITION BY g.llave ORDER BY g.fechahoragestion DESC) AS rn
         FROM `{PROYECTO_BQ}.gestiones_jamar` g
@@ -323,6 +324,7 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
         SELECT 
             llave,
             resultado_gestion,
+            ultimo_codigo_gestion,
             fechahoragestion
         FROM ultima_gestion_por_cuenta
         WHERE rn = 1
@@ -332,12 +334,22 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
             c.llave,
             c.rank,
             CASE 
-                WHEN ug.resultado_gestion IS NULL THEN 'SIN GESTION AL CORTE'
-                WHEN ug.resultado_gestion = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
-                WHEN ug.resultado_gestion = 'COMPROMISO DE PAGO' THEN 'COMPROMISO DE PAGO'
-                WHEN ug.resultado_gestion = 'NO CONTACTOS' THEN 'SIN CONTACTO'
-                WHEN ug.resultado_gestion = 'CONTACTO CON TERCERO' THEN 'CONTACTO TERCERO'
-                WHEN ug.resultado_gestion IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'BUZON DE VOZ'
+                -- 1. Si tiene resultado_gestion, usarlo
+                WHEN ug.resultado_gestion IS NOT NULL THEN
+                    CASE 
+                        WHEN ug.resultado_gestion = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
+                        WHEN ug.resultado_gestion = 'COMPROMISO DE PAGO' THEN 'COMPROMISO DE PAGO'
+                        WHEN ug.resultado_gestion = 'NO CONTACTOS' THEN 'SIN CONTACTO'
+                        WHEN ug.resultado_gestion = 'CONTACTO CON TERCERO' THEN 'CONTACTO TERCERO'
+                        WHEN ug.resultado_gestion IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'BUZON DE VOZ'
+                        ELSE 'SIN CONTACTO'
+                    END
+                -- 2. Si no tiene resultado_gestion, usar codigo_gestion
+                WHEN ug.ultimo_codigo_gestion IN ('0', '1', '00', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
+                WHEN ug.ultimo_codigo_gestion IN ('14', '81', '84', '90') THEN 'CONTACTO EFECTIVO'
+                WHEN ug.ultimo_codigo_gestion = '86' THEN 'SIN CONTACTO'
+                WHEN ug.ultimo_codigo_gestion = '00' THEN 'CONTACTO CON TERCERO'
+                WHEN ug.ultimo_codigo_gestion IN ('10', '11', '15') THEN 'BUZON DE VOZ'
                 ELSE 'SIN CONTACTO'
             END AS categoria_resultado
         FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
@@ -365,36 +377,12 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
         END
     """
     
-    df = ejecutar_query(query)
-    df = preparar_para_excel(df)
+    df = preparar_para_excel(ejecutar_query(query))
     
     if df.empty:
-        return None, "⚠️ No hay datos disponibles para la fecha seleccionada."
+        return None, "⚠️ No hay datos disponibles."
     
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='Resultado Gestión', index=False)
-        
-        query_totales = f"""
-            SELECT 
-                rank,
-                COUNT(*) AS total_cuentas
-            FROM `{PROYECTO_BQ}.cartera_predemanda_jamar`
-            WHERE id_proyecto = '{proyecto_id}'
-            GROUP BY rank
-            ORDER BY rank
-        """
-        df_totales = ejecutar_query(query_totales)
-        if not df_totales.empty:
-            df_totales.to_excel(writer, sheet_name='Totales por Rank', index=False)
-        
-        for sheet_name in writer.sheets:
-            worksheet = writer.sheets[sheet_name]
-            worksheet.set_column(0, 25, 18)
-    
-    fecha_str = fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas"
-    return output.getvalue(), f"✅ Cuadro de resultado generado ({fecha_str})"
-
+    return df, f"✅ {len(df)} categorías"
 # ============================================================
 # REPORTE 6: Recaudo y Compromisos (SIN FECHA - ACUMULADO)
 # ============================================================

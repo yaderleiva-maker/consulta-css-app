@@ -364,51 +364,51 @@ def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
             # ============================================================
             # 🔥 GUARDAR HISTORIAL DE CARGA
             # ============================================================
-            try:
-                historial_rows = [{
-                    "id_carga": id_carga,
-                    "id_proyecto": PROYECTO_ID,
-                    "archivo_nombre": archivo_nombre,
-                    "fecha_carga": datetime.now().isoformat(),
-                    "total_registros": total,
-                    "registros_guardados": registros_guardados,
-                    "errores": errores,
-                }]
-                
-                errores_historial = client.insert_rows_json(
-                    f"{PROYECTO_BQ}.historial_cargas_gestiones",
-                    historial_rows
-                )
-                
-                if errores_historial:
-                    st.warning(f"⚠️ Gestiones cargadas, pero no se pudo guardar historial: {errores_historial}")
-                else:
-                    st.info(f"📋 Historial actualizado: {archivo_nombre}")
-                    
-            except Exception as e_historial:
-                st.warning(f"⚠️ Gestiones cargadas, pero error al guardar historial: {e_historial}")
+        try:
+            historial_rows = [{
+                "id_carga": id_carga,
+                "id_proyecto": PROYECTO_ID,
+                "archivo_nombre": archivo_nombre,
+                "fecha_carga": datetime.now().isoformat(),
+                "total_registros": total,
+                "registros_guardados": registros_guardados,
+                "errores": errores,
+            }]
             
-    except Exception as e:
-        st.error(f"Error al insertar en BigQuery: {str(e)}")
-        return 0, total, f"Error en BigQuery: {e}"
-    
-    elapsed_time = time.time() - start_time
-    detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
-    
-    return registros_guardados, errores, detalle
+            errores_historial = client.insert_rows_json(
+                f"{PROYECTO_BQ}.historial_cargas_gestiones",
+                historial_rows
+            )
+            
+            if errores_historial:
+                st.warning(f"⚠️ Gestiones cargadas, pero no se pudo guardar historial: {errores_historial}")
+            else:
+                st.info(f"📋 Historial actualizado: {archivo_nombre}")
+                
+        except Exception as e_historial:
+            st.warning(f"⚠️ Gestiones cargadas, pero error al guardar historial: {e_historial}")
+        
+except Exception as e:
+    st.error(f"Error al insertar en BigQuery: {str(e)}")
+    return 0, total, f"Error en BigQuery: {e}"
+
+elapsed_time = time.time() - start_time
+detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
+
+return registros_guardados, errores, detalle
 
 def eliminar_carga_por_id(id_carga):
-    """Elimina una carga específica por su ID"""
-    try:
-        query = f"""
-            DELETE FROM `{PROYECTO_BQ}.gestiones_jamar`
-            WHERE id_proyecto = '{PROYECTO_ID}'
-              AND id_carga = '{id_carga}'
-        """
-        ejecutar_query(query)
-        return True, "Carga eliminada correctamente"
-    except Exception as e:
-        return False, f"Error al eliminar: {e}"
+"""Elimina una carga específica por su ID"""
+try:
+    query = f"""
+        DELETE FROM `{PROYECTO_BQ}.gestiones_jamar`
+        WHERE id_proyecto = '{PROYECTO_ID}'
+          AND id_carga = '{id_carga}'
+    """
+    ejecutar_query(query)
+    return True, "Carga eliminada correctamente"
+except Exception as e:
+    return False, f"Error al eliminar: {e}"
 
 def leer_archivo_gestiones(uploaded_file):
     try:

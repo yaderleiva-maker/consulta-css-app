@@ -111,7 +111,6 @@ def verificar_cartera_cargada():
         return False
 
 def obtener_total_historico():
-    """Obtiene el total histórico de gestiones (sin agrupar por fecha)"""
     try:
         query = f"""
             SELECT COUNT(*) AS total
@@ -126,7 +125,6 @@ def obtener_total_historico():
         return 0
 
 def obtener_ultima_fecha_carga():
-    """Obtiene la fecha de la última carga (máxima fecha_hora)"""
     try:
         query = f"""
             SELECT 
@@ -145,14 +143,37 @@ def obtener_ultima_fecha_carga():
     except:
         return None
 
+def obtener_historial_cargas():
+    try:
+        query = f"""
+            SELECT 
+                id_carga,
+                archivo_nombre,
+                fecha_carga,
+                total_registros,
+                registros_guardados,
+                errores
+            FROM `{PROYECTO_BQ}.historial_cargas_gestiones`
+            WHERE id_proyecto = '{PROYECTO_ID}'
+            ORDER BY fecha_carga DESC
+            LIMIT 20
+        """
+        df = ejecutar_query(query)
+        return df
+    except:
+        return pd.DataFrame()
+
 def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
     import time
     start_time = time.time()
-
-    id_carga = str(uuid.uuid4())
+    
     total = len(df)
     errores = 0
     registros_guardados = 0
+    detalles = []
+    
+    # Generar ID de carga único para este lote
+    id_carga = str(uuid.uuid4())
     
     mapeo = obtener_mapeo_codigos()
     if not mapeo:
@@ -168,7 +189,6 @@ def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
     
     registros = []
     llaves_procesadas = set()
-    detalles = []
     
     for idx, row in df.iterrows():
         try:
@@ -248,9 +268,9 @@ def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
                 'fecha': fecha,
                 'min_de_prioridad': min_prioridad,
                 'clave_min': normalizar_texto(row.get('ClaveMin')),
-                'fecha_carga': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),      # ✅ CORREGIDO
-                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),       # ✅ CORREGIDO
-                'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')        # ✅ CORREGIDO
+                'fecha_carga': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'updated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
             registros.append(registro)
             
@@ -304,46 +324,6 @@ def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
             st.error(f"La tabla no existe: {e}")
             return 0, total, f"Tabla no existe: {e}"
         
-        # ✅ WRITE_APPEND - SOLO AGREGAR, NUNCA REEMPLAZAR
-        job_config = bigquery.LoadJobConfig(
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            schema=tabla_destino.schema,
-        )
-        
-        with st.spinner(f"Subiendo {len(df_insert)} registros a BigQuery..."):
-            job = client.load_table_from_dataframe(
-                df_insert,
-                destino,
-                job_config=job_config,
-            )
-            job.result(timeout=180)
-            
-            rows_loaded = job.output_rows or len(df_insert)
-            st.success(f"✅ BigQuery terminó el job. Filas cargadas: {rows_loaded}")
-            registros_guardados = rows_loaded
-
-        # ============================================================
-    # 🔥 GUARDAR HISTORIAL DE CARGA
-    # ============================================================
-    # Conexión a BigQuery
-    try:
-        credentials = service_account.Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"]
-        )
-        client = bigquery.Client(
-            credentials=credentials,
-            project=credentials.project_id
-        )
-        
-        destino = f"{PROYECTO_BQ}.gestiones_jamar"
-        
-        try:
-            tabla_destino = client.get_table(destino)
-        except Exception as e:
-            st.error(f"La tabla no existe: {e}")
-            return 0, total, f"Tabla no existe: {e}"
-        
-        # ✅ WRITE_APPEND - SOLO AGREGAR, NUNCA REEMPLAZAR
         job_config = bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
             schema=tabla_destino.schema,
@@ -362,53 +342,40 @@ def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
             registros_guardados = rows_loaded
             
             # ============================================================
-            # 🔥 GUARDAR HISTORIAL DE CARGA
+            # GUARDAR HISTORIAL DE CARGA
             # ============================================================
-        try:
-            historial_rows = [{
-                "id_carga": id_carga,
-                "id_proyecto": PROYECTO_ID,
-                "archivo_nombre": archivo_nombre,
-                "fecha_carga": datetime.now().isoformat(),
-                "total_registros": total,
-                "registros_guardados": registros_guardados,
-                "errores": errores,
-            }]
-            
-            errores_historial = client.insert_rows_json(
-                f"{PROYECTO_BQ}.historial_cargas_gestiones",
-                historial_rows
-            )
-            
-            if errores_historial:
-                st.warning(f"⚠️ Gestiones cargadas, pero no se pudo guardar historial: {errores_historial}")
-            else:
-                st.info(f"📋 Historial actualizado: {archivo_nombre}")
+            try:
+                historial_rows = [{
+                    "id_carga": id_carga,
+                    "id_proyecto": PROYECTO_ID,
+                    "archivo_nombre": archivo_nombre,
+                    "fecha_carga": datetime.now().isoformat(),
+                    "total_registros": total,
+                    "registros_guardados": registros_guardados,
+                    "errores": errores,
+                }]
                 
-        except Exception as e_historial:
-            st.warning(f"⚠️ Gestiones cargadas, pero error al guardar historial: {e_historial}")
-        
-except Exception as e:
-    st.error(f"Error al insertar en BigQuery: {str(e)}")
-    return 0, total, f"Error en BigQuery: {e}"
-
-elapsed_time = time.time() - start_time
-detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
-
-return registros_guardados, errores, detalle
-
-def eliminar_carga_por_id(id_carga):
-"""Elimina una carga específica por su ID"""
-try:
-    query = f"""
-        DELETE FROM `{PROYECTO_BQ}.gestiones_jamar`
-        WHERE id_proyecto = '{PROYECTO_ID}'
-          AND id_carga = '{id_carga}'
-    """
-    ejecutar_query(query)
-    return True, "Carga eliminada correctamente"
-except Exception as e:
-    return False, f"Error al eliminar: {e}"
+                errores_historial = client.insert_rows_json(
+                    f"{PROYECTO_BQ}.historial_cargas_gestiones",
+                    historial_rows
+                )
+                
+                if errores_historial:
+                    st.warning(f"⚠️ Gestiones cargadas, pero no se pudo guardar historial: {errores_historial}")
+                else:
+                    st.info(f"📋 Historial actualizado: {archivo_nombre}")
+                    
+            except Exception as e_historial:
+                st.warning(f"⚠️ Gestiones cargadas, pero error al guardar historial: {e_historial}")
+            
+    except Exception as e:
+        st.error(f"Error al insertar en BigQuery: {str(e)}")
+        return 0, total, f"Error en BigQuery: {e}"
+    
+    elapsed_time = time.time() - start_time
+    detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
+    
+    return registros_guardados, errores, detalle
 
 def leer_archivo_gestiones(uploaded_file):
     try:
@@ -430,26 +397,6 @@ def leer_archivo_gestiones(uploaded_file):
         st.error(f"Error al leer el archivo: {e}")
         raise
 
-def obtener_historial_cargas():
-    """Obtiene el historial de cargas con nombre de archivo"""
-    try:
-        query = f"""
-            SELECT 
-                id_carga,
-                archivo_nombre,
-                fecha_carga,
-                total_registros,
-                registros_guardados,
-                errores
-            FROM `{PROYECTO_BQ}.historial_cargas_gestiones`
-            WHERE id_proyecto = '{PROYECTO_ID}'
-            ORDER BY fecha_carga DESC
-            LIMIT 20
-        """
-        df = ejecutar_query(query)
-        return df
-    except:
-        return pd.DataFrame()
 # ============================================================
 # VISTA PRINCIPAL
 # ============================================================
@@ -472,7 +419,7 @@ def render():
     st.markdown('<div class="main-header">Carga de Gestiones - Jamar</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el reporte de gestiones diarias. El sistema procesará ambas hojas (CORREOS & WHATSAPP y LLAMADAS) y las anexará al histórico.</div>', unsafe_allow_html=True)
     
-    # ---- Estado del sistema ----
+    # Estado del sistema
     st.markdown('<div class="card">', unsafe_allow_html=True)
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -484,10 +431,17 @@ def render():
         else:
             st.markdown('<span class="status-badge warning">Sin cartera</span>', unsafe_allow_html=True)
     
-    # ✅ TOTAL HISTÓRICO (sin agrupar por fecha)
     total_historico = obtener_total_historico()
     st.metric("Total histórico de gestiones", f"{total_historico:,}")
     
+    ultima = obtener_ultima_fecha_carga()
+    if ultima:
+        fecha_str = ultima['fecha'].strftime('%d/%m/%Y %H:%M') if hasattr(ultima['fecha'], 'strftime') else str(ultima['fecha'])
+        st.caption(f"Última gestión registrada: {fecha_str} · Total en tabla: {ultima['total']:,}")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # ---- Historial de cargas (por archivo) ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">📋 Historial de cargas</div>', unsafe_allow_html=True)
     
@@ -514,7 +468,6 @@ def render():
         st.info("No hay cargas registradas aún.")
     
     st.markdown('</div>', unsafe_allow_html=True)
-
     
     # ---- Área de carga ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -559,7 +512,6 @@ def render():
                         except:
                             st.metric("Fecha del archivo", "No disponible")
                 
-                # ✅ SIMPLE APPEND - SIN ST.RERUN PARA VER ERROR
                 if st.button("Guardar en BigQuery", type="primary", use_container_width=True):
                     guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID, uploaded_file.name)
                     
@@ -578,7 +530,7 @@ def render():
                     else:
                         st.error(f"❌ La carga falló: {detalle}")
                         st.stop()
-                    
+                
             except Exception as e:
                 st.error(f"Error al procesar el archivo: {str(e)}")
                 st.exception(e)

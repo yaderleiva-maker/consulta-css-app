@@ -56,8 +56,17 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     output = io.BytesIO()
     mensajes = []
     df_mapeo = obtener_mapeo_codigos()
+    # 🔥 CONSTRUIR FILTRO DE FECHA
+    filtro_fechas = ""
+    if fecha_reporte is not None:
+        fecha_reporte_str = fecha_reporte.strftime('%Y-%m-%d')
+        filtro_fechas = f"""
+        AND DATE(g.fechahoragestion) = '{fecha_reporte_str}'
+        AND DATE(p.fecha_up) = '{fecha_reporte_str}'
+        """
+    
     # ============================================================
-    # PASO 1: CONSTRUIR DATOS COMPLETOS (TABLA MAESTRA)
+    # PASO 1: CONSTRUIR DATOS COMPLETOS (TABLA MAESTRA) CON FILTRO
     # ============================================================
     
     query_datos_completos = f"""
@@ -70,6 +79,8 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             SUM(saldo) AS saldo_pagos
         FROM `{PROYECTO_BQ}.pagos_jamar`
         WHERE id_proyecto = '{proyecto_id}'
+          -- 🔥 FILTRO DE FECHA PARA PAGOS
+          {filtro_fechas.replace('DATE(g.fechahoragestion)', 'DATE(fecha_up)').replace("AND DATE(p.fecha_up)", "AND DATE(fecha_up)") if fecha_reporte else ''}
         GROUP BY llave
     ),
     
@@ -83,7 +94,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             COUNT(CASE WHEN resultado_gestion = 'NO CONTACTOS' THEN 1 END) AS no_contactos,
             COUNT(CASE WHEN resultado_gestion = 'CONTACTO CON TERCERO' THEN 1 END) AS contactos_tercero,
             
-            -- 🔥 FORZAR TEXTO DESDE EL ORIGEN (con SAFE_CAST dentro del ARRAY_AGG)
+            -- Últimos valores
             ARRAY_AGG(resultado_gestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_resultado,
             ARRAY_AGG(mejor_gestion_jamar ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_mejor_gestion,
             ARRAY_AGG(SAFE_CAST(codigo_gestion AS STRING) ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_codigo_gestion,
@@ -107,6 +118,8 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) != '90' THEN 1 END) AS total_llamadas
         FROM `{PROYECTO_BQ}.gestiones_jamar` g
         WHERE g.id_proyecto = '{proyecto_id}'
+          -- 🔥 FILTRO DE FECHA PARA GESTIONES
+          {filtro_fechas.replace('DATE(p.fecha_up)', 'DATE(g.fechahoragestion)').replace("AND DATE(g.fechahoragestion)", "AND DATE(g.fechahoragestion)") if fecha_reporte else ''}
         GROUP BY llave
     ),
     
@@ -120,6 +133,8 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
           AND SAFE_CAST(codigo_gestion AS STRING) IN ('1', '88', '89')
           AND valorpromesa IS NOT NULL
           AND valorpromesa > 0
+          -- 🔥 FILTRO DE FECHA PARA PROMESAS
+          {filtro_fechas.replace('DATE(p.fecha_up)', 'DATE(fechapromesa)').replace('DATE(g.fechahoragestion)', 'DATE(fechapromesa)').replace("AND DATE(g.fechahoragestion)", "AND DATE(fechapromesa)") if fecha_reporte else ''}
         QUALIFY ROW_NUMBER() OVER (PARTITION BY llave ORDER BY fechapromesa DESC) = 1
     ),
     
@@ -165,14 +180,9 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             up.valorpromesa AS ultimo_valor_promesa,
             up.fechapromesa AS fecha_ultima_promesa,
             
-            -- ============================================================
-            -- CATEGORÍA FINAL (CON SAFE_CAST PARA ASEGURAR TEXTO)
-            -- ============================================================
+            -- CATEGORÍA FINAL
             CASE 
-                -- Si NO tiene gestión
                 WHEN g.llave IS NULL THEN 'SIN GESTION AL CORTE'
-                
-                -- Si tiene codigo_gestion = '90' (CORREO/WHATSAPP tiene prioridad)
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
                     CASE 
                         WHEN g.ultimo_numeromarcado IS NOT NULL 
@@ -181,8 +191,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                         THEN 'WHATSAPP'
                         ELSE 'CONTACTO EFECTIVO'
                     END
-                
-                -- Si tiene resultado_gestion
                 WHEN g.ultimo_resultado IS NOT NULL THEN
                     CASE 
                         WHEN g.ultimo_resultado = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
@@ -192,8 +200,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                         WHEN g.ultimo_resultado IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'NO CONTACTOS'
                         ELSE 'SIN CONTACTO'
                     END
-                
-                -- Si NO tiene resultado_gestion, usar codigo_gestion
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('0') THEN 'CONTACTO CON TERCERO'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('14', '81', '84') THEN 'CONTACTO EFECTIVO'
@@ -203,9 +209,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 ELSE 'SIN CONTACTO'
             END AS categoria_final,
             
-            -- ============================================================
             -- RAZÓN DE LA CATEGORÍA
-            -- ============================================================
             CASE 
                 WHEN g.llave IS NULL THEN 'Sin gestión en el período'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
@@ -223,9 +227,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 ELSE 'Sin clasificación'
             END AS razon_categoria,
             
-            -- ============================================================
             -- ESTADO DE LA PROMESA
-            -- ============================================================
             CASE 
                 WHEN up.fechapromesa IS NULL THEN 'SIN PROMESA'
                 WHEN up.fechapromesa >= CURRENT_DATE('America/Bogota') THEN 'ACTIVA'
@@ -284,6 +286,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         return None, "⚠️ No hay datos disponibles."
     
     mensajes.append(f"✅ Datos completos: {len(df_datos):,} cuentas")
+
     
     # ============================================================
     # PASO 2: GENERAR RESÚMENES A PARTIR DE df_datos

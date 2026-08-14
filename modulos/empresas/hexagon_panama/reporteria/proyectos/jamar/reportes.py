@@ -400,14 +400,17 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
 # ============================================================
 
 def generar_recaudo_compromisos_df(proyecto_id):
-    """Devuelve DataFrame de Recaudo y Compromisos (CORREGIDO - VERSIÓN ÚNICA)"""
+    """
+    Devuelve DataFrame de Recaudo y Compromisos en formato pivote:
+    Filas: RECAUDO, COMPROMISOS ACTIVOS, COMPROMISOS INCUMPLIDOS
+    Columnas: A, B, C, D, TOTAL
+    """
     
     query = f"""
     WITH recaudo_por_rank AS (
         SELECT
             c.rank,
-            SUM(COALESCE(p.recaudo_periodo, 0)) AS recaudo,
-            COUNTIF(COALESCE(p.recaudo_periodo, 0) > 0) AS cuentas_con_recaudo
+            SUM(COALESCE(p.recaudo_periodo, 0)) AS recaudo
         FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
         LEFT JOIN `{PROYECTO_BQ}.pagos_jamar` p
             ON c.llave = p.llave
@@ -416,6 +419,7 @@ def generar_recaudo_compromisos_df(proyecto_id):
         GROUP BY c.rank
     ),
 
+    -- Obtener la última promesa (códigos 1, 88, 89) por cuenta
     ultima_promesa AS (
         SELECT
             llave,
@@ -423,7 +427,8 @@ def generar_recaudo_compromisos_df(proyecto_id):
             fechapromesa
         FROM `{PROYECTO_BQ}.gestiones_jamar`
         WHERE id_proyecto = '{proyecto_id}'
-          AND resultado_gestion = 'COMPROMISO DE PAGO'
+          AND codigo_gestion IN ('1', '88', '89')
+          AND valorpromesa IS NOT NULL
           AND valorpromesa > 0
         QUALIFY ROW_NUMBER() OVER (
             PARTITION BY llave
@@ -431,6 +436,7 @@ def generar_recaudo_compromisos_df(proyecto_id):
         ) = 1
     ),
 
+    -- Clasificar promesas por rank
     compromisos_por_rank AS (
         SELECT
             c.rank,
@@ -452,26 +458,60 @@ def generar_recaudo_compromisos_df(proyecto_id):
         LEFT JOIN ultima_promesa up ON c.llave = up.llave
         WHERE c.id_proyecto = '{proyecto_id}'
         GROUP BY c.rank
+    ),
+
+    -- Datos por rank
+    datos_por_rank AS (
+        SELECT
+            c.rank,
+            ROUND(COALESCE(r.recaudo, 0), 2) AS recaudo,
+            ROUND(COALESCE(cp.compromisos_activos, 0), 2) AS compromisos_activos,
+            ROUND(COALESCE(cp.compromisos_incumplidos, 0), 2) AS compromisos_incumplidos
+        FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
+        LEFT JOIN recaudo_por_rank r ON c.rank = r.rank
+        LEFT JOIN compromisos_por_rank cp ON c.rank = cp.rank
+        WHERE c.id_proyecto = '{proyecto_id}'
+        GROUP BY c.rank, r.recaudo, cp.compromisos_activos, cp.compromisos_incumplidos
     )
 
-    SELECT
-        c.rank,
-        ROUND(COALESCE(r.recaudo, 0), 2) AS recaudo,
-        COALESCE(r.cuentas_con_recaudo, 0) AS cuentas_con_recaudo,
-        ROUND(COALESCE(cp.compromisos_activos, 0), 2) AS compromisos_activos,
-        ROUND(COALESCE(cp.compromisos_incumplidos, 0), 2) AS compromisos_incumplidos,
-        COUNT(DISTINCT c.llave) AS total_cuentas
-    FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
-    LEFT JOIN recaudo_por_rank r ON c.rank = r.rank
-    LEFT JOIN compromisos_por_rank cp ON c.rank = cp.rank
-    WHERE c.id_proyecto = '{proyecto_id}'
-    GROUP BY
-        c.rank,
-        r.recaudo,
-        r.cuentas_con_recaudo,
-        cp.compromisos_activos,
-        cp.compromisos_incumplidos
-    ORDER BY c.rank
+    -- Pivotear: filas = métricas, columnas = ranks
+    SELECT 
+        'RECAUDO' AS resultado_gestion,
+        ROUND(SUM(IF(rank = 'A', recaudo, 0)), 2) AS A,
+        ROUND(SUM(IF(rank = 'B', recaudo, 0)), 2) AS B,
+        ROUND(SUM(IF(rank = 'C', recaudo, 0)), 2) AS C,
+        ROUND(SUM(IF(rank = 'D', recaudo, 0)), 2) AS D,
+        ROUND(SUM(recaudo), 2) AS TOTAL
+    FROM datos_por_rank
+
+    UNION ALL
+
+    SELECT 
+        'COMPROMISOS ACTIVOS' AS resultado_gestion,
+        ROUND(SUM(IF(rank = 'A', compromisos_activos, 0)), 2) AS A,
+        ROUND(SUM(IF(rank = 'B', compromisos_activos, 0)), 2) AS B,
+        ROUND(SUM(IF(rank = 'C', compromisos_activos, 0)), 2) AS C,
+        ROUND(SUM(IF(rank = 'D', compromisos_activos, 0)), 2) AS D,
+        ROUND(SUM(compromisos_activos), 2) AS TOTAL
+    FROM datos_por_rank
+
+    UNION ALL
+
+    SELECT 
+        'COMPROMISOS INCUMPLIDOS' AS resultado_gestion,
+        ROUND(SUM(IF(rank = 'A', compromisos_incumplidos, 0)), 2) AS A,
+        ROUND(SUM(IF(rank = 'B', compromisos_incumplidos, 0)), 2) AS B,
+        ROUND(SUM(IF(rank = 'C', compromisos_incumplidos, 0)), 2) AS C,
+        ROUND(SUM(IF(rank = 'D', compromisos_incumplidos, 0)), 2) AS D,
+        ROUND(SUM(compromisos_incumplidos), 2) AS TOTAL
+    FROM datos_por_rank
+
+    ORDER BY 
+        CASE resultado_gestion
+            WHEN 'RECAUDO' THEN 1
+            WHEN 'COMPROMISOS ACTIVOS' THEN 2
+            WHEN 'COMPROMISOS INCUMPLIDOS' THEN 3
+        END
     """
 
     df = preparar_para_excel(ejecutar_query(query))
@@ -479,7 +519,7 @@ def generar_recaudo_compromisos_df(proyecto_id):
     if df.empty:
         return None, "⚠️ No hay datos disponibles."
 
-    return df, f"✅ {len(df)} ranks"
+    return df, f"✅ Recaudo y compromisos generado"
 
 # ============================================================
 # REPORTE 6b: Recaudo y Compromisos (para reporte individual)

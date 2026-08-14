@@ -165,7 +165,7 @@ def guardar_cartera_jamar(df, proyecto_id):
                 'created_at': ahora,
                 'updated_at': ahora
             }
-            registros.append(registro)  # ← ESTA LÍNEA ES CRÍTICA
+            registros.append(registro)
             
         except Exception as e:
             errores += 1
@@ -177,11 +177,7 @@ def guardar_cartera_jamar(df, proyecto_id):
     
     df_insert = pd.DataFrame(registros)
     
-    # ============================================================
-    # CONVERTIR FECHAS A TIPOS REALES DE BIGQUERY
-    # ============================================================
-    
-    # TIMESTAMP: convertir a fechas UTC reales, no strings
+    # TIMESTAMP: convertir a fechas UTC reales
     for columna in ["fecha_carga", "created_at", "updated_at"]:
         if columna in df_insert.columns:
             df_insert[columna] = pd.to_datetime(
@@ -197,10 +193,6 @@ def guardar_cartera_jamar(df, proyecto_id):
             errors="coerce",
         ).dt.date
     
-    # ============================================================
-    # CONEXIÓN A BIGQUERY
-    # ============================================================
-    
     try:
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["gcp_service_account"]
@@ -210,14 +202,12 @@ def guardar_cartera_jamar(df, proyecto_id):
             project=credentials.project_id
         )
         
-        # Verificar tabla
         try:
             client.get_table(TABLA_DESTINO)
         except Exception as e:
             st.error(f"La tabla no existe: {e}")
             return 0, total, f"Tabla no existe: {e}"
         
-        # ✅ WRITE_TRUNCATE - Reemplaza la tabla completa (más seguro que DELETE)
         job_config = bigquery.LoadJobConfig(
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             autodetect=True
@@ -255,117 +245,4 @@ def render():
         .sub-header { font-size: 14px; color: #6b6b6b; margin-bottom: 16px; }
         .card { background-color: #ffffff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #f0f0f0; margin-bottom: 16px; }
         .card-title { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 8px; }
-        .selected-file { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
-        .selected-file .file-name { font-weight: 500; color: #166534; }
-        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-        .status-badge.success { background-color: #dcfce7; color: #166534; }
-        .status-badge.warning { background-color: #fef3c7; color: #92400e; }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.markdown('<div class="main-header">Carga de Cartera Predemanda - Jamar</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Sube el archivo de cartera pre-demanda de Jamar. El sistema reemplazará completamente los datos anteriores.</div>', unsafe_allow_html=True)
-    
-    ultima_carga = obtener_ultima_carga_cartera()
-    
-    if ultima_carga:
-        fecha = ultima_carga['fecha']
-        total = ultima_carga['total']
-        if pd.isna(fecha):
-            st.success(f"📊 **Cartera ya cargada** · {total:,} registros")
-        else:
-            fecha_str = fecha.strftime('%d/%m/%Y %H:%M')
-            st.success(f"📊 **Cartera ya cargada** · {total:,} registros · Última carga: {fecha_str}")
-    else:
-        st.warning("⚠️ **No hay cartera cargada.** Sube un archivo para comenzar.")
-    
-    st.markdown("""
-    <div class="card">
-        <div class="card-title">Instrucciones</div>
-        <ul style="margin: 0; padding-left: 20px; color: #4b5563; font-size: 14px; line-height: 1.8;">
-            <li>El archivo debe tener las columnas del formato de Jamar.</li>
-            <li>Columnas obligatorias: <strong>Estado inicial, Tramo inicial, Codigo de la Agencia, Número de Cuenta, Saldo Total adeudado, Codigo del Cliente, Nombre del Cliente, Rank</strong></li>
-            <li>Se generará automáticamente una <strong>clave compuesta</strong> (Agencia + Cuenta) para identificar cada registro.</li>
-            <li><strong>IMPORTANTE:</strong> Esta carga reemplazará TODOS los datos anteriores de Jamar.</li>
-        </ul>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">Subir archivo</div>', unsafe_allow_html=True)
-    
-    uploaded_file = st.file_uploader(
-        "Selecciona un archivo Excel",
-        type=["xlsx", "xls"],
-        key="jamar_uploader",
-        label_visibility="collapsed"
-    )
-    
-    if uploaded_file is not None:
-        size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
-        st.markdown(f"""
-        <div class="selected-file">
-            <span>📄</span>
-            <span class="file-name">{uploaded_file.name}</span>
-            <span class="file-size">({size_mb:.1f} MB)</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        with st.spinner("Procesando archivo..."):
-            try:
-                df = pd.read_excel(uploaded_file)
-                
-                # Normalizar nombres de columnas (especialmente caracteres dañados)
-                df.columns = (
-                    df.columns.astype(str)
-                    .str.strip()
-                    .str.replace("N�mero de Cuenta", "Número de Cuenta", regex=False)
-                    .str.replace("Número de Cuenta", "Número de Cuenta", regex=False)
-                )
-                
-                faltantes = [col for col in COLUMNAS_REQUERIDAS if col not in df.columns]
-                if faltantes:
-                    st.error(f"Faltan columnas obligatorias: {', '.join(faltantes)}")
-                    st.stop()
-                
-                st.markdown("---")
-                st.markdown("#### Vista previa del archivo")
-                st.dataframe(df.head(10), use_container_width=True)
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total registros", f"{len(df):,}")
-                with col2:
-                    st.metric("Columnas", f"{len(df.columns)}")
-                with col3:
-                    llaves = df.apply(lambda row: generar_llave(row.get('Codigo de la Agencia'), row.get('Número de Cuenta')), axis=1)
-                    st.metric("Llaves únicas", f"{llaves.nunique():,}")
-                
-                if st.button("Guardar en BigQuery", type="primary", use_container_width=True):
-                    guardados, errores, detalle = guardar_cartera_jamar(df, PROYECTO_ID)
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Total", f"{len(df):,}")
-                    with col2:
-                        st.metric("Guardados", f"{guardados:,}")
-                    with col3:
-                        st.metric("Errores", f"{errores:,}")
-                    
-                    if guardados > 0:
-                        st.success(f"🎉 {detalle}")
-                        st.balloons()
-                        st.cache_data.clear()
-                        st.rerun()
-                    else:
-                        st.error(f"❌ {detalle}")
-                        st.stop()
-                
-            except Exception as e:
-                st.error(f"Error al procesar el archivo: {str(e)}")
-                st.exception(e)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-
-if __name__ == "__main__":
-    render()
+        .selected-file { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8

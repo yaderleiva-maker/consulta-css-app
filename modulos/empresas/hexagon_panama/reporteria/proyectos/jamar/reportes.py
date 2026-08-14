@@ -77,8 +77,8 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             -- Canal de la última gestión
             ARRAY_AGG(
                 CASE 
-                    WHEN codigo_gestion = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 'CORREO'
-                    WHEN codigo_gestion = '90' AND numeromarcado IS NOT NULL AND numeromarcado NOT IN ('0', '00000000', '') AND LENGTH(numeromarcado) >= 7 THEN 'WHATSAPP'
+                    WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 'CORREO'
+                    WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND numeromarcado IS NOT NULL AND numeromarcado NOT IN ('0', '00000000', '') AND LENGTH(numeromarcado) >= 7 THEN 'WHATSAPP'
                     ELSE 'LLAMADA'
                 END
                 ORDER BY fechahoragestion DESC 
@@ -86,9 +86,9 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             )[OFFSET(0)] AS ultimo_canal,
             
             -- Totales por canal
-            COUNT(CASE WHEN codigo_gestion = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 1 END) AS total_correos,
-            COUNT(CASE WHEN codigo_gestion = '90' AND numeromarcado IS NOT NULL AND numeromarcado NOT IN ('0', '00000000', '') AND LENGTH(numeromarcado) >= 7 THEN 1 END) AS total_whatsapps,
-            COUNT(CASE WHEN NOT (codigo_gestion = '90') THEN 1 END) AS total_llamadas
+            COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 1 END) AS total_correos,
+            COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND numeromarcado IS NOT NULL AND numeromarcado NOT IN ('0', '00000000', '') AND LENGTH(numeromarcado) >= 7 THEN 1 END) AS total_whatsapps,
+            COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) != '90' THEN 1 END) AS total_llamadas
         FROM `{PROYECTO_BQ}.gestiones_jamar` g
         WHERE g.id_proyecto = '{proyecto_id}'
         GROUP BY llave
@@ -101,7 +101,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             fechapromesa
         FROM `{PROYECTO_BQ}.gestiones_jamar`
         WHERE id_proyecto = '{proyecto_id}'
-          AND codigo_gestion IN ('1', '88', '89')
+          AND SAFE_CAST(codigo_gestion AS STRING) IN ('1', '88', '89')
           AND valorpromesa IS NOT NULL
           AND valorpromesa > 0
         QUALIFY ROW_NUMBER() OVER (PARTITION BY llave ORDER BY fechapromesa DESC) = 1
@@ -150,14 +150,14 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             up.fechapromesa AS fecha_ultima_promesa,
             
             -- ============================================================
-            -- CATEGORÍA FINAL (UNIFICADA)
+            -- CATEGORÍA FINAL (CON SAFE_CAST PARA ASEGURAR TEXTO)
             -- ============================================================
             CASE 
                 -- Si NO tiene gestión
                 WHEN g.llave IS NULL THEN 'SIN GESTION AL CORTE'
                 
                 -- Si tiene codigo_gestion = '90' (CORREO/WHATSAPP tiene prioridad)
-                WHEN g.ultimo_codigo_gestion = '90' THEN 
+                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
                     CASE 
                         WHEN g.ultimo_numeromarcado IS NOT NULL 
                              AND g.ultimo_numeromarcado NOT IN ('0', '00000000', '')
@@ -177,22 +177,22 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                         ELSE 'SIN CONTACTO'
                     END
                 
-                -- Si NO tiene resultado_gestion, usar codigo_gestion
-                WHEN g.ultimo_codigo_gestion IN ('0') THEN 'CONTACTO CON TERCERO'
-                WHEN g.ultimo_codigo_gestion IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
-                WHEN g.ultimo_codigo_gestion IN ('14', '81', '84') THEN 'CONTACTO EFECTIVO'
-                WHEN g.ultimo_codigo_gestion = '86' THEN 'SIN CONTACTO'
-                WHEN g.ultimo_codigo_gestion IN ('10', '11', '15') THEN 'NO CONTACTOS'
-                WHEN g.ultimo_codigo_gestion = '83' THEN 'NO CONTACTOS'
+                -- Si NO tiene resultado_gestion, usar codigo_gestion (SIEMPRE COMO TEXTO)
+                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('0') THEN 'CONTACTO CON TERCERO'
+                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
+                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('14', '81', '84') THEN 'CONTACTO EFECTIVO'
+                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '86' THEN 'SIN CONTACTO'
+                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('10', '11', '15') THEN 'NO CONTACTOS'
+                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '83' THEN 'NO CONTACTOS'
                 ELSE 'SIN CONTACTO'
             END AS categoria_final,
             
             -- ============================================================
-            -- RAZÓN DE LA CATEGORÍA (para auditoría)
+            -- RAZÓN DE LA CATEGORÍA (CON SAFE_CAST)
             -- ============================================================
             CASE 
                 WHEN g.llave IS NULL THEN 'Sin gestión en el período'
-                WHEN g.ultimo_codigo_gestion = '90' THEN 
+                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
                     CASE 
                         WHEN g.ultimo_numeromarcado IS NOT NULL 
                              AND g.ultimo_numeromarcado NOT IN ('0', '00000000', '')
@@ -203,7 +203,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 WHEN g.ultimo_resultado IS NOT NULL THEN 
                     CONCAT('resultado_gestion=', g.ultimo_resultado)
                 WHEN g.ultimo_codigo_gestion IS NOT NULL THEN 
-                    CONCAT('codigo_gestion=', g.ultimo_codigo_gestion, ' (sin resultado_gestion)')
+                    CONCAT('codigo_gestion=', SAFE_CAST(g.ultimo_codigo_gestion AS STRING), ' (sin resultado_gestion)')
                 ELSE 'Sin clasificación'
             END AS razon_categoria,
             

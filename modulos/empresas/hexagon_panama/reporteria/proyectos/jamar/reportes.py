@@ -400,11 +400,8 @@ def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
 # REPORTE 6: Recaudo y Compromisos (SIN FECHA - ACUMULADO)
 # ============================================================
 
-def generar_recaudo_compromisos(proyecto_id, fecha_reporte=None):
-    """
-    Cuadro de recaudo y compromisos por RANK.
-    SIN FILTRO DE FECHA - muestra datos acumulados hasta hoy.
-    """
+def generar_recaudo_compromisos_df(proyecto_id):
+    """Devuelve DataFrame de Recaudo y Compromisos (CORREGIDO)"""
     
     query = f"""
     WITH recaudo_por_rank AS (
@@ -455,7 +452,7 @@ def generar_recaudo_compromisos(proyecto_id, fecha_reporte=None):
         GROUP BY c.rank
     )
     SELECT 
-        COALESCE(r.rank, c.rank) AS rank,
+        c.rank,
         ROUND(COALESCE(r.total_recaudo, 0), 2) AS recaudo,
         ROUND(COALESCE(cp.compromisos_activos, 0), 2) AS compromisos_activos,
         ROUND(COALESCE(cp.compromisos_incumplidos, 0), 2) AS compromisos_incumplidos,
@@ -474,25 +471,7 @@ def generar_recaudo_compromisos(proyecto_id, fecha_reporte=None):
     if df.empty:
         return None, "⚠️ No hay datos disponibles."
     
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, sheet_name='Recaudo y Compromisos', index=False)
-        
-        totales = pd.DataFrame({
-            'Métrica': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],
-            'Total': [
-                df['recaudo'].sum(),
-                df['compromisos_activos'].sum(),
-                df['compromisos_incumplidos'].sum()
-            ]
-        })
-        totales.to_excel(writer, sheet_name='Totales Generales', index=False)
-        
-        for sheet_name in writer.sheets:
-            worksheet = writer.sheets[sheet_name]
-            worksheet.set_column(0, 25, 18)
-    
-    return output.getvalue(), f"✅ Recaudo y compromisos generado (datos acumulados)"
+    return df, f"✅ {len(df)} ranks"
 
 # ============================================================
 # REPORTE 7: Resumen de Cartera (CONSOLIDADO)

@@ -134,20 +134,21 @@ def obtener_ultima_fecha_carga():
             WHERE id_proyecto = '{PROYECTO_ID}'
         """
         df = ejecutar_query(query)
-        if not df.empty and df['ultima_fecha'].iloc[0] is not None:
-            return {
-                'fecha': df['ultima_fecha'].iloc[0],
-                'total': df['total'].iloc[0]
-            }
-        return None
-    except:
+        if df.empty:
+            return None
+        if df['ultima_fecha'].iloc[0] is None:
+            return None
+        if pd.isna(df['ultima_fecha'].iloc[0]):
+            return None
+        return {
+            'fecha': df['ultima_fecha'].iloc[0],
+            'total': df['total'].iloc[0]
+        }
+    except Exception as e:
+        st.warning(f"Error al obtener última fecha: {e}")
         return None
 
 def obtener_historial_cargas():
-    """
-    Obtiene el resumen de gestiones cargadas por fecha del archivo (fechahoragestion)
-    No confundir con fecha_carga (cuándo se subió el archivo)
-    """
     try:
         query = f"""
             SELECT 
@@ -165,18 +166,6 @@ def obtener_historial_cargas():
     except Exception as e:
         st.warning(f"Error al consultar historial: {e}")
         return pd.DataFrame()
-
-def obtener_resumen_por_fecha_carga():
-    query = f"""
-        SELECT
-            DATE(fecha_carga) AS fecha_carga,
-            COUNT(*) AS total_registros
-        FROM `{PROYECTO_BQ}.gestiones_jamar`
-        WHERE id_proyecto = '{PROYECTO_ID}'
-        GROUP BY 1
-        ORDER BY 1 DESC
-    """
-    return ejecutar_query(query)
 
 def guardar_gestiones_jamar(df, proyecto_id, archivo_nombre):
     import time
@@ -446,9 +435,14 @@ def render():
     st.metric("Total histórico de gestiones", f"{total_historico:,}")
     
     ultima = obtener_ultima_fecha_carga()
-    if ultima:
-        fecha_str = ultima['fecha'].strftime('%d/%m/%Y %H:%M') if hasattr(ultima['fecha'], 'strftime') else str(ultima['fecha'])
+    if ultima and ultima['fecha'] is not None:
+        if hasattr(ultima['fecha'], 'strftime'):
+            fecha_str = ultima['fecha'].strftime('%d/%m/%Y %H:%M')
+        else:
+            fecha_str = str(ultima['fecha'])
         st.caption(f"Última gestión registrada: {fecha_str}")
+    else:
+        st.caption("📭 No hay gestiones registradas aún")
     
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -537,7 +531,6 @@ def render():
                         st.success(f"✅ {detalle}")
                         st.balloons()
                         st.cache_data.clear()
-                        st.rerun()
                     else:
                         st.error(f"❌ La carga falló: {detalle}")
                         st.stop()
@@ -547,3 +540,6 @@ def render():
                 st.exception(e)
     
     st.markdown('</div>', unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    render()

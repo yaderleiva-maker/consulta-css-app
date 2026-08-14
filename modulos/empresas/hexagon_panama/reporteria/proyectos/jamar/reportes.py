@@ -891,7 +891,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     mensaje_final = " | ".join(mensajes)
     fecha_str = fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas"
     return output.getvalue(), f"✅ Resumen de cartera generado ({fecha_str}) - {mensaje_final}"
-
 # ============================================================
 # REGISTRO DE REPORTES
 # ============================================================

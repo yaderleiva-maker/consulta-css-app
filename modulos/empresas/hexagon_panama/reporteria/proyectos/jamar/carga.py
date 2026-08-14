@@ -3,9 +3,10 @@ import pandas as pd
 import uuid
 import re
 from datetime import datetime
+from google.cloud import bigquery
+from google.oauth2 import service_account
 
 from services.bigquery import ejecutar_query
-from services.archivos import leer_excel, validar_columnas
 
 # ============================================================
 # CONFIGURACIÓN
@@ -13,9 +14,9 @@ from services.archivos import leer_excel, validar_columnas
 
 PROYECTO_BQ = "proyecto-css-panama.cobranza"
 PROYECTO_ID = "JAMAR"
-TABLA_DESTINO = f"`{PROYECTO_BQ}.cartera_predemanda_jamar`"
+TABLA_DESTINO = f"{PROYECTO_BQ}.cartera_predemanda_jamar"
 
-# Columnas requeridas para la carga de Jamar
+# Columnas requeridas
 COLUMNAS_REQUERIDAS = [
     'Estado inicial', 'Tramo inicial', 'Codigo de la Agencia', 
     'Número de Cuenta', 'Tipo credito', 'Saldo Total adeudado',
@@ -27,26 +28,21 @@ COLUMNAS_REQUERIDAS = [
 # ============================================================
 
 def obtener_ultima_carga_cartera():
-    """Obtiene la fecha de la última carga de cartera"""
     try:
         query = f"""
             SELECT 
                 MAX(fecha_carga) AS ultima_carga,
                 COUNT(*) AS total_registros
-            FROM {TABLA_DESTINO}
+            FROM `{TABLA_DESTINO}`
             WHERE id_proyecto = '{PROYECTO_ID}'
         """
         df = ejecutar_query(query)
-        
         if df.empty:
             return None
-            
         if df['ultima_carga'].iloc[0] is None:
             return None
-            
         if pd.isna(df['ultima_carga'].iloc[0]):
             return None
-            
         return {
             'fecha': df['ultima_carga'].iloc[0],
             'total': df['total_registros'].iloc[0]
@@ -62,7 +58,12 @@ def obtener_ultima_carga_cartera():
 def normalizar_texto(valor):
     if pd.isna(valor):
         return None
-    return str(valor).strip()
+    texto = str(valor).strip()
+    if texto == '' or texto == 'nan' or texto == 'None' or texto == 'NULL':
+        return None
+    texto = texto.replace("'", "''")
+    texto = texto.replace("\\", "\\\\")
+    return texto
 
 def normalizar_numero(valor):
     if pd.isna(valor):
@@ -89,22 +90,14 @@ def guardar_cartera_jamar(df, proyecto_id):
     
     total = len(df)
     errores = 0
-    detalles = []
     registros_guardados = 0
-
-    # Eliminar datos anteriores
-    with st.spinner("Eliminando datos anteriores de Jamar..."):
-        delete_query = f"""
-            DELETE FROM {TABLA_DESTINO}
-            WHERE id_proyecto = '{PROYECTO_ID}'
-        """
-        try:
-            ejecutar_query(delete_query)
-        except Exception as e:
-            return 0, total, f"Error en eliminación: {e}"
-
-    # Preparar nuevos registros
-    valores = []
+    detalles = []
+    
+    # 🔥 Generar ID de carga único
+    id_carga = str(uuid.uuid4())
+    
+    # Preparar datos
+    registros = []
     
     for idx, row in df.iterrows():
         try:
@@ -150,55 +143,96 @@ def guardar_cartera_jamar(df, proyecto_id):
             
             id_registro = str(uuid.uuid4())
             
-            valores.append(f"""(
-                '{id_registro}',
-                '{PROYECTO_ID}',
-                '{llave}',
-                {f"'{estado_inicial}'" if estado_inicial else 'NULL'},
-                {f"'{tramo_inicial}'" if tramo_inicial else 'NULL'},
-                '{codigo_agencia}',
-                '{numero_cuenta}',
-                {f"'{tipo_credito}'" if tipo_credito else 'NULL'},
-                {saldo_vencido if saldo_vencido is not None else 'NULL'},
-                {saldo_total if saldo_total is not None else 'NULL'},
-                {f"'{fecha_ultimo_pago}'" if fecha_ultimo_pago else 'NULL'},
-                {f"'{codigo_cliente}'" if codigo_cliente else 'NULL'},
-                {f"'{nombre_cliente}'" if nombre_cliente else 'NULL'},
-                {f"'{entidad}'" if entidad else 'NULL'},
-                {f"'{rank}'" if rank else 'NULL'},
-                {vr_pagar_dcto_1 if vr_pagar_dcto_1 is not None else 'NULL'},
-                {vr_pagar_dcto_2 if vr_pagar_dcto_2 is not None else 'NULL'},
-                {f"'{plazo_dcto_1}'" if plazo_dcto_1 else 'NULL'},
-                {f"'{plazo_dcto_2}'" if plazo_dcto_2 else 'NULL'},
-                {vr_pagar_plan_al_dia if vr_pagar_plan_al_dia is not None else 'NULL'},
-                {cuota_inicial if cuota_inicial is not None else 'NULL'},
-                {saldo_diferir if saldo_diferir is not None else 'NULL'},
-                CURRENT_TIMESTAMP(),
-                CURRENT_TIMESTAMP(),
-                CURRENT_TIMESTAMP()
-            )""")
+            registro = {
+                'id_registro': id_registro,
+                'id_carga': id_carga,
+                'id_proyecto': PROYECTO_ID,
+                'llave': llave,
+                'estado_inicial': estado_inicial,
+                'tramo_inicial': tramo_inicial,
+                'codigo_agencia': codigo_agencia,
+                'numero_cuenta': numero_cuenta,
+                'tipo_credito': tipo_credito,
+                'saldo_total_vencido': saldo_vencido,
+                'saldo_total_adeudado': saldo_total,
+                'fecha_ultimo_pago': fecha_ultimo_pago,
+                'codigo_cliente': codigo_cliente,
+                'nombre_cliente': nombre_cliente,
+                'entidad': entidad,
+                'rank': rank,
+                'vr_pagar_dcto_1': vr_pagar_dcto_1,
+                'vr_pagar_dcto_2': vr_pagar_dcto_2,
+                'plazo_dcto_1': plazo_dcto_1,
+                'plazo_dcto_2': plazo_dcto_2,
+                'vr_pagar_plan_al_dia': vr_pagar_plan_al_dia,
+                'cuota_inicial_arreglo': cuota_inicial,
+                'saldo_diferir_cuotas': saldo_diferir,
+                'fecha_carga': datetime.now().isoformat(),
+                'created_at': datetime.now().isoformat(),
+                'updated_at': datetime.now().isoformat()
+            }
+            registros.append(registro)
             
         except Exception as e:
             errores += 1
             detalles.append(f"Fila {idx+2}: {str(e)}")
     
-    if valores:
-        with st.spinner(f"Insertando {len(valores)} registros en BigQuery..."):
-            insert_query = f"""
-                INSERT INTO {TABLA_DESTINO}
-                (id_registro, id_proyecto, llave, estado_inicial, tramo_inicial,
-                 codigo_agencia, numero_cuenta, tipo_credito, saldo_total_vencido,
-                 saldo_total_adeudado, fecha_ultimo_pago, codigo_cliente, nombre_cliente,
-                 entidad, rank, vr_pagar_dcto_1, vr_pagar_dcto_2, plazo_dcto_1,
-                 plazo_dcto_2, vr_pagar_plan_al_dia, cuota_inicial_arreglo,
-                 saldo_diferir_cuotas, fecha_carga, created_at, updated_at)
-                VALUES {', '.join(valores)}
-            """
-            try:
-                ejecutar_query(insert_query)
-                registros_guardados = len(valores)
-            except Exception as e:
-                return registros_guardados, errores, f"Error en inserción: {e}"
+    if not registros:
+        st.warning("No hay datos válidos para insertar")
+        return 0, total, "No hay datos válidos"
+    
+    df_insert = pd.DataFrame(registros)
+    
+    # Conexión a BigQuery
+    try:
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"]
+        )
+        client = bigquery.Client(
+            credentials=credentials,
+            project=credentials.project_id
+        )
+        
+        # Verificar tabla
+        try:
+            client.get_table(TABLA_DESTINO)
+        except Exception as e:
+            st.error(f"La tabla no existe: {e}")
+            return 0, total, f"Tabla no existe: {e}"
+        
+        # 🔥 PRIMERO ELIMINAR DATOS ANTERIORES DEL PROYECTO
+        delete_query = f"""
+            DELETE FROM `{TABLA_DESTINO}`
+            WHERE id_proyecto = '{PROYECTO_ID}'
+        """
+        try:
+            client.query(delete_query).result()
+            st.info("🗑️ Datos anteriores eliminados")
+        except Exception as e:
+            st.error(f"Error al eliminar datos: {e}")
+            return 0, total, f"Error en eliminación: {e}"
+        
+        # 🔥 INSERTAR NUEVOS DATOS
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            autodetect=True
+        )
+        
+        with st.spinner(f"Subiendo {len(df_insert)} registros a BigQuery..."):
+            job = client.load_table_from_dataframe(
+                df_insert,
+                TABLA_DESTINO,
+                job_config=job_config
+            )
+            job.result(timeout=180)
+            
+            rows_loaded = job.output_rows or len(df_insert)
+            st.success(f"✅ BigQuery terminó el job. Filas cargadas: {rows_loaded}")
+            registros_guardados = rows_loaded
+            
+    except Exception as e:
+        st.error(f"Error al insertar en BigQuery: {str(e)}")
+        return 0, total, f"Error en BigQuery: {e}"
     
     elapsed_time = time.time() - start_time
     detalle = f"{registros_guardados} registros guardados, {errores} errores. Tiempo: {elapsed_time:.2f}s"
@@ -206,12 +240,10 @@ def guardar_cartera_jamar(df, proyecto_id):
     return registros_guardados, errores, detalle
 
 # ============================================================
-# 🆕 VISTA PRINCIPAL (render)
+# VISTA PRINCIPAL
 # ============================================================
 
 def render():
-    """Punto de entrada para cargar la cartera de Jamar"""
-    
     st.markdown("""
     <style>
         .main-header { font-size: 22px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
@@ -229,13 +261,11 @@ def render():
     st.markdown('<div class="main-header">Carga de Cartera Predemanda - Jamar</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el archivo de cartera pre-demanda de Jamar. El sistema reemplazará completamente los datos anteriores.</div>', unsafe_allow_html=True)
     
-    # ---- Verificar si ya existe cartera cargada ----
     ultima_carga = obtener_ultima_carga_cartera()
     
     if ultima_carga:
         fecha = ultima_carga['fecha']
         total = ultima_carga['total']
-        
         if pd.isna(fecha):
             st.success(f"📊 **Cartera ya cargada** · {total:,} registros")
         else:
@@ -244,7 +274,6 @@ def render():
     else:
         st.warning("⚠️ **No hay cartera cargada.** Sube un archivo para comenzar.")
     
-    # ---- Instrucciones ----
     st.markdown("""
     <div class="card">
         <div class="card-title">Instrucciones</div>
@@ -257,7 +286,6 @@ def render():
     </div>
     """, unsafe_allow_html=True)
     
-    # ---- Subida de archivo ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">Subir archivo</div>', unsafe_allow_html=True)
     
@@ -314,19 +342,17 @@ def render():
                     if guardados > 0:
                         st.success(f"🎉 {detalle}")
                         st.balloons()
+                        st.cache_data.clear()
                         st.rerun()
                     else:
                         st.error(f"❌ {detalle}")
+                        st.stop()
                 
             except Exception as e:
                 st.error(f"Error al procesar el archivo: {str(e)}")
                 st.exception(e)
     
     st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================================
-# PUNTO DE ENTRADA PARA EJECUCIÓN DIRECTA
-# ============================================================
 
 if __name__ == "__main__":
     render()

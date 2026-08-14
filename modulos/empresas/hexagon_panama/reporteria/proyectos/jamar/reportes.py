@@ -297,7 +297,7 @@ def generar_cuadro_gestion_rank(proyecto_id, fecha_reporte=None):
     return output.getvalue(), f"✅ Cuadro de gestión generado ({fecha_str})"
 
 # ============================================================
-# REPORTE 5: Cuadro de Resultado de Gestión (CON DÍA)
+# REPORTE 5: Cuadro de Resultado de Gestión (DEVUELVE DATAFRAME)
 # ============================================================
 
 def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
@@ -334,7 +334,6 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
             c.llave,
             c.rank,
             CASE 
-                -- 1. Si tiene resultado_gestion, usarlo
                 WHEN ug.resultado_gestion IS NOT NULL THEN
                     CASE 
                         WHEN ug.resultado_gestion = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
@@ -344,7 +343,6 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
                         WHEN ug.resultado_gestion IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'BUZON DE VOZ'
                         ELSE 'SIN CONTACTO'
                     END
-                -- 2. Si no tiene resultado_gestion, usar codigo_gestion
                 WHEN ug.ultimo_codigo_gestion IN ('0', '1', '00', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
                 WHEN ug.ultimo_codigo_gestion IN ('14', '81', '84', '90') THEN 'CONTACTO EFECTIVO'
                 WHEN ug.ultimo_codigo_gestion = '86' THEN 'SIN CONTACTO'
@@ -383,6 +381,36 @@ def generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte=None):
         return None, "⚠️ No hay datos disponibles."
     
     return df, f"✅ {len(df)} categorías"
+
+# ============================================================
+# REPORTE 5b: Cuadro de Resultado de Gestión (para reporte individual)
+# ============================================================
+
+def generar_cuadro_resultado_gestion(proyecto_id, fecha_reporte=None):
+    """Genera el Excel del Cuadro de Resultado de Gestión (reporte individual)"""
+    
+    df, mensaje = generar_cuadro_resultado_gestion_df(proyecto_id, fecha_reporte)
+    
+    if df is None:
+        return None, mensaje
+    
+    output = io.BytesIO()
+    
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df.to_excel(
+            writer,
+            sheet_name="Resultado Gestión",
+            index=False,
+        )
+        
+        # Ajustar ancho de columnas
+        worksheet = writer.sheets["Resultado Gestión"]
+        worksheet.set_column(0, 25, 22)
+        for i in range(1, 6):
+            worksheet.set_column(i, i, 15)
+    
+    fecha_str = fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas"
+    return output.getvalue(), f"✅ Cuadro de resultado generado ({fecha_str})"
 # ============================================================
 # REPORTE 6: Recaudo y Compromisos (SIN FECHA - ACUMULADO)
 # ============================================================

@@ -663,7 +663,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     - Hoja 2: Cuadro de Gestión por RANK (con filtro de fecha)
     - Hoja 3: Cuadro de Resultado de Gestión (con filtro de fecha)
     - Hoja 4: Recaudo y Compromisos (sin filtro - acumulado) - FORMATO PIVOTE
-    - Hoja 5: Datos Completos (las 1,076 cuentas con todos los datos)
+    - Hoja 5: Datos Completos (las 1,076 cuentas con todos los datos + CANAL)
     """
     
     output = io.BytesIO()
@@ -780,7 +780,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         if df_recaudo is not None and not df_recaudo.empty:
             df_recaudo.to_excel(writer, sheet_name='Recaudo y Compromisos', index=False)
             
-            # Extraer totales
             for _, row in df_recaudo.iterrows():
                 if row['resultado_gestion'] == 'RECAUDO':
                     mensajes.append(f"✅ Recaudo: ${row['TOTAL']:,.2f}")
@@ -794,7 +793,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             )
         
         # ============================================================
-        # HOJA 5: DATOS COMPLETOS (LAS 1,076 CUENTAS)
+        # HOJA 5: DATOS COMPLETOS (CON CANAL)
         # ============================================================
         
         query_datos_completos = f"""
@@ -821,7 +820,21 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 ARRAY_AGG(resultado_gestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_resultado,
                 ARRAY_AGG(mejor_gestion_jamar ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_mejor_gestion,
                 ARRAY_AGG(codigo_gestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_codigo_gestion,
-                ARRAY_AGG(fechahoragestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_fecha_gestion
+                ARRAY_AGG(fechahoragestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_fecha_gestion,
+                -- CANAL de la última gestión
+                ARRAY_AGG(
+                    CASE 
+                        WHEN codigo_gestion = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 'CORREO'
+                        WHEN codigo_gestion = '90' AND numeromarcado IS NOT NULL AND numeromarcado NOT IN ('0', '00000000', '') AND LENGTH(numeromarcado) >= 7 THEN 'WHATSAPP'
+                        ELSE 'LLAMADA'
+                    END
+                    ORDER BY fechahoragestion DESC 
+                    LIMIT 1
+                )[OFFSET(0)] AS ultimo_canal,
+                -- Totales por canal
+                COUNT(CASE WHEN codigo_gestion = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 1 END) AS total_correos,
+                COUNT(CASE WHEN codigo_gestion = '90' AND numeromarcado IS NOT NULL AND numeromarcado NOT IN ('0', '00000000', '') AND LENGTH(numeromarcado) >= 7 THEN 1 END) AS total_whatsapps,
+                COUNT(CASE WHEN NOT (codigo_gestion = '90') THEN 1 END) AS total_llamadas
             FROM `{PROYECTO_BQ}.gestiones_jamar` g
             WHERE g.id_proyecto = '{proyecto_id}'
             GROUP BY llave
@@ -862,6 +875,11 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             g.ultimo_resultado,
             g.ultima_mejor_gestion,
             g.ultimo_codigo_gestion,
+            -- 🔥 NUEVAS COLUMNAS DE CANAL
+            g.ultimo_canal,
+            g.total_correos,
+            g.total_whatsapps,
+            g.total_llamadas,
             up.valorpromesa AS ultimo_valor_promesa,
             up.fechapromesa AS fecha_ultima_promesa_valor
         FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c

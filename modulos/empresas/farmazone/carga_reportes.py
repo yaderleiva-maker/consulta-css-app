@@ -1,10 +1,12 @@
 # modulos/empresas/farmazone/carga_reportes.py
+from openpyxl.styles import numbers
 import streamlit as st
 import pandas as pd
 import uuid
 import io
 from datetime import datetime, timedelta
 from google.cloud import bigquery
+
 
 def run(usuario):
     """Módulo principal de Farmazone - Reporte de Ventas y Compras"""

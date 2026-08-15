@@ -746,7 +746,7 @@ def run(usuario):
             return client.query(query).to_dataframe()
             
         def generar_reporte_vendedores_detallado(fecha_ini, fecha_fin):
-            """Reporte detallado de ventas por vendedor (para Excel)"""
+            """Reporte detallado de ventas por vendedor (para Excel) - USANDO SUBTOTAL"""
             query = f"""
             SELECT 
                 vendedor,
@@ -759,12 +759,12 @@ def run(usuario):
                 categoria_l1 AS categoria,
                 unidades,
                 precio_unitario,
-                total_factura AS subtotal,
+                subtotal,  -- 🔥 SUBTOTAL (sin ITBMS)
                 itbms,
                 total_linea AS total,
                 total_costo AS costo,
                 utilidad,
-                ROUND(utilidad / NULLIF(totalxcompra, 0) * 100, 2) AS margen_utilidad
+                ROUND(utilidad / NULLIF(subtotal, 0) * 100, 2) AS margen_utilidad  -- 🔥 Margen sobre subtotal
             FROM `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}`
             WHERE activo = TRUE
               AND fecha_factura BETWEEN '{fecha_ini}' AND '{fecha_fin}'
@@ -775,7 +775,7 @@ def run(usuario):
             return client.query(query).to_dataframe()
 
         def generar_reporte_resumen_detallado(fecha_ini, fecha_fin):
-            """Reporte detallado de todas las ventas (para Excel)"""
+            """Reporte detallado de todas las ventas (para Excel) - USANDO SUBTOTAL"""
             query = f"""
             SELECT 
                 fecha_factura AS dia,
@@ -788,19 +788,19 @@ def run(usuario):
                 categoria_l1 AS categoria,
                 unidades,
                 precio_unitario,
-                total_factura AS subtotal,
+                subtotal,  -- 🔥 SUBTOTAL (sin ITBMS)
                 itbms,
                 total_linea AS total,
                 total_costo AS costo,
                 utilidad,
-                ROUND(utilidad / NULLIF(totalxcompra, 0) * 100, 2) AS margen_utilidad
+                ROUND(utilidad / NULLIF(subtotal, 0) * 100, 2) AS margen_utilidad  -- 🔥 Margen sobre subtotal
             FROM `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}`
             WHERE activo = TRUE
               AND fecha_factura BETWEEN '{fecha_ini}' AND '{fecha_fin}'
             ORDER BY fecha_factura DESC, no_factura
             """
             return client.query(query).to_dataframe()
-            
+    
         def generar_reporte_resumen(fecha_ini, fecha_fin):
             query = f"""
             SELECT 
@@ -833,23 +833,22 @@ def run(usuario):
                     # REPORTE: VENTAS POR VENDEDOR (DETALLADO)
                     # ============================================
                     if tipo_reporte == "Ventas por Vendedor":
-                        # Datos detallados para Excel
                         df_detallado = generar_reporte_vendedores_detallado(fecha_ini_str, fecha_fin_str)
                         
                         if df_detallado.empty:
                             st.warning("⚠️ No se encontraron datos para el periodo seleccionado.")
                         else:
-                            # Resumen para mostrar en pantalla
+                            # Resumen para mostrar en pantalla (usando subtotal)
                             df_resumen = df_detallado.groupby('vendedor').agg({
                                 'no_factura': 'nunique',
                                 'unidades': 'sum',
-                                'subtotal': 'sum',
+                                'subtotal': 'sum',      # 🔥 SUBTOTAL
                                 'utilidad': 'sum',
                                 'margen_utilidad': 'mean'
                             }).reset_index().rename(columns={
                                 'no_factura': 'Facturas',
                                 'unidades': 'Unidades',
-                                'subtotal': 'Ventas ($)',
+                                'subtotal': 'Ventas ($)',      # 🔥 SUBTOTAL
                                 'utilidad': 'Utilidad ($)',
                                 'margen_utilidad': 'Margen (%)'
                             })
@@ -859,13 +858,12 @@ def run(usuario):
                             df_resumen['Utilidad ($)'] = df_resumen['Utilidad ($)'].round(2)
                             df_resumen['Margen (%)'] = df_resumen['Margen (%)'].round(2)
                             
-                            # Mostrar título
                             st.subheader("📊 Ventas por Vendedor")
                             
                             # Métricas
                             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
                             with col_m1:
-                                st.metric("Total Ventas", f"${df_resumen['Ventas ($)'].sum():,.2f}")
+                                st.metric("Total Ventas (Subtotal)", f"${df_resumen['Ventas ($)'].sum():,.2f}")
                             with col_m2:
                                 st.metric("Total Utilidad", f"${df_resumen['Utilidad ($)'].sum():,.2f}")
                             with col_m3:
@@ -878,7 +876,7 @@ def run(usuario):
                             # Mostrar resumen en pantalla
                             st.dataframe(df_resumen, use_container_width=True)
                             
-                            # Preparar Excel con dos hojas
+                            # 🔥 DESCARGAR SOLO EN EXCEL (sin CSV)
                             output = io.BytesIO()
                             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                                 # Hoja 1: Detalle (datos crudos)
@@ -888,6 +886,7 @@ def run(usuario):
                                 df_resumen.to_excel(writer, index=False, sheet_name='Resumen_Vendedor')
                                 
                                 # Ajustar anchos de columnas
+                                from openpyxl.styles import numbers
                                 for sheet_name in writer.sheets:
                                     worksheet = writer.sheets[sheet_name]
                                     for col in worksheet.columns:
@@ -901,6 +900,12 @@ def run(usuario):
                                                 pass
                                         adjusted_width = min(max_length + 2, 50)
                                         worksheet.column_dimensions[column].width = adjusted_width
+                                    
+                                    # Formato de moneda para columnas numéricas
+                                    for row in worksheet.iter_rows(min_row=2):
+                                        for cell in row:
+                                            if isinstance(cell.value, (int, float)):
+                                                cell.number_format = numbers.FORMAT_NUMBER_00
                             
                             excel_data = output.getvalue()
                             st.download_button(
@@ -1064,19 +1069,19 @@ def run(usuario):
                         if df_detallado.empty:
                             st.warning("⚠️ No se encontraron datos para el periodo seleccionado.")
                         else:
-                            # Resumen diario para mostrar en pantalla
+                            # Resumen diario para mostrar en pantalla (usando subtotal)
                             df_resumen = df_detallado.groupby('dia').agg({
                                 'no_factura': 'nunique',
                                 'vendedor': 'nunique',
                                 'unidades': 'sum',
-                                'subtotal': 'sum',
+                                'subtotal': 'sum',      # 🔥 SUBTOTAL
                                 'utilidad': 'sum',
                                 'margen_utilidad': 'mean'
                             }).reset_index().rename(columns={
                                 'no_factura': 'Facturas',
                                 'vendedor': 'Vendedores',
                                 'unidades': 'Unidades',
-                                'subtotal': 'Ventas ($)',
+                                'subtotal': 'Ventas ($)',      # 🔥 SUBTOTAL
                                 'utilidad': 'Utilidad ($)',
                                 'margen_utilidad': 'Margen (%)'
                             })
@@ -1089,7 +1094,7 @@ def run(usuario):
                             
                             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
                             with col_m1:
-                                st.metric("Total Ventas", f"${df_resumen['Ventas ($)'].sum():,.2f}")
+                                st.metric("Total Ventas (Subtotal)", f"${df_resumen['Ventas ($)'].sum():,.2f}")
                             with col_m2:
                                 st.metric("Total Utilidad", f"${df_resumen['Utilidad ($)'].sum():,.2f}")
                             with col_m3:
@@ -1101,7 +1106,7 @@ def run(usuario):
                             
                             st.dataframe(df_resumen, use_container_width=True)
                             
-                            # Preparar Excel con dos hojas
+                            # 🔥 DESCARGAR SOLO EN EXCEL (sin CSV)
                             output = io.BytesIO()
                             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                                 # Hoja 1: Detalle (datos crudos)
@@ -1111,6 +1116,7 @@ def run(usuario):
                                 df_resumen.to_excel(writer, index=False, sheet_name='Resumen_Diario')
                                 
                                 # Ajustar anchos de columnas
+                                from openpyxl.styles import numbers
                                 for sheet_name in writer.sheets:
                                     worksheet = writer.sheets[sheet_name]
                                     for col in worksheet.columns:
@@ -1124,6 +1130,12 @@ def run(usuario):
                                                 pass
                                         adjusted_width = min(max_length + 2, 50)
                                         worksheet.column_dimensions[column].width = adjusted_width
+                                    
+                                    # Formato de moneda para columnas numéricas
+                                    for row in worksheet.iter_rows(min_row=2):
+                                        for cell in row:
+                                            if isinstance(cell.value, (int, float)):
+                                                cell.number_format = numbers.FORMAT_NUMBER_00
                             
                             excel_data = output.getvalue()
                             st.download_button(
@@ -1133,7 +1145,3 @@ def run(usuario):
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True
                             )
-                    
-                except Exception as e:
-                    st.error(f"❌ Error al generar el reporte: {e}")
-                    st.exception(e)

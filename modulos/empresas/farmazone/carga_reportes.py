@@ -904,12 +904,37 @@ def run(usuario):
                             
                             st.dataframe(df_mostrar, use_container_width=True)
                             
-                            csv = df_mostrar.to_csv(index=False)
+                            # 🔥 DESCARGAR EN EXCEL
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df_mostrar.to_excel(writer, index=False, sheet_name='Ventas_por_Categoria')
+                                
+                                # Ajustar anchos de columnas
+                                worksheet = writer.sheets['Ventas_por_Categoria']
+                                for col in worksheet.columns:
+                                    max_length = 0
+                                    column = col[0].column_letter
+                                    for cell in col:
+                                        try:
+                                            if len(str(cell.value)) > max_length:
+                                                max_length = len(str(cell.value))
+                                        except:
+                                            pass
+                                    adjusted_width = min(max_length + 2, 50)
+                                    worksheet.column_dimensions[column].width = adjusted_width
+                                
+                                # Formato de moneda
+                                for row in worksheet.iter_rows(min_row=2):
+                                    for cell in row:
+                                        if isinstance(cell.value, (int, float)):
+                                            cell.number_format = '#,##0.00'
+                            
+                            excel_data = output.getvalue()
                             st.download_button(
-                                label="📥 Descargar CSV",
-                                data=csv,
-                                file_name=f"Ventas_por_Categoria_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                mime="text/csv",
+                                label="📥 Descargar Excel",
+                                data=excel_data,
+                                file_name=f"Ventas_por_Categoria_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True
                             )
                     
@@ -949,12 +974,37 @@ def run(usuario):
                             
                             st.dataframe(df_mostrar, use_container_width=True)
                             
-                            csv = df_mostrar.to_csv(index=False)
+                            # 🔥 DESCARGAR EN EXCEL
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df_mostrar.to_excel(writer, index=False, sheet_name='Top_50_Productos')
+                                
+                                # Ajustar anchos de columnas
+                                worksheet = writer.sheets['Top_50_Productos']
+                                for col in worksheet.columns:
+                                    max_length = 0
+                                    column = col[0].column_letter
+                                    for cell in col:
+                                        try:
+                                            if len(str(cell.value)) > max_length:
+                                                max_length = len(str(cell.value))
+                                        except:
+                                            pass
+                                    adjusted_width = min(max_length + 2, 50)
+                                    worksheet.column_dimensions[column].width = adjusted_width
+                                
+                                # Formato de moneda
+                                for row in worksheet.iter_rows(min_row=2):
+                                    for cell in row:
+                                        if isinstance(cell.value, (int, float)):
+                                            cell.number_format = '#,##0.00'
+                            
+                            excel_data = output.getvalue()
                             st.download_button(
-                                label="📥 Descargar CSV",
-                                data=csv,
-                                file_name=f"Productos_mas_vendidos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                mime="text/csv",
+                                label="📥 Descargar Excel",
+                                data=excel_data,
+                                file_name=f"Productos_mas_vendidos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True
                             )
                     
@@ -1000,12 +1050,37 @@ def run(usuario):
                             
                             st.dataframe(df_mostrar, use_container_width=True)
                             
-                            csv = df_mostrar.to_csv(index=False)
+                            # 🔥 DESCARGAR EN EXCEL
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                df_mostrar.to_excel(writer, index=False, sheet_name='Utilidad_por_Vendedor')
+                                
+                                # Ajustar anchos de columnas
+                                worksheet = writer.sheets['Utilidad_por_Vendedor']
+                                for col in worksheet.columns:
+                                    max_length = 0
+                                    column = col[0].column_letter
+                                    for cell in col:
+                                        try:
+                                            if len(str(cell.value)) > max_length:
+                                                max_length = len(str(cell.value))
+                                        except:
+                                            pass
+                                    adjusted_width = min(max_length + 2, 50)
+                                    worksheet.column_dimensions[column].width = adjusted_width
+                                
+                                # Formato de moneda
+                                for row in worksheet.iter_rows(min_row=2):
+                                    for cell in row:
+                                        if isinstance(cell.value, (int, float)):
+                                            cell.number_format = '#,##0.00'
+                            
+                            excel_data = output.getvalue()
                             st.download_button(
-                                label="📥 Descargar CSV",
-                                data=csv,
-                                file_name=f"Utilidad_por_Vendedor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                mime="text/csv",
+                                label="📥 Descargar Excel",
+                                data=excel_data,
+                                file_name=f"Utilidad_por_Vendedor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True
                             )
                     

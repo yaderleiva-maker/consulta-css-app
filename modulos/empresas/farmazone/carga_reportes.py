@@ -744,7 +744,63 @@ def run(usuario):
             ORDER BY mes DESC, utilidad DESC
             """
             return client.query(query).to_dataframe()
-        
+            
+        def generar_reporte_vendedores_detallado(fecha_ini, fecha_fin):
+            """Reporte detallado de ventas por vendedor (para Excel)"""
+            query = f"""
+            SELECT 
+                vendedor,
+                fecha_factura AS dia,
+                EXTRACT(MONTH FROM fecha_factura) AS mes,
+                EXTRACT(YEAR FROM fecha_factura) AS año,
+                no_factura,
+                codigo,
+                producto,
+                categoria_l1 AS categoria,
+                unidades,
+                precio_unitario,
+                total_factura AS subtotal,
+                itbms,
+                total_linea AS total,
+                total_costo AS costo,
+                utilidad,
+                ROUND(utilidad / NULLIF(totalxcompra, 0) * 100, 2) AS margen_utilidad
+            FROM `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}`
+            WHERE activo = TRUE
+              AND fecha_factura BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+              AND vendedor IS NOT NULL
+              AND vendedor != ''
+            ORDER BY vendedor, fecha_factura DESC, no_factura
+            """
+            return client.query(query).to_dataframe()
+
+        def generar_reporte_resumen_detallado(fecha_ini, fecha_fin):
+            """Reporte detallado de todas las ventas (para Excel)"""
+            query = f"""
+            SELECT 
+                fecha_factura AS dia,
+                EXTRACT(MONTH FROM fecha_factura) AS mes,
+                EXTRACT(YEAR FROM fecha_factura) AS año,
+                no_factura,
+                vendedor,
+                codigo,
+                producto,
+                categoria_l1 AS categoria,
+                unidades,
+                precio_unitario,
+                total_factura AS subtotal,
+                itbms,
+                total_linea AS total,
+                total_costo AS costo,
+                utilidad,
+                ROUND(utilidad / NULLIF(totalxcompra, 0) * 100, 2) AS margen_utilidad
+            FROM `{PROJECT_ID}.{DATASET}.{TABLE_VENTAS}`
+            WHERE activo = TRUE
+              AND fecha_factura BETWEEN '{fecha_ini}' AND '{fecha_fin}'
+            ORDER BY fecha_factura DESC, no_factura
+            """
+            return client.query(query).to_dataframe()
+            
         def generar_reporte_resumen(fecha_ini, fecha_fin):
             query = f"""
             SELECT 
@@ -773,135 +829,308 @@ def run(usuario):
                     fecha_ini_str = fecha_inicio.strftime('%Y-%m-%d')
                     fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
                     
+                    # ============================================
+                    # REPORTE: VENTAS POR VENDEDOR (DETALLADO)
+                    # ============================================
                     if tipo_reporte == "Ventas por Vendedor":
-                        df = generar_reporte_vendedores(fecha_ini_str, fecha_fin_str)
-                        titulo = "📊 Ventas por Vendedor"
-                        columnas_mostrar = ['vendedor', 'total_facturas', 'total_unidades', 'total_ventas', 'total_utilidad', 'margen_utilidad']
-                        columnas_renombrar = {
-                            'vendedor': 'Vendedor',
-                            'total_facturas': 'Facturas',
-                            'total_unidades': 'Unidades',
-                            'total_ventas': 'Ventas ($)',
-                            'total_utilidad': 'Utilidad ($)',
-                            'margen_utilidad': 'Margen (%)'
-                        }
-                    
-                    elif tipo_reporte == "Ventas por Categoría":
-                        df = generar_reporte_categorias(fecha_ini_str, fecha_fin_str)
-                        titulo = "📊 Ventas por Categoría"
-                        columnas_mostrar = ['categoria', 'facturas', 'unidades', 'ventas', 'utilidad', 'margen_utilidad']
-                        columnas_renombrar = {
-                            'categoria': 'Categoría',
-                            'facturas': 'Facturas',
-                            'unidades': 'Unidades',
-                            'ventas': 'Ventas ($)',
-                            'utilidad': 'Utilidad ($)',
-                            'margen_utilidad': 'Margen (%)'
-                        }
-                    
-                    elif tipo_reporte == "Productos más Vendidos":
-                        df = generar_reporte_productos(fecha_ini_str, fecha_fin_str)
-                        titulo = "📊 Top 50 Productos más Vendidos"
-                        columnas_mostrar = ['codigo', 'producto', 'marca', 'categoria_l1', 'unidades', 'facturas', 'ventas']
-                        columnas_renombrar = {
-                            'codigo': 'Código',
-                            'producto': 'Producto',
-                            'marca': 'Marca',
-                            'categoria_l1': 'Categoría',
-                            'unidades': 'Unidades',
-                            'facturas': 'Facturas',
-                            'ventas': 'Ventas ($)'
-                        }
-                    
-                    elif tipo_reporte == "Utilidad por Vendedor":
-                        df = generar_reporte_utilidad_vendedor(fecha_ini_str, fecha_fin_str)
-                        titulo = "📊 Utilidad por Vendedor (detallado)"
-                        columnas_mostrar = ['vendedor', 'mes', 'facturas', 'unidades', 'ventas', 'utilidad', 'margen_utilidad']
-                        columnas_renombrar = {
-                            'vendedor': 'Vendedor',
-                            'mes': 'Mes',
-                            'facturas': 'Facturas',
-                            'unidades': 'Unidades',
-                            'ventas': 'Ventas ($)',
-                            'utilidad': 'Utilidad ($)',
-                            'margen_utilidad': 'Margen (%)'
-                        }
-                    
-                    else:  # Resumen General
-                        df = generar_reporte_resumen(fecha_ini_str, fecha_fin_str)
-                        titulo = "📊 Resumen General de Ventas"
-                        columnas_mostrar = ['dia', 'facturas', 'vendedores_activos', 'unidades', 'ventas', 'utilidad', 'margen_utilidad']
-                        columnas_renombrar = {
-                            'dia': 'Día',
-                            'facturas': 'Facturas',
-                            'vendedores_activos': 'Vendedores',
-                            'unidades': 'Unidades',
-                            'ventas': 'Ventas ($)',
-                            'utilidad': 'Utilidad ($)',
-                            'margen_utilidad': 'Margen (%)'
-                        }
-                    
-                    if df.empty:
-                        st.warning("⚠️ No se encontraron datos para el periodo seleccionado.")
-                    else:
-                        st.subheader(titulo)
+                        # Datos detallados para Excel
+                        df_detallado = generar_reporte_vendedores_detallado(fecha_ini_str, fecha_fin_str)
                         
-                        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-                        with col_m1:
-                            st.metric("Total Ventas", f"${df['ventas'].sum():,.2f}" if 'ventas' in df.columns else "N/A")
-                        with col_m2:
-                            st.metric("Total Utilidad", f"${df['utilidad'].sum():,.2f}" if 'utilidad' in df.columns else "N/A")
-                        with col_m3:
-                            if 'margen_utilidad' in df.columns:
-                                margen_prom = df['margen_utilidad'].mean()
-                                st.metric("Margen Promedio", f"{margen_prom:.1f}%")
-                            else:
-                                st.metric("Margen Promedio", "N/A")
-                        with col_m4:
-                            st.metric("Total Registros", f"{len(df):,}")
-                        
-                        st.markdown("---")
-                        
-                        df_mostrar = df[columnas_mostrar].rename(columns=columnas_renombrar)
-                        st.dataframe(df_mostrar, use_container_width=True)
-                        
-                        st.markdown("---")
-                        col_download1, col_download2 = st.columns(2)
-                        
-                        with col_download1:
+                        if df_detallado.empty:
+                            st.warning("⚠️ No se encontraron datos para el periodo seleccionado.")
+                        else:
+                            # Resumen para mostrar en pantalla
+                            df_resumen = df_detallado.groupby('vendedor').agg({
+                                'no_factura': 'nunique',
+                                'unidades': 'sum',
+                                'subtotal': 'sum',
+                                'utilidad': 'sum',
+                                'margen_utilidad': 'mean'
+                            }).reset_index().rename(columns={
+                                'no_factura': 'Facturas',
+                                'unidades': 'Unidades',
+                                'subtotal': 'Ventas ($)',
+                                'utilidad': 'Utilidad ($)',
+                                'margen_utilidad': 'Margen (%)'
+                            })
+                            
+                            # Redondear
+                            df_resumen['Ventas ($)'] = df_resumen['Ventas ($)'].round(2)
+                            df_resumen['Utilidad ($)'] = df_resumen['Utilidad ($)'].round(2)
+                            df_resumen['Margen (%)'] = df_resumen['Margen (%)'].round(2)
+                            
+                            # Mostrar título
+                            st.subheader("📊 Ventas por Vendedor")
+                            
+                            # Métricas
+                            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                            with col_m1:
+                                st.metric("Total Ventas", f"${df_resumen['Ventas ($)'].sum():,.2f}")
+                            with col_m2:
+                                st.metric("Total Utilidad", f"${df_resumen['Utilidad ($)'].sum():,.2f}")
+                            with col_m3:
+                                st.metric("Margen Promedio", f"{df_resumen['Margen (%)'].mean():.1f}%")
+                            with col_m4:
+                                st.metric("Total Vendedores", len(df_resumen))
+                            
+                            st.markdown("---")
+                            
+                            # Mostrar resumen en pantalla
+                            st.dataframe(df_resumen, use_container_width=True)
+                            
+                            # Preparar Excel con dos hojas
                             output = io.BytesIO()
                             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                                df_mostrar.to_excel(writer, index=False, sheet_name='Reporte')
-                                workbook = writer.book
-                                worksheet = writer.sheets['Reporte']
-                                for col in worksheet.columns:
-                                    max_length = 0
-                                    column = col[0].column_letter
-                                    for cell in col:
-                                        try:
-                                            if len(str(cell.value)) > max_length:
-                                                max_length = len(str(cell.value))
-                                        except:
-                                            pass
-                                    adjusted_width = min(max_length + 2, 50)
-                                    worksheet.column_dimensions[column].width = adjusted_width
+                                # Hoja 1: Detalle (datos crudos)
+                                df_detallado.to_excel(writer, index=False, sheet_name='Detalle_Ventas')
+                                
+                                # Hoja 2: Resumen por Vendedor
+                                df_resumen.to_excel(writer, index=False, sheet_name='Resumen_Vendedor')
+                                
+                                # Ajustar anchos de columnas
+                                for sheet_name in writer.sheets:
+                                    worksheet = writer.sheets[sheet_name]
+                                    for col in worksheet.columns:
+                                        max_length = 0
+                                        column = col[0].column_letter
+                                        for cell in col:
+                                            try:
+                                                if len(str(cell.value)) > max_length:
+                                                    max_length = len(str(cell.value))
+                                            except:
+                                                pass
+                                        adjusted_width = min(max_length + 2, 50)
+                                        worksheet.column_dimensions[column].width = adjusted_width
                             
                             excel_data = output.getvalue()
                             st.download_button(
-                                label="📥 Descargar Excel",
+                                label="📥 Descargar Excel (Detalle + Resumen)",
                                 data=excel_data,
-                                file_name=f"{tipo_reporte.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                file_name=f"Ventas_por_Vendedor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True
                             )
+                    
+                    # ============================================
+                    # REPORTE: VENTAS POR CATEGORÍA
+                    # ============================================
+                    elif tipo_reporte == "Ventas por Categoría":
+                        df = generar_reporte_categorias(fecha_ini_str, fecha_fin_str)
                         
-                        with col_download2:
+                        if df.empty:
+                            st.warning("⚠️ No se encontraron datos para el periodo seleccionado.")
+                        else:
+                            st.subheader("📊 Ventas por Categoría")
+                            
+                            col_m1, col_m2, col_m3 = st.columns(3)
+                            with col_m1:
+                                st.metric("Total Ventas", f"${df['ventas'].sum():,.2f}")
+                            with col_m2:
+                                st.metric("Total Utilidad", f"${df['utilidad'].sum():,.2f}")
+                            with col_m3:
+                                st.metric("Total Categorías", len(df))
+                            
+                            st.markdown("---")
+                            
+                            columnas_mostrar = ['categoria', 'facturas', 'unidades', 'ventas', 'utilidad', 'margen_utilidad']
+                            columnas_renombrar = {
+                                'categoria': 'Categoría',
+                                'facturas': 'Facturas',
+                                'unidades': 'Unidades',
+                                'ventas': 'Ventas ($)',
+                                'utilidad': 'Utilidad ($)',
+                                'margen_utilidad': 'Margen (%)'
+                            }
+                            df_mostrar = df[columnas_mostrar].rename(columns=columnas_renombrar)
+                            df_mostrar['Ventas ($)'] = df_mostrar['Ventas ($)'].round(2)
+                            df_mostrar['Utilidad ($)'] = df_mostrar['Utilidad ($)'].round(2)
+                            df_mostrar['Margen (%)'] = df_mostrar['Margen (%)'].round(2)
+                            
+                            st.dataframe(df_mostrar, use_container_width=True)
+                            
+                            # Descargar
                             csv = df_mostrar.to_csv(index=False)
                             st.download_button(
                                 label="📥 Descargar CSV",
                                 data=csv,
-                                file_name=f"{tipo_reporte.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                file_name=f"Ventas_por_Categoria_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                                 mime="text/csv",
+                                use_container_width=True
+                            )
+                    
+                    # ============================================
+                    # REPORTE: PRODUCTOS MÁS VENDIDOS
+                    # ============================================
+                    elif tipo_reporte == "Productos más Vendidos":
+                        df = generar_reporte_productos(fecha_ini_str, fecha_fin_str)
+                        
+                        if df.empty:
+                            st.warning("⚠️ No se encontraron datos para el periodo seleccionado.")
+                        else:
+                            st.subheader("📊 Top 50 Productos más Vendidos")
+                            
+                            col_m1, col_m2, col_m3 = st.columns(3)
+                            with col_m1:
+                                st.metric("Total Ventas", f"${df['ventas'].sum():,.2f}")
+                            with col_m2:
+                                st.metric("Total Unidades", f"{df['unidades'].sum():,.0f}")
+                            with col_m3:
+                                st.metric("Total Productos", len(df))
+                            
+                            st.markdown("---")
+                            
+                            columnas_mostrar = ['codigo', 'producto', 'marca', 'categoria_l1', 'unidades', 'facturas', 'ventas']
+                            columnas_renombrar = {
+                                'codigo': 'Código',
+                                'producto': 'Producto',
+                                'marca': 'Marca',
+                                'categoria_l1': 'Categoría',
+                                'unidades': 'Unidades',
+                                'facturas': 'Facturas',
+                                'ventas': 'Ventas ($)'
+                            }
+                            df_mostrar = df[columnas_mostrar].rename(columns=columnas_renombrar)
+                            df_mostrar['Ventas ($)'] = df_mostrar['Ventas ($)'].round(2)
+                            
+                            st.dataframe(df_mostrar, use_container_width=True)
+                            
+                            csv = df_mostrar.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Descargar CSV",
+                                data=csv,
+                                file_name=f"Productos_mas_vendidos_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                    
+                    # ============================================
+                    # REPORTE: UTILIDAD POR VENDEDOR
+                    # ============================================
+                    elif tipo_reporte == "Utilidad por Vendedor":
+                        df = generar_reporte_utilidad_vendedor(fecha_ini_str, fecha_fin_str)
+                        
+                        if df.empty:
+                            st.warning("⚠️ No se encontraron datos para el periodo seleccionado.")
+                        else:
+                            st.subheader("📊 Utilidad por Vendedor (detallado)")
+                            
+                            # Calcular totales
+                            total_ventas = df['ventas'].sum()
+                            total_utilidad = df['utilidad'].sum()
+                            margen_promedio = (total_utilidad / total_ventas * 100) if total_ventas > 0 else 0
+                            
+                            col_m1, col_m2, col_m3 = st.columns(3)
+                            with col_m1:
+                                st.metric("Total Ventas", f"${total_ventas:,.2f}")
+                            with col_m2:
+                                st.metric("Total Utilidad", f"${total_utilidad:,.2f}")
+                            with col_m3:
+                                st.metric("Margen Promedio", f"{margen_promedio:.1f}%")
+                            
+                            st.markdown("---")
+                            
+                            columnas_mostrar = ['vendedor', 'mes', 'facturas', 'unidades', 'ventas', 'utilidad', 'margen_utilidad']
+                            columnas_renombrar = {
+                                'vendedor': 'Vendedor',
+                                'mes': 'Mes',
+                                'facturas': 'Facturas',
+                                'unidades': 'Unidades',
+                                'ventas': 'Ventas ($)',
+                                'utilidad': 'Utilidad ($)',
+                                'margen_utilidad': 'Margen (%)'
+                            }
+                            df_mostrar = df[columnas_mostrar].rename(columns=columnas_renombrar)
+                            df_mostrar['Ventas ($)'] = df_mostrar['Ventas ($)'].round(2)
+                            df_mostrar['Utilidad ($)'] = df_mostrar['Utilidad ($)'].round(2)
+                            df_mostrar['Margen (%)'] = df_mostrar['Margen (%)'].round(2)
+                            
+                            st.dataframe(df_mostrar, use_container_width=True)
+                            
+                            csv = df_mostrar.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Descargar CSV",
+                                data=csv,
+                                file_name=f"Utilidad_por_Vendedor_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                    
+                    # ============================================
+                    # REPORTE: RESUMEN GENERAL (DETALLADO)
+                    # ============================================
+                    else:  # Resumen General
+                        df_detallado = generar_reporte_resumen_detallado(fecha_ini_str, fecha_fin_str)
+                        
+                        if df_detallado.empty:
+                            st.warning("⚠️ No se encontraron datos para el periodo seleccionado.")
+                        else:
+                            # Resumen diario para mostrar en pantalla
+                            df_resumen = df_detallado.groupby('dia').agg({
+                                'no_factura': 'nunique',
+                                'vendedor': 'nunique',
+                                'unidades': 'sum',
+                                'subtotal': 'sum',
+                                'utilidad': 'sum',
+                                'margen_utilidad': 'mean'
+                            }).reset_index().rename(columns={
+                                'no_factura': 'Facturas',
+                                'vendedor': 'Vendedores',
+                                'unidades': 'Unidades',
+                                'subtotal': 'Ventas ($)',
+                                'utilidad': 'Utilidad ($)',
+                                'margen_utilidad': 'Margen (%)'
+                            })
+                            
+                            df_resumen['Ventas ($)'] = df_resumen['Ventas ($)'].round(2)
+                            df_resumen['Utilidad ($)'] = df_resumen['Utilidad ($)'].round(2)
+                            df_resumen['Margen (%)'] = df_resumen['Margen (%)'].round(2)
+                            
+                            st.subheader("📊 Resumen General de Ventas")
+                            
+                            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+                            with col_m1:
+                                st.metric("Total Ventas", f"${df_resumen['Ventas ($)'].sum():,.2f}")
+                            with col_m2:
+                                st.metric("Total Utilidad", f"${df_resumen['Utilidad ($)'].sum():,.2f}")
+                            with col_m3:
+                                st.metric("Margen Promedio", f"{df_resumen['Margen (%)'].mean():.1f}%")
+                            with col_m4:
+                                st.metric("Total Días", len(df_resumen))
+                            
+                            st.markdown("---")
+                            
+                            st.dataframe(df_resumen, use_container_width=True)
+                            
+                            # Preparar Excel con dos hojas
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                # Hoja 1: Detalle (datos crudos)
+                                df_detallado.to_excel(writer, index=False, sheet_name='Detalle_Ventas')
+                                
+                                # Hoja 2: Resumen Diario
+                                df_resumen.to_excel(writer, index=False, sheet_name='Resumen_Diario')
+                                
+                                # Ajustar anchos de columnas
+                                for sheet_name in writer.sheets:
+                                    worksheet = writer.sheets[sheet_name]
+                                    for col in worksheet.columns:
+                                        max_length = 0
+                                        column = col[0].column_letter
+                                        for cell in col:
+                                            try:
+                                                if len(str(cell.value)) > max_length:
+                                                    max_length = len(str(cell.value))
+                                            except:
+                                                pass
+                                        adjusted_width = min(max_length + 2, 50)
+                                        worksheet.column_dimensions[column].width = adjusted_width
+                            
+                            excel_data = output.getvalue()
+                            st.download_button(
+                                label="📥 Descargar Excel (Detalle + Resumen)",
+                                data=excel_data,
+                                file_name=f"Resumen_General_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                 use_container_width=True
                             )
                     

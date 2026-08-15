@@ -47,10 +47,10 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     """
     Genera un Excel consolidado con:
     - Hoja 1: Resumen ejecutivo (métricas clave)
-    - Hoja 2: Cuadro de Gestión por RANK (SOLO gestiones del día)
-    - Hoja 3: Cuadro de Resultado de Gestión (SOLO gestiones del día)
+    - Hoja 2: Cuadro de Gestión por RANK (con canales separados)
+    - Hoja 3: Cuadro de Resultado de Gestión (CONTACTO EFECTIVO unificado)
     - Hoja 4: Recaudo y Compromisos (TODOS los datos históricos)
-    - Hoja 5: DATOS COMPLETOS (TABLA MAESTRA - Fuente de la verdad)
+    - Hoja 5: DATOS COMPLETOS (TABLA MAESTRA - con canales separados)
     """
     
     output = io.BytesIO()
@@ -63,10 +63,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         filtro_fechas_gestiones = f"""
         AND DATE(g.fechahoragestion) = '{fecha_reporte_str}'
         """
-    
-    # ============================================================
-    # PASO 1: CONSTRUIR DATOS COMPLETOS (CON FILTRO DE GESTIONES POR DÍA)
-    # ============================================================
     
     query_datos_completos = f"""
     WITH pagos_agrupados AS (
@@ -98,7 +94,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             ARRAY_AGG(fechahoragestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_fecha_gestion,
             ARRAY_AGG(numeromarcado ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_numeromarcado,
             
-            -- Canal de la última gestión
+            -- Canal de la última gestión (para Datos Completos)
             ARRAY_AGG(
                 CASE 
                     WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 'CORREO'
@@ -109,13 +105,13 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 LIMIT 1
             )[OFFSET(0)] AS ultimo_canal,
             
-            -- Totales por canal (SOLO DEL DÍA)
+            -- Totales por canal (para Cuadro de Gestión)
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 1 END) AS total_correos,
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND numeromarcado IS NOT NULL AND numeromarcado NOT IN ('0', '00000000', '') AND LENGTH(numeromarcado) >= 7 THEN 1 END) AS total_whatsapps,
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) != '90' THEN 1 END) AS total_llamadas
         FROM `{PROYECTO_BQ}.gestiones_jamar` g
         WHERE g.id_proyecto = '{proyecto_id}'
-          {filtro_fechas_gestiones}  -- 🔥 FILTRO POR DÍA
+          {filtro_fechas_gestiones}
         GROUP BY llave
     ),
     
@@ -129,7 +125,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
           AND SAFE_CAST(codigo_gestion AS STRING) IN ('1', '88', '89')
           AND valorpromesa IS NOT NULL
           AND valorpromesa > 0
-          -- 🔥 SIN FILTRO DE FECHA (TODAS LAS PROMESAS)
         QUALIFY ROW_NUMBER() OVER (PARTITION BY llave ORDER BY fechapromesa DESC) = 1
     ),
     
@@ -175,17 +170,17 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             up.valorpromesa AS ultimo_valor_promesa,
             up.fechapromesa AS fecha_ultima_promesa,
             
-            -- CATEGORÍA FINAL (con gestión del día o SIN GESTION AL CORTE)
+            -- ============================================================
+            -- 🔥 CATEGORÍA FINAL (UNIFICADA - SIN WHATSAPP/CORREO SEPARADO)
+            -- ============================================================
             CASE 
                 WHEN g.llave IS NULL THEN 'SIN GESTION AL CORTE'
+                
+                -- 🔥 Si tiene codigo_gestion = '90' → SIEMPRE CONTACTO EFECTIVO
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
-                    CASE 
-                        WHEN g.ultimo_numeromarcado IS NOT NULL 
-                             AND g.ultimo_numeromarcado NOT IN ('0', '00000000', '')
-                             AND LENGTH(g.ultimo_numeromarcado) >= 7 
-                        THEN 'WHATSAPP'
-                        ELSE 'CONTACTO EFECTIVO'
-                    END
+                    'CONTACTO EFECTIVO'
+                
+                -- Si tiene resultado_gestion
                 WHEN g.ultimo_resultado IS NOT NULL THEN
                     CASE 
                         WHEN g.ultimo_resultado = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
@@ -195,6 +190,8 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                         WHEN g.ultimo_resultado IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'NO CONTACTOS'
                         ELSE 'SIN CONTACTO'
                     END
+                
+                -- Si NO tiene resultado_gestion, usar codigo_gestion
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('0') THEN 'CONTACTO CON TERCERO'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('14', '81', '84') THEN 'CONTACTO EFECTIVO'
@@ -204,7 +201,9 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 ELSE 'SIN CONTACTO'
             END AS categoria_final,
             
-            -- RAZÓN DE LA CATEGORÍA
+            -- ============================================================
+            -- RAZÓN DE LA CATEGORÍA (con detalle de canal)
+            -- ============================================================
             CASE 
                 WHEN g.llave IS NULL THEN 'Sin gestión en el período'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
@@ -212,8 +211,8 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                         WHEN g.ultimo_numeromarcado IS NOT NULL 
                              AND g.ultimo_numeromarcado NOT IN ('0', '00000000', '')
                              AND LENGTH(g.ultimo_numeromarcado) >= 7 
-                        THEN CONCAT('codigo_gestion=90 con teléfono → WHATSAPP (', g.ultimo_numeromarcado, ')')
-                        ELSE 'codigo_gestion=90 sin teléfono → CORREO'
+                        THEN CONCAT('codigo_gestion=90 con teléfono → WHATSAPP (', g.ultimo_numeromarcado, ') → CONTACTO EFECTIVO')
+                        ELSE 'codigo_gestion=90 sin teléfono → CORREO → CONTACTO EFECTIVO'
                     END
                 WHEN g.ultimo_resultado IS NOT NULL THEN 
                     CONCAT('resultado_gestion=', g.ultimo_resultado)
@@ -261,14 +260,14 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         ultima_mejor_gestion,
         ultimo_codigo_gestion,
         ultima_fecha_gestion,
-        ultimo_canal,
-        total_correos,
-        total_whatsapps,
-        total_llamadas,
+        ultimo_canal,          -- 🔥 CANAL (WHATSAPP/CORREO/LLAMADA) para Datos Completos
+        total_correos,         -- 🔥 PARA CUADRO DE GESTIÓN
+        total_whatsapps,       -- 🔥 PARA CUADRO DE GESTIÓN
+        total_llamadas,        -- 🔥 PARA CUADRO DE GESTIÓN
         ultimo_valor_promesa,
         fecha_ultima_promesa,
         estado_promesa,
-        categoria_final,
+        categoria_final,       -- 🔥 SIN WHATSAPP/CORREO SEPARADO
         razon_categoria
     FROM datos_con_categoria
     ORDER BY saldo_total_adeudado DESC
@@ -292,7 +291,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         # HOJA 1: RESUMEN EJECUTIVO
         # ============================================================
         
-        # 🔥 Calcular total de gestiones del día
         total_gestiones_dia = df_datos['total_toques'].sum()
         
         resumen_data = {
@@ -340,7 +338,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         mensajes.append("✅ Resumen ejecutivo generado")
         
         # ============================================================
-        # HOJA 2: CUADRO DE GESTIÓN POR RANK (SOLO DEL DÍA)
+        # HOJA 2: CUADRO DE GESTIÓN POR RANK (CON CANALES SEPARADOS)
         # ============================================================
         
         df_gestion_rank = df_datos.groupby('rank').agg({
@@ -366,7 +364,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         mensajes.append(f"✅ Cuadro Gestión: {len(df_gestion_rank)} ranks")
         
         # ============================================================
-        # HOJA 3: CUADRO DE RESULTADO DE GESTIÓN (SOLO DEL DÍA)
+        # HOJA 3: CUADRO DE RESULTADO DE GESTIÓN (UNIFICADO)
         # ============================================================
         
         pivot_resultado = pd.crosstab(
@@ -376,10 +374,9 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             margins_name='TOTAL'
         ).reset_index().rename(columns={'categoria_final': 'resultado_gestion'})
         
-        # Reordenar según prioridad
+        # Reordenar según prioridad (SIN WHATSAPP porque ya está unificado)
         orden_categorias = [
             'CONTACTO EFECTIVO', 
-            'WHATSAPP', 
             'COMPROMISO DE PAGO', 
             'SIN CONTACTO', 
             'CONTACTO CON TERCERO', 
@@ -399,9 +396,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         # ============================================================
         # HOJA 4: RECAUDO Y COMPROMISOS (TODOS LOS DATOS HISTÓRICOS)
         # ============================================================
-        
-        # 🔥 IMPORTANTE: Esta hoja se calcula con TODOS los datos,
-        # NO se filtra por día. Los datos ya están en df_datos desde la consulta.
         
         df_recaudo_final = pd.DataFrame({
             'resultado_gestion': ['RECAUDO', 'COMPROMISOS ACTIVOS', 'COMPROMISOS INCUMPLIDOS'],
@@ -450,7 +444,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
     mensaje_final = " | ".join(mensajes)
     fecha_str = fecha_reporte.strftime('%d/%m/%Y') if fecha_reporte else "Todas las fechas"
     return output.getvalue(), f"✅ Resumen de cartera generado ({fecha_str}) - {mensaje_final}"
-
 
 # ============================================================
 # REGISTRO DE REPORTES (SOLO EL CONSOLIDADO)

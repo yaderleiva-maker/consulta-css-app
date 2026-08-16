@@ -760,163 +760,6 @@ def mostrar_ficha_empleado(id_empleado):
 
 def run_reporte_vacaciones(usuario):
     """
-    Módulo de Reporte de Vacaciones para RRHH.
-    """
-    st.markdown("## 📋 Reporte de Vacaciones")
-    st.caption("Genera reportes de vacaciones por período, quincena o empleado.")
-    
-    # ============================================================
-    # ALERTA DE INCIDENCIAS PENDIENTES
-    # ============================================================
-    pendientes = contar_incidencias_pendientes()
-    if pendientes['total_pendientes'] > 0:
-        st.warning(
-            f"⚠️ Hay **{pendientes['total_pendientes']}** incidencias pendientes de aprobación "
-            f"que afectan a **{pendientes['empleados_afectados']}** empleados."
-        )
-    
-    # ============================================================
-    # BOTÓN PARA ACTUALIZAR CÁLCULOS
-    # ============================================================
-    col_refresh, col_spacer = st.columns([1, 4])
-    with col_refresh:
-        if st.button("🔄 Actualizar cálculos", use_container_width=True):
-            with st.spinner("Calculando días hábiles..."):
-                ejecutar_merge_calculo()
-                st.success("✅ Cálculos actualizados correctamente")
-                st.rerun()
-    
-    # ============================================================
-    # FILTROS
-    # ============================================================
-    st.markdown("### 🔍 Filtros")
-    
-    # ============================================================
-    # FILTRO POR FECHAS (RANGO)
-    # ============================================================
-    col1, col2 = st.columns(2)
-    with col1:
-        fecha_inicio = st.date_input("Fecha de inicio", value=date(2026, 1, 1), key="reporte_fecha_inicio")
-    with col2:
-        fecha_fin = st.date_input("Fecha de fin", value=date.today(), key="reporte_fecha_fin")
-    
-    # ============================================================
-    # FILTRO POR QUINCENA (OPCIONAL)
-    # ============================================================
-    quincena_opcion = st.selectbox(
-        "Quincena",
-        options=["Ambas", "Quincena 1 (1-15)", "Quincena 2 (16-31)"],
-        key="reporte_quincena"
-    )
-    
-    # ============================================================
-    # FILTRO POR EMPLEADO
-    # ============================================================
-    empleados_opcion = st.selectbox(
-        "Empleado (opcional)",
-        options=["Todos"] + [f"{e['nombre_completo']}" for e in obtener_lista_empleados()],
-        key="reporte_empleado"
-    )
-    
-    # ============================================================
-    # BOTÓN PARA GENERAR REPORTE
-    # ============================================================
-    if st.button("📊 Generar Reporte", use_container_width=True):
-        with st.spinner("Generando reporte..."):
-            # Ajustar por quincena
-            if quincena_opcion == "Quincena 1 (1-15)":
-                fecha_fin = date(fecha_inicio.year, fecha_inicio.month, 15)
-            elif quincena_opcion == "Quincena 2 (16-31)":
-                from calendar import monthrange
-                _, last_day = monthrange(fecha_inicio.year, fecha_inicio.month)
-                fecha_inicio = date(fecha_inicio.year, fecha_inicio.month, 16)
-                fecha_fin = date(fecha_inicio.year, fecha_inicio.month, last_day)
-                
-            # Determinar ID del empleado
-            id_empleado = None
-            if empleados_opcion != "Todos":
-                empleados = obtener_lista_empleados()
-                for emp in empleados:
-                    if f"{emp['nombre_completo']}" == empleados_opcion:
-                        id_empleado = emp['id_empleado']
-                        break
-            
-            # Obtener datos del reporte
-            df = obtener_reporte_vacaciones(
-                fecha_inicio=fecha_inicio,
-                fecha_fin=fecha_fin,
-                id_empleado=id_empleado,
-                quincena=quincena_opcion
-            )
-            
-            if df.empty:
-                st.warning("No hay vacaciones registradas para los filtros seleccionados")
-            else:
-                st.success(f"✅ {len(df)} registros encontrados")
-                
-                # 🔥 Mostrar el filtro aplicado
-                st.caption(f"📅 Período: {fecha_inicio.strftime('%d/%m/%Y')} al {fecha_fin.strftime('%d/%m/%Y')}")
-                
-                # Mostrar datos
-                st.markdown("### 📋 Resultados")
-                st.dataframe(df, use_container_width=True)
-                
-                # Resumen
-                st.markdown("### 📊 Resumen")
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    total_empleados = df['NOMBRE'].nunique() if 'NOMBRE' in df.columns else 0
-                    st.metric("👥 Empleados", total_empleados)
-                
-                with col2:
-                    total_dias_habiles = df['DIA HABIL'].sum() if 'DIA HABIL' in df.columns else 0
-                    st.metric("📅 Días hábiles totales", total_dias_habiles)
-                
-                with col3:
-                    total_dias_no_habiles = df['DIA NO HABIL'].sum() if 'DIA NO HABIL' in df.columns else 0
-                    st.metric("📅 Días no hábiles", total_dias_no_habiles)
-                
-                # Botón para descargar Excel
-                st.markdown("### 📥 Descargar Reporte")
-                
-                excel_data = generar_excel_reporte_vacaciones(df)
-                if excel_data:
-                    nombre_archivo = f"reporte_vacaciones_{fecha_inicio.strftime('%Y%m%d')}_{fecha_fin.strftime('%Y%m%d')}_{quincena_opcion.replace(' ', '_')}.xlsx"
-                    st.download_button(
-                        label="📥 Descargar Excel",
-                        data=excel_data,
-                        file_name=nombre_archivo,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-# ============================================================
-# FUNCIÓN ORQUESTADORA (MENÚ PRINCIPAL DE NEXO PEOPLE)
-# ============================================================
-
-def nexo_people(usuario):
-    """
-    Función orquestadora que maneja el menú principal de Nexo People.
-    """
-    opcion = st.sidebar.selectbox(
-        "Nexo People",
-        ["In & Out", "Ficha de empleados", "Reporte de vacaciones"],
-        key="nexo_people_menu",
-    )
-
-    if opcion == "In & Out":
-        run_in_out(usuario)
-    elif opcion == "Ficha de empleados":
-        run_ficha(usuario)
-    else:
-        run_reporte_vacaciones(usuario)
-
-
-# modulos/hexagon_colombia/nexo_people.py
-
-# modulos/hexagon_colombia/nexo_people.py
-
-def run_reporte_vacaciones(usuario):
-    """
     Módulo de Reporte de Vacaciones.
     Incluye:
     1. Centro de Control de Vacaciones (dashboard)
@@ -1057,3 +900,260 @@ def run_reporte_vacaciones(usuario):
                             file_name=nombre_archivo,
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
+# ============================================================
+# FUNCIÓN ORQUESTADORA (MENÚ PRINCIPAL DE NEXO PEOPLE)
+# ============================================================
+
+def nexo_people(usuario):
+    """
+    Función orquestadora que maneja el menú principal de Nexo People.
+    """
+    opcion = st.sidebar.selectbox(
+        "Nexo People",
+        ["In & Out", "Ficha de empleados", "Reporte de vacaciones"],
+        key="nexo_people_menu",
+    )
+
+    if opcion == "In & Out":
+        run_in_out(usuario)
+    elif opcion == "Ficha de empleados":
+        run_ficha(usuario)
+    else:
+        run_reporte_vacaciones(usuario)
+
+
+def obtener_dashboard_vacaciones():
+    """
+    Obtener indicadores agregados para el dashboard de vacaciones.
+    SIN subconsultas correlacionadas.
+    """
+    query = """
+    WITH 
+    -- 1. Empleados activos con sus datos
+    empleados_activos AS (
+      SELECT 
+        e.id_empleado,
+        e.nombres,
+        e.apellidos,
+        e.cedula,
+        e.fecha_ingreso_empresa,
+        e.id_empresa,
+        e.id_departamento,
+        e.id_supervisor,
+        emp.nombre AS empresa_nombre,
+        dep.nombre AS departamento_nombre,
+        CONCAT(sup.nombres, ' ', sup.apellidos) AS supervisor_nombre,
+        est.nombre AS estado_empleado
+      FROM `nexo_people.empleados` e
+      LEFT JOIN `nexo_people.empresas` emp ON e.id_empresa = emp.id_empresa
+      LEFT JOIN `nexo_people.catalogo_departamentos_empresa` dep ON e.id_departamento = dep.id_departamento
+      LEFT JOIN `nexo_people.empleados` sup ON e.id_supervisor = sup.id_empleado
+      LEFT JOIN `nexo_people.catalogo_estados_empleado` est ON e.id_estado_empleado = est.id_estado_empleado
+      WHERE est.nombre = 'Activo'
+    ),
+    
+    -- 2. Políticas de vacaciones (días por mes)
+    politicas AS (
+      SELECT 
+        id_empresa,
+        ROUND(dias_por_anio / 12, 2) AS dias_por_mes
+      FROM `nexo_people.politicas_vacaciones`
+      WHERE estado = 'ACTIVO'
+    ),
+    
+    -- 3. Vacaciones usadas por empleado
+    vacaciones_usadas AS (
+      SELECT 
+        id_empleado,
+        COALESCE(SUM(dias_calculados), 0) AS dias_usados
+      FROM `nexo_people.incidencias`
+      WHERE id_tipo_incidencia = (
+        SELECT id_tipo_incidencia 
+        FROM `nexo_people.catalogo_tipos_incidencia` 
+        WHERE nombre = 'VACACIONES'
+      )
+      AND estado = 'Aprobado'
+      GROUP BY id_empleado
+    ),
+    
+    -- 4. Última vacación por empleado
+    ultima_vacacion AS (
+      SELECT 
+        id_empleado,
+        MAX(fecha_fin) AS ultima_vacacion
+      FROM `nexo_people.incidencias`
+      WHERE id_tipo_incidencia = (
+        SELECT id_tipo_incidencia 
+        FROM `nexo_people.catalogo_tipos_incidencia` 
+        WHERE nombre = 'VACACIONES'
+      )
+      AND estado = 'Aprobado'
+      GROUP BY id_empleado
+    ),
+    
+    -- 5. Próxima vacación por empleado
+    proxima_vacacion AS (
+      SELECT 
+        id_empleado,
+        fecha_inicio AS proxima_vacacion,
+        fecha_fin AS proxima_vacacion_fin,
+        ROW_NUMBER() OVER (PARTITION BY id_empleado ORDER BY fecha_inicio ASC) AS rn
+      FROM `nexo_people.incidencias`
+      WHERE id_tipo_incidencia = (
+        SELECT id_tipo_incidencia 
+        FROM `nexo_people.catalogo_tipos_incidencia` 
+        WHERE nombre = 'VACACIONES'
+      )
+      AND estado = 'Aprobado'
+      AND fecha_inicio >= CURRENT_DATE()
+    )
+    
+    -- 6. Consulta principal
+    SELECT 
+      ea.id_empleado,
+      ea.nombres,
+      ea.apellidos,
+      ea.cedula,
+      ea.fecha_ingreso_empresa,
+      ea.empresa_nombre,
+      ea.departamento_nombre,
+      ea.supervisor_nombre,
+      ea.estado_empleado,
+      
+      -- Días ganados
+      ROUND(
+        DATE_DIFF(CURRENT_DATE(), ea.fecha_ingreso_empresa, MONTH) * COALESCE(p.dias_por_mes, 1.25),
+        2
+      ) AS dias_ganados,
+      
+      -- Días usados
+      COALESCE(vu.dias_usados, 0) AS dias_usados,
+      
+      -- Última vacación
+      uv.ultima_vacacion,
+      
+      -- Próxima vacación (solo la primera)
+      pv.proxima_vacacion,
+      pv.proxima_vacacion_fin,
+      
+      -- Saldo
+      ROUND(
+        DATE_DIFF(CURRENT_DATE(), ea.fecha_ingreso_empresa, MONTH) * COALESCE(p.dias_por_mes, 1.25) - COALESCE(vu.dias_usados, 0),
+        2
+      ) AS saldo,
+      
+      -- Estado del saldo
+      CASE 
+        WHEN ROUND(
+          DATE_DIFF(CURRENT_DATE(), ea.fecha_ingreso_empresa, MONTH) * COALESCE(p.dias_por_mes, 1.25) - COALESCE(vu.dias_usados, 0),
+          2
+        ) < 0 THEN 'NEGATIVO'
+        WHEN ROUND(
+          DATE_DIFF(CURRENT_DATE(), ea.fecha_ingreso_empresa, MONTH) * COALESCE(p.dias_por_mes, 1.25) - COALESCE(vu.dias_usados, 0),
+          2
+        ) < 5 THEN 'BAJO'
+        WHEN ROUND(
+          DATE_DIFF(CURRENT_DATE(), ea.fecha_ingreso_empresa, MONTH) * COALESCE(p.dias_por_mes, 1.25) - COALESCE(vu.dias_usados, 0),
+          2
+        ) <= 15 THEN 'NORMAL'
+        ELSE 'ACUMULADO'
+      END AS estado_saldo,
+      
+      -- Antigüedad de la última vacación
+      CASE 
+        WHEN uv.ultima_vacacion IS NULL THEN 'NUNCA'
+        WHEN DATE_DIFF(CURRENT_DATE(), uv.ultima_vacacion, MONTH) >= 12 THEN 'MAS_12_MESES'
+        WHEN DATE_DIFF(CURRENT_DATE(), uv.ultima_vacacion, MONTH) >= 6 THEN 'MAS_6_MESES'
+        ELSE 'RECIENTE'
+      END AS antiguedad_vacacion,
+      
+      -- Días sin vacaciones
+      DATE_DIFF(CURRENT_DATE(), uv.ultima_vacacion, DAY) AS dias_sin_vacaciones
+      
+    FROM empleados_activos ea
+    LEFT JOIN politicas p ON ea.id_empresa = p.id_empresa
+    LEFT JOIN vacaciones_usadas vu ON ea.id_empleado = vu.id_empleado
+    LEFT JOIN ultima_vacacion uv ON ea.id_empleado = uv.id_empleado
+    LEFT JOIN proxima_vacacion pv ON ea.id_empleado = pv.id_empleado AND pv.rn = 1
+    """
+    
+    from services.bigquery import ejecutar_query
+    import pandas as pd
+    from datetime import datetime
+    
+    df = ejecutar_query(query)
+    
+    if df.empty:
+        return {
+            "resumen": {
+                "total_empleados": 0,
+                "negativos": 0,
+                "acumulados": 0,
+                "bajos": 0,
+                "normales": 0,
+                "sin_vacaciones_12": 0
+            },
+            "distribucion": [],
+            "vacaciones_por_mes": [],
+            "proximas_30_dias": [],
+            "sin_vacaciones_12_meses": [],
+            "empleados_detalle": []
+        }
+    
+    # 🔥 CONVERTIR FECHAS A DATETIME
+    for col in ['fecha_ingreso_empresa', 'ultima_vacacion', 'proxima_vacacion', 'proxima_vacacion_fin']:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
+    
+    # 🔥 CALCULAR INDICADORES
+    total_empleados = len(df)
+    negativos = len(df[df['estado_saldo'] == 'NEGATIVO'])
+    acumulados = len(df[df['estado_saldo'] == 'ACUMULADO'])
+    bajos = len(df[df['estado_saldo'] == 'BAJO'])
+    normales = len(df[df['estado_saldo'] == 'NORMAL'])
+    sin_vacaciones_12 = len(df[df['antiguedad_vacacion'] == 'MAS_12_MESES'])
+    
+    # 🔥 VACACIONES POR MES (con manejo de NaT)
+    df_proximas = df[df['proxima_vacacion'].notna()].copy()
+    if not df_proximas.empty:
+        df_proximas['mes'] = df_proximas['proxima_vacacion'].dt.month
+        df_proximas['nombre_mes'] = df_proximas['proxima_vacacion'].dt.strftime('%B')
+        vacaciones_por_mes = df_proximas.groupby(['mes', 'nombre_mes']).size().reset_index(name='cantidad')
+        vacaciones_por_mes = vacaciones_por_mes.sort_values('mes').to_dict('records')
+    else:
+        vacaciones_por_mes = []
+    
+    # 🔥 PRÓXIMOS 30 DÍAS (con manejo de NaT)
+    ahora = pd.Timestamp.now()
+    df_proximas_30 = df[
+        df['proxima_vacacion'].notna() & 
+        (df['proxima_vacacion'] <= ahora + pd.Timedelta(days=30))
+    ].copy()
+    df_proximas_30 = df_proximas_30.sort_values('proxima_vacacion')
+    proximas_30_dias = df_proximas_30.to_dict('records')
+    
+    # 🔥 SIN VACACIONES > 12 MESES
+    df_sin_12 = df[df['antiguedad_vacacion'] == 'MAS_12_MESES'].copy()
+    df_sin_12 = df_sin_12.sort_values('dias_sin_vacaciones', ascending=False)
+    sin_vacaciones_12_meses = df_sin_12.to_dict('records')
+    
+    return {
+        "resumen": {
+            "total_empleados": total_empleados,
+            "negativos": negativos,
+            "acumulados": acumulados,
+            "bajos": bajos,
+            "normales": normales,
+            "sin_vacaciones_12": sin_vacaciones_12
+        },
+        "distribucion": [
+            {"estado": "🔴 Negativo", "cantidad": negativos, "color": "danger"},
+            {"estado": "🟡 Bajo", "cantidad": bajos, "color": "warning"},
+            {"estado": "🟢 Normal", "cantidad": normales, "color": "success"},
+            {"estado": "🟠 Acumulado", "cantidad": acumulados, "color": "primary"}
+        ],
+        "vacaciones_por_mes": vacaciones_por_mes,
+        "proximas_30_dias": proximas_30_dias,
+        "sin_vacaciones_12_meses": sin_vacaciones_12_meses,
+        "empleados_detalle": df.to_dict('records')
+    }

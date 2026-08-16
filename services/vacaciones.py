@@ -325,13 +325,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     # ============================================================
     # BASE DE LA CONSULTA
     # ============================================================
-        # 🔥 DEPURACIÓN
-    import streamlit as st
-    st.write(f"🔍 SERVICE - Fecha Inicio: {fecha_inicio} (tipo: {type(fecha_inicio)})")
-    st.write(f"🔍 SERVICE - Fecha Fin: {fecha_fin} (tipo: {type(fecha_fin)})")
-    st.write(f"🔍 SERVICE - Quincena: {quincena}")
-    st.write(f"🔍 SERVICE - ID Empleado: {id_empleado}")
-    
+   
     base_query = """
     WITH ultimo_cargo AS (
       SELECT 
@@ -457,8 +451,6 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     # ============================================================
     # EJECUTAR
     # ============================================================
-        # 🔥 DEPURACIÓN: Mostrar la consulta SQL
-    st.code(query, language="sql")
     
     df = ejecutar_query(query, params)
     

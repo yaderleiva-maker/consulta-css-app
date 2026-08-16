@@ -354,7 +354,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     params = []
     
     # ============================================================
-    # FILTRO DE FECHAS (TRASLAPE)
+    # FILTRO DE FECHAS (TRASLAPE) - CORREGIDO
     # ============================================================
     if id_empleado:
         base_query += " AND i.id_empleado = @id_empleado"
@@ -440,11 +440,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
         "Ambas quincenas": q1_query + " UNION ALL " + q2_query,
     }
     
-    # 🔥 Si no coincide, usar "Ambas" por defecto (o lanzar error)
     if quincena_normalizada not in opciones_quincena:
-        # Mostrar advertencia y usar "Ambas"
-        #import streamlit as st
-        st.warning(f"Valor de quincena no reconocido: '{quincena}'. Usando 'Ambas'.")
         query = base_query + opciones_quincena["Ambas"]
     else:
         query = base_query + opciones_quincena[quincena_normalizada]
@@ -470,7 +466,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
             "DIA DE DESCANSO"
         ]
     
-    return df    
+    return df
     
 def generar_excel_reporte_vacaciones(df, nombre_archivo="reporte_vacaciones"):
     """

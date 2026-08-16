@@ -908,3 +908,190 @@ def nexo_people(usuario):
         run_ficha(usuario)
     else:
         run_reporte_vacaciones(usuario)
+
+
+# modulos/hexagon_colombia/nexo_people.py
+
+def run_reporte_vacaciones(usuario):
+    """
+    Módulo de Reporte de Vacaciones - Centro de Control de Vacaciones.
+    """
+    st.markdown("## 📋 Centro de Control de Vacaciones")
+    st.caption("Panorama completo de vacaciones de todos los colaboradores.")
+    
+    # ============================================================
+    # ALERTA DE INCIDENCIAS PENDIENTES
+    # ============================================================
+    pendientes = contar_incidencias_pendientes()
+    if pendientes['total_pendientes'] > 0:
+        st.warning(
+            f"⚠️ Hay **{pendientes['total_pendientes']}** incidencias pendientes de aprobación "
+            f"que afectan a **{pendientes['empleados_afectados']}** empleados."
+        )
+    
+    # ============================================================
+    # BOTÓN PARA ACTUALIZAR CÁLCULOS
+    # ============================================================
+    col_refresh, col_spacer = st.columns([1, 4])
+    with col_refresh:
+        if st.button("🔄 Actualizar cálculos", use_container_width=True):
+            with st.spinner("Calculando días hábiles..."):
+                ejecutar_merge_calculo()
+                st.success("✅ Cálculos actualizados correctamente")
+                st.rerun()
+    
+    # ============================================================
+    # OBTENER DATOS DEL DASHBOARD
+    # ============================================================
+    with st.spinner("Cargando datos de vacaciones..."):
+        dashboard = obtener_dashboard_vacaciones()
+    
+    if not dashboard or dashboard['resumen']['total_empleados'] == 0:
+        st.warning("No hay empleados activos para mostrar")
+        return
+    
+    # ============================================================
+    # 1. RESUMEN EJECUTIVO (TARJETAS)
+    # ============================================================
+    st.markdown("### 📊 Resumen Ejecutivo")
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
+    with col1:
+        st.metric("👥 Empleados Activos", dashboard['resumen']['total_empleados'])
+    with col2:
+        st.metric("🔴 Saldo Negativo", dashboard['resumen']['negativos'], delta_color="inverse")
+    with col3:
+        st.metric("🟠 Acumulado (+15 días)", dashboard['resumen']['acumulados'])
+    with col4:
+        st.metric("🟡 Saldo Bajo", dashboard['resumen']['bajos'])
+    with col5:
+        st.metric("⏰ +12 meses sin vacaciones", dashboard['resumen']['sin_vacaciones_12'], delta_color="inverse")
+    
+    # ============================================================
+    # 2. SEMÁFORO DE VACACIONES
+    # ============================================================
+    st.markdown("---")
+    st.markdown("### 🚦 Semáforo de Vacaciones")
+    
+    cols = st.columns(4)
+    colores = {"danger": "🔴", "warning": "🟡", "success": "🟢", "primary": "🟠"}
+    for idx, item in enumerate(dashboard['distribucion']):
+        with cols[idx]:
+            st.markdown(f"#### {item['estado']}")
+            st.markdown(f"<h1 style='text-align: center;'>{item['cantidad']}</h1>", unsafe_allow_html=True)
+    
+    # ============================================================
+    # 3. ALERTAS CRÍTICAS
+    # ============================================================
+    st.markdown("---")
+    st.markdown("### 🚨 Alertas Críticas")
+    
+    # 3.1 Saldo negativo
+    if dashboard['resumen']['negativos'] > 0:
+        with st.expander(f"🔴 {dashboard['resumen']['negativos']} empleados con saldo negativo", expanded=True):
+            df_negativos = pd.DataFrame(dashboard['empleados_detalle'])
+            df_negativos = df_negativos[df_negativos['estado_saldo'] == 'NEGATIVO']
+            st.dataframe(
+                df_negativos[['nombres', 'apellidos', 'cedula', 'saldo', 'dias_usados', 'dias_ganados']],
+                use_container_width=True,
+                hide_index=True
+            )
+    
+    # 3.2 Sin vacaciones > 12 meses
+    if dashboard['resumen']['sin_vacaciones_12'] > 0:
+        with st.expander(f"⏰ {dashboard['resumen']['sin_vacaciones_12']} empleados sin vacaciones en más de 12 meses", expanded=True):
+            df_sin_12 = pd.DataFrame(dashboard['sin_vacaciones_12_meses'])
+            st.dataframe(
+                df_sin_12[['nombres', 'apellidos', 'cedula', 'dias_sin_vacaciones', 'ultima_vacacion', 'saldo']],
+                use_container_width=True,
+                hide_index=True
+            )
+    
+    # 3.3 Acumulado > 15 días
+    if dashboard['resumen']['acumulados'] > 0:
+        with st.expander(f"🟠 {dashboard['resumen']['acumulados']} empleados con más de 15 días acumulados", expanded=False):
+            df_acumulados = pd.DataFrame(dashboard['empleados_detalle'])
+            df_acumulados = df_acumulados[df_acumulados['estado_saldo'] == 'ACUMULADO']
+            st.dataframe(
+                df_acumulados[['nombres', 'apellidos', 'cedula', 'saldo', 'ultima_vacacion', 'proxima_vacacion']],
+                use_container_width=True,
+                hide_index=True
+            )
+    
+    # ============================================================
+    # 4. VACACIONES POR MES
+    # ============================================================
+    if dashboard['vacaciones_por_mes']:
+        st.markdown("---")
+        st.markdown("### 📅 Vacaciones Programadas por Mes")
+        df_meses = pd.DataFrame(dashboard['vacaciones_por_mes'])
+        st.bar_chart(df_meses.set_index('nombre_mes')['cantidad'])
+    
+    # ============================================================
+    # 5. PRÓXIMOS 30 DÍAS
+    # ============================================================
+    if dashboard['proximas_30_dias']:
+        st.markdown("---")
+        st.markdown("### 📅 Próximas Vacaciones (30 días)")
+        df_proximas = pd.DataFrame(dashboard['proximas_30_dias'])
+        st.dataframe(
+            df_proximas[['nombres', 'apellidos', 'proxima_vacacion', 'proxima_vacacion_fin', 'saldo']],
+            use_container_width=True,
+            hide_index=True
+        )
+    
+    # ============================================================
+    # 6. TABLA FILTRABLE DE EMPLEADOS
+    # ============================================================
+    st.markdown("---")
+    st.markdown("### 🔎 Detalle de Empleados")
+    
+    df_detalle = pd.DataFrame(dashboard['empleados_detalle'])
+    
+    # Filtros
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        estado_filtro = st.multiselect(
+            "Estado de Saldo",
+            options=['NEGATIVO', 'BAJO', 'NORMAL', 'ACUMULADO'],
+            default=[]
+        )
+    with col2:
+        deptos = sorted(df_detalle['departamento_nombre'].dropna().unique().tolist())
+        depto_filtro = st.multiselect("Departamento", options=deptos, default=[])
+    with col3:
+        busqueda = st.text_input("🔍 Buscar por nombre o cédula", placeholder="Ej: Juan Pérez")
+    
+    # Aplicar filtros
+    df_filtrado = df_detalle.copy()
+    if estado_filtro:
+        df_filtrado = df_filtrado[df_filtrado['estado_saldo'].isin(estado_filtro)]
+    if depto_filtro:
+        df_filtrado = df_filtrado[df_filtrado['departamento_nombre'].isin(depto_filtro)]
+    if busqueda:
+        df_filtrado = df_filtrado[
+            df_filtrado['nombres'].str.contains(busqueda, case=False, na=False) |
+            df_filtrado['apellidos'].str.contains(busqueda, case=False, na=False) |
+            df_filtrado['cedula'].str.contains(busqueda, case=False, na=False)
+        ]
+    
+    # Mostrar tabla
+    st.dataframe(
+        df_filtrado[['nombres', 'apellidos', 'cedula', 'departamento_nombre', 'supervisor_nombre', 'saldo', 'estado_saldo', 'ultima_vacacion', 'proxima_vacacion']],
+        use_container_width=True,
+        hide_index=True
+    )
+    
+    # ============================================================
+    # 7. BOTÓN PARA DESCARGAR EXCEL
+    # ============================================================
+    st.markdown("---")
+    if st.button("📥 Descargar Reporte Completo", use_container_width=True):
+        excel_data = generar_excel_reporte_vacaciones(df_detalle)
+        if excel_data:
+            st.download_button(
+                label="✅ Descargar Excel",
+                data=excel_data,
+                file_name=f"control_vacaciones_{date.today().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )

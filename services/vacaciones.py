@@ -452,8 +452,7 @@ def obtener_reporte_vacaciones(fecha_inicio=None, fecha_fin=None, id_empleado=No
     # EJECUTAR
     # ============================================================
     
-    df = ejecutar_query(query, params)
-    
+ 
     df = ejecutar_query(query, params)
     
     # Renombrar columnas

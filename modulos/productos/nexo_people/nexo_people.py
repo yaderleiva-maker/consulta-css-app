@@ -27,7 +27,8 @@ from services.vacaciones import (
     ejecutar_merge_calculo,
     contar_incidencias_pendientes,
     obtener_reporte_vacaciones,
-    generar_excel_reporte_vacaciones
+    generar_excel_reporte_vacaciones,
+    obtener_dashboard_vacaciones
 )
 
 # ============================================================

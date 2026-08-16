@@ -776,9 +776,6 @@ def run_reporte_vacaciones(usuario):
     # ============================================================
     # TAB 1: CENTRO DE CONTROL DE VACACIONES
     # ============================================================
-    # ============================================================
-    # TAB 1: CENTRO DE CONTROL DE VACACIONES
-    # ============================================================
     with tab1:
         st.markdown("### 🏖️ Centro de Control de Vacaciones")
         st.caption("Panorama completo de vacaciones de todos los colaboradores.")
@@ -793,84 +790,74 @@ def run_reporte_vacaciones(usuario):
             st.warning("No hay empleados activos para mostrar")
             return
         
-    # ============================================================
-    # 1. RESUMEN EJECUTIVO + SEMÁFORO (FUSIONADO)
-    # ============================================================
-    st.markdown("#### 📊 Resumen Ejecutivo")
-    
-    # Obtener datos del dashboard
-    resumen = dashboard['resumen']
-    distribucion = {item['estado']: item['cantidad'] for item in dashboard['distribucion']}
-    
-    # 🔥 TARJETAS FUSIONADAS
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    
-    with col1:
-        st.markdown(f"""
-        <div style="background-color: #F8F9FA; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #EAEAEA; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
-            <div style="font-size: 28px; font-weight: 700; color: #1D3557;">{resumen['total_empleados']}</div>
-            <div style="font-size: 13px; color: #6C757D; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">👥 Empleados</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col2:
-        st.markdown(f"""
-        <div style="background-color: #E8F5E9; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #C8E6C9; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
-            <div style="font-size: 28px; font-weight: 700; color: #2E7D32;">{distribucion.get('🟢 Normal', 0)}</div>
-            <div style="font-size: 13px; color: #2E7D32; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">🟢 Normal</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown(f"""
-        <div style="background-color: #FFF3E0; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #FFE0B2; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
-            <div style="font-size: 28px; font-weight: 700; color: #E65100;">{distribucion.get('🟡 Bajo', 0)}</div>
-            <div style="font-size: 13px; color: #E65100; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">🟡 Bajo</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col4:
-        st.markdown(f"""
-        <div style="background-color: #E3F2FD; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #BBDEFB; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
-            <div style="font-size: 28px; font-weight: 700; color: #0D47A1;">{distribucion.get('🟠 Acumulado', 0)}</div>
-            <div style="font-size: 13px; color: #0D47A1; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">🟠 Acumulado</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col5:
-        st.markdown(f"""
-        <div style="background-color: #FFEBEE; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #FFCDD2; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
-            <div style="font-size: 28px; font-weight: 700; color: #C62828;">{resumen['negativos']}</div>
-            <div style="font-size: 13px; color: #C62828; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">⛔ Negativo</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with col6:
-        st.markdown(f"""
-        <div style="background-color: #F3E5F5; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #E1BEE7; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
-            <div style="font-size: 28px; font-weight: 700; color: #6A1B9A;">{resumen['sin_vacaciones_12']}</div>
-            <div style="font-size: 13px; color: #6A1B9A; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">⏰ +12 meses</div>
-        </div>
-        """, unsafe_allow_html=True)        
         # ============================================================
-        # 2. SEMÁFORO DE VACACIONES
+        # 1. RESUMEN EJECUTIVO + SEMÁFORO (FUSIONADO)
         # ============================================================
-        st.markdown("---")
-        st.markdown("#### 🚦 Semáforo de Vacaciones")
+        st.markdown("#### 📊 Resumen Ejecutivo")
         
-        cols = st.columns(4)
-        for idx, item in enumerate(dashboard['distribucion']):
-            with cols[idx]:
-                st.markdown(f"##### {item['estado']}")
-                st.markdown(f"<h1 style='text-align: center;'>{item['cantidad']}</h1>", unsafe_allow_html=True)
+        # Obtener datos del dashboard
+        resumen = dashboard['resumen']
+        distribucion = {item['estado']: item['cantidad'] for item in dashboard['distribucion']}
+        
+        # 🔥 TARJETAS FUSIONADAS
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        
+        with col1:
+            st.markdown(f"""
+            <div style="background-color: #F8F9FA; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #EAEAEA; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+                <div style="font-size: 28px; font-weight: 700; color: #1D3557;">{resumen['total_empleados']}</div>
+                <div style="font-size: 13px; color: #6C757D; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">👥 Empleados</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div style="background-color: #E8F5E9; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #C8E6C9; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+                <div style="font-size: 28px; font-weight: 700; color: #2E7D32;">{distribucion.get('🟢 Normal', 0)}</div>
+                <div style="font-size: 13px; color: #2E7D32; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">🟢 Normal</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+            <div style="background-color: #FFF3E0; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #FFE0B2; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+                <div style="font-size: 28px; font-weight: 700; color: #E65100;">{distribucion.get('🟡 Bajo', 0)}</div>
+                <div style="font-size: 13px; color: #E65100; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">🟡 Bajo</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+            <div style="background-color: #E3F2FD; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #BBDEFB; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+                <div style="font-size: 28px; font-weight: 700; color: #0D47A1;">{distribucion.get('🟠 Acumulado', 0)}</div>
+                <div style="font-size: 13px; color: #0D47A1; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">🟠 Acumulado</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col5:
+            st.markdown(f"""
+            <div style="background-color: #FFEBEE; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #FFCDD2; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+                <div style="font-size: 28px; font-weight: 700; color: #C62828;">{resumen['negativos']}</div>
+                <div style="font-size: 13px; color: #C62828; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">⛔ Negativo</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col6:
+            st.markdown(f"""
+            <div style="background-color: #F3E5F5; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #E1BEE7; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+                <div style="font-size: 28px; font-weight: 700; color: #6A1B9A;">{resumen['sin_vacaciones_12']}</div>
+                <div style="font-size: 13px; color: #6A1B9A; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">⏰ +12 meses</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("---")
         
         # ============================================================
-        # 3. ALERTAS CRÍTICAS
+        # 2. ALERTAS CRÍTICAS
         # ============================================================
-        st.markdown("---")
         st.markdown("#### 🚨 Alertas Críticas")
         
-        # 3.1 Saldo negativo
+        # 2.1 Saldo negativo
         if dashboard['resumen']['negativos'] > 0:
             with st.expander(f"🔴 {dashboard['resumen']['negativos']} empleados con saldo negativo", expanded=True):
                 df_negativos = pd.DataFrame(dashboard['empleados_detalle'])
@@ -881,7 +868,7 @@ def run_reporte_vacaciones(usuario):
                     hide_index=True
                 )
         
-        # 3.2 Sin vacaciones > 12 meses
+        # 2.2 Sin vacaciones > 12 meses
         if dashboard['resumen']['sin_vacaciones_12'] > 0:
             with st.expander(f"⏰ {dashboard['resumen']['sin_vacaciones_12']} empleados sin vacaciones en más de 12 meses", expanded=True):
                 df_sin_12 = pd.DataFrame(dashboard['sin_vacaciones_12_meses'])
@@ -891,7 +878,7 @@ def run_reporte_vacaciones(usuario):
                     hide_index=True
                 )
         
-        # 3.3 Acumulado > 15 días
+        # 2.3 Acumulado > 15 días
         if dashboard['resumen']['acumulados'] > 0:
             with st.expander(f"🟠 {dashboard['resumen']['acumulados']} empleados con más de 15 días acumulados", expanded=False):
                 df_acumulados = pd.DataFrame(dashboard['empleados_detalle'])
@@ -903,7 +890,7 @@ def run_reporte_vacaciones(usuario):
                 )
         
         # ============================================================
-        # 4. VACACIONES POR MES
+        # 3. VACACIONES POR MES
         # ============================================================
         if dashboard['vacaciones_por_mes']:
             st.markdown("---")
@@ -912,7 +899,7 @@ def run_reporte_vacaciones(usuario):
             st.bar_chart(df_meses.set_index('nombre_mes')['cantidad'])
         
         # ============================================================
-        # 5. PRÓXIMOS 30 DÍAS
+        # 4. PRÓXIMOS 30 DÍAS
         # ============================================================
         if dashboard['proximas_30_dias']:
             st.markdown("---")
@@ -925,7 +912,7 @@ def run_reporte_vacaciones(usuario):
             )
         
         # ============================================================
-        # 6. TABLA FILTRABLE DE EMPLEADOS
+        # 5. TABLA FILTRABLE DE EMPLEADOS
         # ============================================================
         st.markdown("---")
         st.markdown("#### 🔎 Detalle de Empleados")
@@ -967,7 +954,7 @@ def run_reporte_vacaciones(usuario):
         )
         
         # ============================================================
-        # 7. BOTÓN PARA DESCARGAR EXCEL
+        # 6. BOTÓN PARA DESCARGAR EXCEL
         # ============================================================
         st.markdown("---")
         if st.button("📥 Descargar Reporte Completo", use_container_width=True):
@@ -978,8 +965,7 @@ def run_reporte_vacaciones(usuario):
                     data=excel_data,
                     file_name=f"control_vacaciones_{date.today().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-    
+                )    
     # ============================================================
     # TAB 2: REPORTE DE VACACIONES POR QUINCENA (ORIGINAL)
     # ============================================================

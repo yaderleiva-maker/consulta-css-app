@@ -676,6 +676,7 @@ def obtener_dashboard_vacaciones():
     
     from services.bigquery import ejecutar_query
     import pandas as pd
+    from datetime import datetime
     
     df = ejecutar_query(query)
     
@@ -696,6 +697,11 @@ def obtener_dashboard_vacaciones():
             "empleados_detalle": []
         }
     
+    # 🔥 CONVERTIR FECHAS A DATETIME
+    for col in ['fecha_ingreso_empresa', 'ultima_vacacion', 'proxima_vacacion', 'proxima_vacacion_fin']:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors='coerce')
+    
     # 🔥 CALCULAR INDICADORES
     total_empleados = len(df)
     negativos = len(df[df['estado_saldo'] == 'NEGATIVO'])
@@ -704,7 +710,7 @@ def obtener_dashboard_vacaciones():
     normales = len(df[df['estado_saldo'] == 'NORMAL'])
     sin_vacaciones_12 = len(df[df['antiguedad_vacacion'] == 'MAS_12_MESES'])
     
-    # 🔥 VACACIONES POR MES
+    # 🔥 VACACIONES POR MES (con manejo de NaT)
     df_proximas = df[df['proxima_vacacion'].notna()].copy()
     if not df_proximas.empty:
         df_proximas['mes'] = df_proximas['proxima_vacacion'].dt.month
@@ -714,10 +720,11 @@ def obtener_dashboard_vacaciones():
     else:
         vacaciones_por_mes = []
     
-    # 🔥 PRÓXIMOS 30 DÍAS
+    # 🔥 PRÓXIMOS 30 DÍAS (con manejo de NaT)
+    ahora = pd.Timestamp.now()
     df_proximas_30 = df[
         df['proxima_vacacion'].notna() & 
-        (df['proxima_vacacion'] <= pd.Timestamp.now() + pd.Timedelta(days=30))
+        (df['proxima_vacacion'] <= ahora + pd.Timedelta(days=30))
     ].copy()
     df_proximas_30 = df_proximas_30.sort_values('proxima_vacacion')
     proximas_30_dias = df_proximas_30.to_dict('records')

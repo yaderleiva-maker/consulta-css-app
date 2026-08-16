@@ -793,23 +793,65 @@ def run_reporte_vacaciones(usuario):
             st.warning("No hay empleados activos para mostrar")
             return
         
-        # ============================================================
-        # 1. RESUMEN EJECUTIVO (TARJETAS)
-        # ============================================================
-        st.markdown("#### 📊 Resumen Ejecutivo")
-        
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.metric("👥 Empleados Activos", dashboard['resumen']['total_empleados'])
-        with col2:
-            st.metric("🔴 Saldo Negativo", dashboard['resumen']['negativos'], delta_color="inverse")
-        with col3:
-            st.metric("🟠 Acumulado (+15 días)", dashboard['resumen']['acumulados'])
-        with col4:
-            st.metric("🟡 Saldo Bajo", dashboard['resumen']['bajos'])
-        with col5:
-            st.metric("⏰ +12 meses sin vacaciones", dashboard['resumen']['sin_vacaciones_12'], delta_color="inverse")
-        
+    # ============================================================
+    # 1. RESUMEN EJECUTIVO + SEMÁFORO (FUSIONADO)
+    # ============================================================
+    st.markdown("#### 📊 Resumen Ejecutivo")
+    
+    # Obtener datos del dashboard
+    resumen = dashboard['resumen']
+    distribucion = {item['estado']: item['cantidad'] for item in dashboard['distribucion']}
+    
+    # 🔥 TARJETAS FUSIONADAS
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    
+    with col1:
+        st.markdown(f"""
+        <div style="background-color: #F8F9FA; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #EAEAEA; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+            <div style="font-size: 28px; font-weight: 700; color: #1D3557;">{resumen['total_empleados']}</div>
+            <div style="font-size: 13px; color: #6C757D; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">👥 Empleados</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div style="background-color: #E8F5E9; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #C8E6C9; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+            <div style="font-size: 28px; font-weight: 700; color: #2E7D32;">{distribucion.get('🟢 Normal', 0)}</div>
+            <div style="font-size: 13px; color: #2E7D32; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">🟢 Normal</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+        <div style="background-color: #FFF3E0; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #FFE0B2; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+            <div style="font-size: 28px; font-weight: 700; color: #E65100;">{distribucion.get('🟡 Bajo', 0)}</div>
+            <div style="font-size: 13px; color: #E65100; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">🟡 Bajo</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+        <div style="background-color: #E3F2FD; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #BBDEFB; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+            <div style="font-size: 28px; font-weight: 700; color: #0D47A1;">{distribucion.get('🟠 Acumulado', 0)}</div>
+            <div style="font-size: 13px; color: #0D47A1; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">🟠 Acumulado</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col5:
+        st.markdown(f"""
+        <div style="background-color: #FFEBEE; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #FFCDD2; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+            <div style="font-size: 28px; font-weight: 700; color: #C62828;">{resumen['negativos']}</div>
+            <div style="font-size: 13px; color: #C62828; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">⛔ Negativo</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col6:
+        st.markdown(f"""
+        <div style="background-color: #F3E5F5; border-radius: 12px; padding: 16px 12px; text-align: center; border: 1px solid #E1BEE7; box-shadow: 0 2px 4px rgba(0,0,0,0.04);">
+            <div style="font-size: 28px; font-weight: 700; color: #6A1B9A;">{resumen['sin_vacaciones_12']}</div>
+            <div style="font-size: 13px; color: #6A1B9A; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;">⏰ +12 meses</div>
+        </div>
+        """, unsafe_allow_html=True)        
         # ============================================================
         # 2. SEMÁFORO DE VACACIONES
         # ============================================================

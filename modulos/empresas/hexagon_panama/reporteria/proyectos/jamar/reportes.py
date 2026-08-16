@@ -450,5 +450,5 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
 # ============================================================
 
 REPORTES = {
-    "📋 Resumen de Cartera (Consolidado)": generar_resumen_cartera,
+    "📋 Resumen de Cartera Pre-Demanda (Consolidado)": generar_resumen_cartera,
 }

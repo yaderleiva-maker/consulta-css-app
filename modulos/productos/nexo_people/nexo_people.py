@@ -1026,15 +1026,13 @@ def run_reporte_vacaciones(usuario):
         # ============================================================
         # BOTÓN PARA GENERAR REPORTE
         # ============================================================
+        # ============================================================
+        # BOTÓN PARA GENERAR REPORTE
+        # ============================================================
         if st.button("📊 Generar Reporte", use_container_width=True):
             with st.spinner("Generando reporte..."):
-                # 🔥 INICIALIZAR VARIABLES
+                # Inicializar variables
                 id_empleado = None
-                
-                # 🔥 DEPURACIÓN: Mostrar fechas
-                st.write(f"🔍 Fecha Inicio: {fecha_inicio} (tipo: {type(fecha_inicio)})")
-                st.write(f"🔍 Fecha Fin: {fecha_fin} (tipo: {type(fecha_fin)})")
-                st.write(f"🔍 Quincena: {quincena_opcion}")
                 
                 # Ajustar por quincena
                 if quincena_opcion == "Quincena 1 (1-15)":
@@ -1051,8 +1049,6 @@ def run_reporte_vacaciones(usuario):
                         if f"{emp['nombre_completo']}" == empleados_opcion:
                             id_empleado = emp['id_empleado']
                             break
-                
-                st.write(f"🔍 Empleado ID: {id_empleado}")
                 
                 # Obtener datos del reporte
                 df = obtener_reporte_vacaciones(
@@ -1095,8 +1091,7 @@ def run_reporte_vacaciones(usuario):
                             data=excel_data,
                             file_name=nombre_archivo,
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                
+                        )                
 # ============================================================
 # FUNCIÓN ORQUESTADORA (MENÚ PRINCIPAL DE NEXO PEOPLE)
 # ============================================================

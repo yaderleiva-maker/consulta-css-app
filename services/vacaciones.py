@@ -516,3 +516,179 @@ def contar_incidencias_pendientes():
         "total_pendientes": int(df.iloc[0]['total_pendientes']),
         "empleados_afectados": int(df.iloc[0]['empleados_afectados'])
     }
+
+# services/vacaciones.py
+
+def obtener_dashboard_vacaciones():
+    """
+    Obtener indicadores agregados para el dashboard de vacaciones.
+    Retorna un diccionario con:
+    - resumen: totales generales
+    - distribucion: conteo por estado de saldo
+    - empleados_detalle: lista con todos los empleados y sus métricas
+    - vacaciones_por_mes: agrupación de próximas vacaciones por mes
+    - proximas_30_dias: lista de vacaciones en los próximos 30 días
+    - sin_vacaciones_12_meses: empleados con +12 meses sin vacaciones
+    """
+    query = """
+    WITH empleados_activos AS (
+      SELECT 
+        e.id_empleado,
+        e.nombres,
+        e.apellidos,
+        e.cedula,
+        e.fecha_ingreso_empresa,
+        e.id_empresa,
+        e.id_departamento,
+        e.id_supervisor,
+        emp.nombre AS empresa_nombre,
+        dep.nombre AS departamento_nombre,
+        sup.nombres AS supervisor_nombre,
+        sup.apellidos AS supervisor_apellidos,
+        est.nombre AS estado_empleado
+      FROM `nexo_people.empleados` e
+      LEFT JOIN `nexo_people.empresas` emp ON e.id_empresa = emp.id_empresa
+      LEFT JOIN `nexo_people.catalogo_departamentos_empresa` dep ON e.id_departamento = dep.id_departamento
+      LEFT JOIN `nexo_people.empleados` sup ON e.id_supervisor = sup.id_empleado
+      LEFT JOIN `nexo_people.catalogo_estados_empleado` est ON e.id_estado_empleado = est.id_estado_empleado
+      WHERE est.nombre = 'Activo'
+    ),
+    saldos_empleados AS (
+      SELECT 
+        ea.id_empleado,
+        ea.nombres,
+        ea.apellidos,
+        ea.cedula,
+        ea.fecha_ingreso_empresa,
+        ea.empresa_nombre,
+        ea.departamento_nombre,
+        CONCAT(ea.supervisor_nombre, ' ', ea.supervisor_apellidos) AS supervisor_nombre,
+        ea.estado_empleado,
+        -- Días ganados (meses trabajados × política)
+        ROUND(
+          DATE_DIFF(CURRENT_DATE(), ea.fecha_ingreso_empresa, MONTH) * 
+          COALESCE((SELECT dias_por_anio/12 FROM `nexo_people.politicas_vacaciones` WHERE id_empresa = ea.id_empresa AND estado = 'ACTIVO' LIMIT 1), 1.25),
+          2
+        ) AS dias_ganados,
+        -- Días usados
+        COALESCE((
+          SELECT SUM(dias_calculados)
+          FROM `nexo_people.incidencias` i
+          WHERE i.id_empleado = ea.id_empleado
+            AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
+            AND i.estado = 'Aprobado'
+        ), 0) AS dias_usados,
+        -- Últimas vacaciones
+        (
+          SELECT MAX(fecha_fin)
+          FROM `nexo_people.incidencias` i
+          WHERE i.id_empleado = ea.id_empleado
+            AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
+            AND i.estado = 'Aprobado'
+        ) AS ultima_vacacion,
+        -- Próximas vacaciones
+        (
+          SELECT fecha_inicio
+          FROM `nexo_people.incidencias` i
+          WHERE i.id_empleado = ea.id_empleado
+            AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
+            AND i.estado = 'Aprobado'
+            AND i.fecha_inicio >= CURRENT_DATE()
+          ORDER BY i.fecha_inicio ASC
+          LIMIT 1
+        ) AS proxima_vacacion,
+        (
+          SELECT fecha_fin
+          FROM `nexo_people.incidencias` i
+          WHERE i.id_empleado = ea.id_empleado
+            AND i.id_tipo_incidencia = (SELECT id_tipo_incidencia FROM `nexo_people.catalogo_tipos_incidencia` WHERE nombre = 'VACACIONES')
+            AND i.estado = 'Aprobado'
+            AND i.fecha_inicio >= CURRENT_DATE()
+          ORDER BY i.fecha_inicio ASC
+          LIMIT 1
+        ) AS proxima_vacacion_fin
+      FROM empleados_activos ea
+    )
+    SELECT 
+      s.*,
+      ROUND(s.dias_ganados - s.dias_usados, 2) AS saldo,
+      CASE 
+        WHEN ROUND(s.dias_ganados - s.dias_usados, 2) < 0 THEN 'NEGATIVO'
+        WHEN ROUND(s.dias_ganados - s.dias_usados, 2) < 5 THEN 'BAJO'
+        WHEN ROUND(s.dias_ganados - s.dias_usados, 2) <= 15 THEN 'NORMAL'
+        ELSE 'ACUMULADO'
+      END AS estado_saldo,
+      CASE 
+        WHEN s.ultima_vacacion IS NULL THEN 'NUNCA'
+        WHEN DATE_DIFF(CURRENT_DATE(), s.ultima_vacacion, MONTH) >= 12 THEN 'MAS_12_MESES'
+        WHEN DATE_DIFF(CURRENT_DATE(), s.ultima_vacacion, MONTH) >= 6 THEN 'MAS_6_MESES'
+        ELSE 'RECIENTE'
+      END AS antiguedad_vacacion,
+      DATE_DIFF(CURRENT_DATE(), s.ultima_vacacion, DAY) AS dias_sin_vacaciones
+    FROM saldos_empleados s
+    """
+    
+    from services.bigquery import ejecutar_query
+    df = ejecutar_query(query)
+    
+    if df.empty:
+        return {
+            "resumen": {"total_empleados": 0, "negativos": 0, "acumulados": 0, "bajos": 0, "normales": 0},
+            "distribucion": [],
+            "empleados_detalle": [],
+            "vacaciones_por_mes": [],
+            "proximas_30_dias": [],
+            "sin_vacaciones_12_meses": []
+        }
+    
+    # 🔥 CALCULAR INDICADORES
+    total_empleados = len(df)
+    negativos = len(df[df['estado_saldo'] == 'NEGATIVO'])
+    acumulados = len(df[df['estado_saldo'] == 'ACUMULADO'])
+    bajos = len(df[df['estado_saldo'] == 'BAJO'])
+    normales = len(df[df['estado_saldo'] == 'NORMAL'])
+    sin_vacaciones_12 = len(df[df['antiguedad_vacacion'] == 'MAS_12_MESES'])
+    
+    # 🔥 VACACIONES POR MES (próximas vacaciones)
+    df_proximas = df[df['proxima_vacacion'].notna()].copy()
+    if not df_proximas.empty:
+        df_proximas['mes'] = df_proximas['proxima_vacacion'].dt.month
+        df_proximas['nombre_mes'] = df_proximas['proxima_vacacion'].dt.strftime('%B')
+        vacaciones_por_mes = df_proximas.groupby(['mes', 'nombre_mes']).size().reset_index(name='cantidad')
+        vacaciones_por_mes = vacaciones_por_mes.sort_values('mes').to_dict('records')
+    else:
+        vacaciones_por_mes = []
+    
+    # 🔥 PRÓXIMOS 30 DÍAS
+    df_proximas_30 = df[
+        df['proxima_vacacion'].notna() & 
+        (df['proxima_vacacion'] <= pd.Timestamp.now() + pd.Timedelta(days=30))
+    ].copy()
+    df_proximas_30 = df_proximas_30.sort_values('proxima_vacacion')
+    proximas_30_dias = df_proximas_30.to_dict('records')
+    
+    # 🔥 SIN VACACIONES > 12 MESES
+    df_sin_12 = df[df['antiguedad_vacacion'] == 'MAS_12_MESES'].copy()
+    df_sin_12 = df_sin_12.sort_values('dias_sin_vacaciones', ascending=False)
+    sin_vacaciones_12_meses = df_sin_12.to_dict('records')
+    
+    return {
+        "resumen": {
+            "total_empleados": total_empleados,
+            "negativos": negativos,
+            "acumulados": acumulados,
+            "bajos": bajos,
+            "normales": normales,
+            "sin_vacaciones_12": sin_vacaciones_12
+        },
+        "distribucion": [
+            {"estado": "🔴 Negativo", "cantidad": negativos, "color": "danger"},
+            {"estado": "🟡 Bajo", "cantidad": bajos, "color": "warning"},
+            {"estado": "🟢 Normal", "cantidad": normales, "color": "success"},
+            {"estado": "🟠 Acumulado", "cantidad": acumulados, "color": "primary"}
+        ],
+        "vacaciones_por_mes": vacaciones_por_mes,
+        "proximas_30_dias": proximas_30_dias,
+        "sin_vacaciones_12_meses": sin_vacaciones_12_meses,
+        "empleados_detalle": df.to_dict('records')
+    }

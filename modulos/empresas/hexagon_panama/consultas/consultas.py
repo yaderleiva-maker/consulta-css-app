@@ -80,6 +80,21 @@ def obtener_cartera_para_consulta(client, proyecto_id):
     return client.query(query, job_config=job_config).to_dataframe()
 
 # ============================================================
+# FUNCIÓN PARA SUBIR CSV A TEMP (SOLO PARA CONSULTA)
+# ============================================================
+
+def subir_csv_a_temp(client, df):
+    """Sube el DataFrame a la tabla temporal para consulta"""
+    table_id = "proyecto-css-panama.consultas.temp_clientes"
+    client.load_table_from_dataframe(
+        df,
+        table_id,
+        job_config=bigquery.LoadJobConfig(
+            write_disposition="WRITE_TRUNCATE"
+        )
+    ).result()
+
+# ============================================================
 # FUNCIÓN PRINCIPAL
 # ============================================================
 
@@ -151,7 +166,9 @@ def run(usuario, tipo_consulta):
     )
 
     df = None
-    if origen == "📊 Cartera cargada del proyecto":
+    es_cartera_cargada = (origen == "📊 Cartera cargada del proyecto")
+    
+    if es_cartera_cargada:
         with st.spinner("📊 Cargando cartera desde BigQuery..."):
             df = obtener_cartera_para_consulta(client, proyecto_id)
         if df.empty:
@@ -242,21 +259,16 @@ def run(usuario, tipo_consulta):
         st.dataframe(df.head(5), use_container_width=True)
 
     # -----------------------
-    # SUBIR DF A TEMP (independientemente del origen)
+    # SUBIR DF A TEMP (siempre necesario para la consulta)
     # -----------------------
-    table_id = "proyecto-css-panama.consultas.temp_clientes"
-    with st.spinner("🔄 Subiendo datos a BigQuery..."):
+    with st.spinner("🔄 Preparando datos para consulta..."):
         try:
-            client.load_table_from_dataframe(
-                df,
-                table_id,
-                job_config=bigquery.LoadJobConfig(
-                    write_disposition="WRITE_TRUNCATE"
-                )
-            ).result()
-            st.success("✅ Datos subidos correctamente a temp_clientes")
+            subir_csv_a_temp(client, df)
+            # Solo mostramos mensaje si es cartera cargada, para no confundir al usuario
+            if es_cartera_cargada:
+                st.success("✅ Datos preparados correctamente")
         except Exception as e:
-            st.error(f"❌ Error al subir datos: {e}")
+            st.error(f"❌ Error al preparar datos: {e}")
             st.stop()
 
     # -----------------------
@@ -370,7 +382,7 @@ def run(usuario, tipo_consulta):
             "fecha": datetime.now(),
             "tipo_consulta": tipo_consulta,
             "cantidad_registros": len(result),
-            "archivo": "cartera" if origen == "📊 Cartera cargada del proyecto" else "CSV externo"
+            "archivo": "cartera" if es_cartera_cargada else "CSV externo"
         }])
         client.load_table_from_dataframe(
             historial,
@@ -383,20 +395,20 @@ def run(usuario, tipo_consulta):
         st.warning(f"⚠️ No se pudo guardar historial: {e}")
 
     # -----------------------
-    # RESULTADO + ANEXADO AUTOMÁTICO
+    # RESULTADO
     # -----------------------
     st.success(f"✅ Consulta {tipo_consulta} lista: {len(result):,} registros")
 
-    # Determinar si el tipo de consulta permite anexado
-    if tipo_consulta in ("TELEFONOS NUEVOS", "TELÉFONOS NUEVOS"):
-        tipo_anexo = "telefonos"
-    elif tipo_consulta == "CORREOS NUEVOS":
-        tipo_anexo = "correos"
-    else:
-        tipo_anexo = None
-
-    # Si es de teléfonos o correos, anexar automáticamente
-    if tipo_anexo:
+    # --- DETERMINAR SI DEBE ANEXAR (SOLO PARA CARTERA CARGADA) ---
+    debe_anexar = es_cartera_cargada and tipo_consulta in ("TELEFONOS NUEVOS", "TELÉFONOS NUEVOS", "CORREOS NUEVOS")
+    
+    if debe_anexar:
+        # Determinar tipo de anexo
+        if tipo_consulta in ("TELEFONOS NUEVOS", "TELÉFONOS NUEVOS"):
+            tipo_anexo = "telefonos"
+        else:  # CORREOS NUEVOS
+            tipo_anexo = "correos"
+        
         with st.spinner(f"🔄 Anexando {tipo_anexo} automáticamente a Cobranza..."):
             total, anexados, errores, detalle = anexar_investigacion(
                 result, proyecto_id, tipo_anexo
@@ -427,6 +439,12 @@ def run(usuario, tipo_consulta):
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
+    else:
+        # Si es CSV o consulta CSS, solo mostrar mensaje
+        if not es_cartera_cargada:
+            st.info("📌 **Modo CSV**: Los resultados se muestran pero NO se anexan a la base de datos.")
+        elif tipo_consulta == "CSS":
+            st.info("📌 **Consulta CSS**: Solo se muestran los resultados, no se realiza anexado.")
 
     # Siempre ofrecer descarga del resultado de la consulta (CSV)
     st.download_button(

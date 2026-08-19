@@ -1,5 +1,3 @@
-# transformador_vici.py - VERSIÓN CORREGIDA
-
 """
 Transformador VICI → CRM
 Motor genérico que procesa archivos VICI según configuración YAML
@@ -14,11 +12,11 @@ import logging
 import io
 import streamlit as st
 
-# ✅ IMPORTAR BIGQUERY CORRECTAMENTE (como en consultas.py)
+# ✅ IMPORTAR BIGQUERY CORRECTAMENTE
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-# Servicios existentes (para otros usos)
+# Servicios existentes
 from services.archivos import leer_excel
 from services.fechas import normalizar_fecha_vici, formatear_fecha_vtiger
 
@@ -29,7 +27,6 @@ logger = logging.getLogger(__name__)
 def get_bigquery_client():
     """
     Obtiene el cliente de BigQuery usando el mismo patrón que consultas.py
-    ✅ ESTE ES EL PATRÓN QUE FUNCIONA
     """
     try:
         credentials = service_account.Credentials.from_service_account_info(
@@ -46,9 +43,7 @@ def get_bigquery_client():
 
 
 def ejecutar_query_bigquery(query):
-    """
-    Ejecuta una query en BigQuery usando el patrón de consultas.py
-    """
+    """Ejecuta una query en BigQuery"""
     try:
         client = get_bigquery_client()
         result = client.query(query).to_dataframe()
@@ -69,16 +64,14 @@ class TransformadorVICI:
         self.resultados = []
         self.errores = []
         self.logs = []
-        self._client = None  # Cache del cliente
+        self._client = None
         
     def _get_client(self):
-        """Obtiene el cliente de BigQuery (cacheado)"""
         if self._client is None:
             self._client = get_bigquery_client()
         return self._client
     
     def _cargar_configuracion(self, proyecto: str) -> Dict:
-        """Carga el YAML del proyecto"""
         ruta = Path(__file__).parent / "proyectos" / f"{proyecto}.yaml"
         if not ruta.exists():
             raise FileNotFoundError(f"Configuración no encontrada: {ruta}")
@@ -136,31 +129,23 @@ class TransformadorVICI:
         return df
     
     def validar_cuentas(self) -> pd.DataFrame:
-        """
-        Valida que las cuentas existan en BigQuery (cartera)
-        ✅ USANDO EL MISMO PATRÓN QUE consultas.py
-        """
+        """Valida cuentas contra BigQuery"""
         if self.df_vici is None:
             raise ValueError("Primero cargar VICI")
         
         if self.df_vici.empty:
-            logger.warning("DataFrame VICI vacío")
             return self.df_vici
         
         col_cuenta = self.config['vici']['cuenta']
         cuentas = self.df_vici[col_cuenta].dropna().astype(str).unique().tolist()
         
         if not cuentas:
-            logger.warning("No hay cuentas en el archivo VICI")
             self.logs.append("⚠️ No hay cuentas en el archivo VICI")
             self.df_vici['_valida'] = False
             return self.df_vici
         
         try:
-            # ✅ Usar el mismo patrón que consultas.py
             client = self._get_client()
-            
-            # Dividir en lotes
             lote_size = 500
             cuentas_validas = set()
             
@@ -175,19 +160,15 @@ class TransformadorVICI:
                       AND CAST(numero_cuenta AS STRING) IN ('{cuentas_str}')
                 """
                 try:
-                    # ✅ Ejecutar con el cliente
                     df_existentes = client.query(query).to_dataframe()
                     if 'cuenta' in df_existentes.columns and not df_existentes.empty:
                         cuentas_validas.update(df_existentes['cuenta'].astype(str).tolist())
                 except Exception as e:
-                    logger.warning(f"Error en lote {i}: {e}")
                     self.logs.append(f"⚠️ Error en validación de lote: {str(e)[:100]}")
                     continue
             
-            # Filtrar VICI
             self.df_vici['_valida'] = self.df_vici[col_cuenta].astype(str).isin(cuentas_validas)
             
-            # Si no hay cuentas válidas, verificar la tabla
             if not cuentas_validas and cuentas:
                 try:
                     test_query = f"""
@@ -203,19 +184,15 @@ class TransformadorVICI:
                         self.logs.append("⚠️ No se pudo verificar la tabla")
                 except Exception as e:
                     self.logs.append(f"⚠️ Error al verificar tabla: {str(e)[:100]}")
-                    # Procesar todas las cuentas
                     self.df_vici['_valida'] = True
-                    self.logs.append("⚠️ Procesando todas las cuentas (error en validación)")
                     return self.df_vici
             
         except Exception as e:
-            logger.warning(f"Error en validación, procesando todas las cuentas: {e}")
             self.logs.append(f"⚠️ Error en validación: {str(e)[:100]}")
             self.logs.append("⚠️ Procesando todas las cuentas")
             self.df_vici['_valida'] = True
             return self.df_vici
         
-        # Separar válidas e inválidas
         df_validas = self.df_vici[self.df_vici['_valida']].copy()
         df_invalidas = self.df_vici[~self.df_vici['_valida']].copy()
         
@@ -225,7 +202,6 @@ class TransformadorVICI:
                 'motivo': 'Cuenta no encontrada en cartera'
             })
         
-        logger.info(f"Cuentas válidas: {len(df_validas)}, inválidas: {len(df_invalidas)}")
         self.logs.append(f"✅ Cuentas válidas: {len(df_validas)}")
         self.logs.append(f"⚠️ Cuentas inválidas: {len(df_invalidas)}")
         
@@ -245,7 +221,6 @@ class TransformadorVICI:
             self.df_vici[col_codigo]
         )
         
-        logger.info(f"Tipología aplicada a {len(self.df_vici)} registros")
         self.logs.append(f"✅ Tipología aplicada")
     
     def aplicar_reglas(self):
@@ -343,17 +318,36 @@ class TransformadorVICI:
         self.logs.append(f"✅ CRM enriquecido")
     
     def _aplicar_fallbacks(self):
-        """Aplica valores por defecto"""
+        """Aplica valores por defecto cuando faltan datos del CRM"""
         fallbacks = self.config.get('fallbacks', {})
         
+        # Asegurar que la columna existe
         if 'fecha de reprogramación' not in self.df_vici.columns:
             self.df_vici['fecha de reprogramación'] = pd.NaT
         
+        # ✅ CONVERTIR A DATETIME ANTES DE ASIGNAR
         if 'fecha de reprogramación' in self.df_vici.columns:
-            mask = self.df_vici['fecha de reprogramación'].isna()
+            # Asegurar que la columna es datetime
+            self.df_vici['fecha de reprogramación'] = pd.to_datetime(
+                self.df_vici['fecha de reprogramación'], 
+                errors='coerce'
+            )
+            
+            # Asegurar que '_fecha_normalizada' es datetime
             if '_fecha_normalizada' in self.df_vici.columns:
-                self.df_vici.loc[mask, 'fecha de reprogramación'] = self.df_vici.loc[mask, '_fecha_normalizada'] + pd.Timedelta(days=1)
+                self.df_vici['_fecha_normalizada'] = pd.to_datetime(
+                    self.df_vici['_fecha_normalizada'],
+                    errors='coerce'
+                )
+                
+                # Aplicar fallback solo donde es nulo
+                mask = self.df_vici['fecha de reprogramación'].isna()
+                if mask.any():
+                    self.df_vici.loc[mask, 'fecha de reprogramación'] = (
+                        self.df_vici.loc[mask, '_fecha_normalizada'] + pd.Timedelta(days=1)
+                    )
         
+        # Estado de cuenta
         if 'estado de la cuenta' not in self.df_vici.columns:
             self.df_vici['estado de la cuenta'] = fallbacks.get('estado_cuenta', 'No contacto')
         else:
@@ -372,7 +366,6 @@ class TransformadorVICI:
         )
         self.df_vici['created_at'] = self.df_vici['_fecha_normalizada']
         
-        logger.info(f"Fechas normalizadas: {len(self.df_vici)} registros")
         self.logs.append(f"✅ Fechas normalizadas")
     
     def generar_csv_vtiger(self) -> pd.DataFrame:
@@ -386,22 +379,26 @@ class TransformadorVICI:
         col_asesor = config['vici']['asesor']
         proyecto_nombre = config['proyecto'].upper()
         
+        # ✅ ASEGURAR QUE LAS FECHAS SON STRING PARA EL CSV
         df_final = pd.DataFrame({
-            'Created At': self.df_vici['created_at'],
-            'Fecha de Reprogramación': self.df_vici['fecha de reprogramación'],
-            'Assigned To': self.df_vici[col_asesor],
-            'Num de Contacto': self.df_vici[col_telefono],
-            'Cuenta': self.df_vici[col_cuenta],
-            proyecto_nombre: self.df_vici['_campo_proyecto'],
-            'Resultado de la llamada': self.df_vici['_resultado_desc'],
-            'Comentario': self.df_vici['_comentario'],
-            'Estado de la cuenta': self.df_vici['estado de la cuenta'],
+            'Created At': self.df_vici['created_at'].apply(
+                lambda x: x.strftime('%m/%d/%Y %H:%M:%S') if pd.notna(x) else ''
+            ),
+            'Fecha de Reprogramación': self.df_vici['fecha de reprogramación'].apply(
+                lambda x: x.strftime('%m/%d/%Y %H:%M:%S') if pd.notna(x) else ''
+            ),
+            'Assigned To': self.df_vici[col_asesor].astype(str),
+            'Num de Contacto': self.df_vici[col_telefono].astype(str),
+            'Cuenta': self.df_vici[col_cuenta].astype(str),
+            proyecto_nombre: self.df_vici['_campo_proyecto'].astype(str),
+            'Resultado de la llamada': self.df_vici['_resultado_desc'].astype(str),
+            'Comentario': self.df_vici['_comentario'].astype(str),
+            'Estado de la cuenta': self.df_vici['estado de la cuenta'].astype(str),
         })
         
         df_final = df_final.fillna('')
         self.resultados = df_final.to_dict('records')
         
-        logger.info(f"CSV generado: {len(df_final)} registros")
         self.logs.append(f"✅ CSV generado: {len(df_final)} registros")
         return df_final
     
@@ -410,7 +407,6 @@ class TransformadorVICI:
         self.logs = []
         self.errores = []
         
-        logger.info(f"Iniciando transformación para proyecto: {self.proyecto}")
         self.logs.append(f"🚀 Iniciando transformación para: {self.proyecto.upper()}")
         
         self.cargar_vici(archivo_vici)
@@ -466,7 +462,6 @@ def render_transformador_vici():
     st.title("🔄 Transformador VICI → CRM")
     st.caption("Convierte archivos de VICI al formato que espera VTIGER")
     
-    # Sidebar - Configuración
     with st.sidebar:
         st.header("⚙️ Configuración")
         
@@ -478,7 +473,6 @@ def render_transformador_vici():
                 proyectos_disponibles.append({
                     'nombre': config.get('proyecto', yaml_file.stem),
                     'archivo': yaml_file.stem,
-                    'descripcion': config.get('descripcion', '')
                 })
         
         if not proyectos_disponibles:
@@ -505,7 +499,6 @@ def render_transformador_vici():
         st.caption("• modify_date (fecha)")
         st.caption("• status (código de gestión)")
     
-    # Main - Área de archivos
     col1, col2 = st.columns(2)
     
     with col1:
@@ -513,10 +506,8 @@ def render_transformador_vici():
         archivo_vici = st.file_uploader(
             "Subir archivo de VICI",
             type=['txt', 'csv'],
-            help="Archivo exportado de VICIDIAL",
             key="vici_upload"
         )
-        
         if archivo_vici:
             st.success(f"✅ {archivo_vici.name} - {archivo_vici.size} bytes")
     
@@ -525,20 +516,17 @@ def render_transformador_vici():
         archivo_crm = st.file_uploader(
             "Subir archivo de CRM (opcional)",
             type=['xlsx', 'xls'],
-            help="Archivo con fechas de reprogramación y estados",
             key="crm_upload"
         )
-        
         if archivo_crm:
             st.success(f"✅ {archivo_crm.name} - {archivo_crm.size} bytes")
     
-    # Botón de procesamiento
     if st.button("🚀 Transformar", type="primary", use_container_width=True):
         if not archivo_vici:
             st.error("❌ Debes subir al menos el archivo VICI")
             st.stop()
         
-        with st.spinner("🔄 Procesando... esto puede tomar unos segundos"):
+        with st.spinner("🔄 Procesando..."):
             try:
                 transformer = TransformadorVICI(proyecto_seleccionado)
                 df_resultado = transformer.procesar(
@@ -552,16 +540,11 @@ def render_transformador_vici():
                 else:
                     st.success(f"✅ Transformación completada: {len(df_resultado)} registros")
                 
-                # Mostrar resultados
                 tab1, tab2, tab3 = st.tabs(["📊 Datos", "📋 Log", "📥 Descargar"])
                 
                 with tab1:
                     if not df_resultado.empty:
-                        st.dataframe(
-                            df_resultado,
-                            use_container_width=True,
-                            height=400
-                        )
+                        st.dataframe(df_resultado, use_container_width=True, height=400)
                         st.caption(f"Total: {len(df_resultado)} registros, {len(df_resultado.columns)} columnas")
                     else:
                         st.info("No hay datos para mostrar")
@@ -589,16 +572,13 @@ def render_transformador_vici():
                 with tab3:
                     if not df_resultado.empty:
                         csv = df_resultado.to_csv(index=False, encoding='utf-8-sig')
-                        nombre_proyecto = proyecto_seleccionado.upper()
-                        
                         st.download_button(
                             label="📥 Descargar CSV para VTIGER",
                             data=csv,
-                            file_name=f"{nombre_proyecto}_VICI_transformado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            file_name=f"{proyecto_seleccionado.upper()}_VICI_transformado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                             mime="text/csv",
                             use_container_width=True
                         )
-                        
                         st.caption("📌 Este CSV está listo para importar en VTIGER")
                     else:
                         st.info("No hay datos para descargar")

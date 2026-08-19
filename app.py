@@ -1,10 +1,12 @@
-# app.py
+# app.py - MODIFICADO
+
 import streamlit as st
 from modulos.core import login
 from modulos.empresas.hexagon_panama.consultas import consultas
+from modulos.empresas.hexagon_panama.consultas.transformador_vici import render_transformador_vici  # 🆕 NUEVO
 from modulos.empresas.hexagon_panama.hopsa import hopsa
 from modulos.empresas.hexagon_panama.hopsa import control_almuerzos
-from modulos.empresas.hexagon_panama.ifx import main as ifx  # 🆕 NUEVO IMPORT
+from modulos.empresas.hexagon_panama.ifx import main as ifx
 from modulos.productos.crm import carga_documentos
 from modulos.productos.inventarios import inventario
 from modulos.empresas.farmazone import carga_reportes
@@ -12,6 +14,7 @@ from modulos.productos.nexo_people import nexo_people
 from modulos.empresas.hexagon_panama.cobranza.carga_cartera import render as render_carga_cartera
 from modulos.empresas.hexagon_panama.cobranza.investigacion import render as render_investigacion
 from modulos.empresas.hexagon_panama.reporteria import motor as reporteria_motor
+
 # =====================
 # CONFIGURACIÓN
 # =====================
@@ -46,10 +49,23 @@ MODULOS = {
         "icono": "🏢",
         "tipo": "categoria",
         "modulos": {
-            "📊 Consultas": {
-                "tipo": "modulo",
-                "funcion": lambda: ejecutar_consultas(),
-                "permiso": "CONSULTAS"
+            "🛠️ Herramientas": {  # 🔄 CAMBIADO: "Consultas" → "Herramientas"
+                "tipo": "categoria",
+                "icono": "🛠️",
+                "modulos": {
+                    "📊 Consultas": {
+                        "tipo": "modulo",
+                        "funcion": lambda: ejecutar_consultas(),
+                        "permiso": "CONSULTAS",
+                        "icono": "📊"
+                    },
+                    "🔄 Transformador VICI → CRM": {  # 🆕 NUEVO
+                        "tipo": "modulo",
+                        "funcion": lambda: render_transformador_vici(),
+                        "permiso": "CONSULTAS",
+                        "icono": "🔄"
+                    }
+                }
             },
             "📈 IFX Network": {
                 "tipo": "modulo",
@@ -126,17 +142,17 @@ MODULOS = {
         }
     },
     "📊 Reportería": {
-    "icono": "📊",
-    "tipo": "categoria",
-    "modulos": {
-        "📋 Generar Reportes": {
-            "tipo": "modulo",
-            "funcion": lambda: reporteria_motor.render(),
-            "permiso": "COBRANZA",
-            "icono": "📋"
+        "icono": "📊",
+        "tipo": "categoria",
+        "modulos": {
+            "📋 Generar Reportes": {
+                "tipo": "modulo",
+                "funcion": lambda: reporteria_motor.render(),
+                "permiso": "COBRANZA",
+                "icono": "📋"
+            }
         }
-    }
-},
+    },
     "📦 Inventarios": {
         "icono": "📦",
         "tipo": "categoria",
@@ -149,6 +165,7 @@ MODULOS = {
         }
     }
 }
+
 # =====================
 # PERMISOS POR USUARIO
 # =====================
@@ -183,7 +200,7 @@ ROLES = {
     },
     "contenalfa@gmail.com": {
         "NEXO_PEOPLE": True,
-        "IFX": True  # 🆕 Acceso a IFX
+        "IFX": True
     },
     "contenbeta@gmail.com": {
         "CARGA_REPORTES": True
@@ -203,7 +220,7 @@ ROLES = {
     },
     "hexagonclaudia@gmail.com": {
         "CONSULTAS": True,
-        "IFX": True  # 🆕 Acceso a IFX
+        "IFX": True
     },
     "clautotini1224@gmail.com": {
         "NEXO_PEOPLE": True

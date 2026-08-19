@@ -111,8 +111,25 @@ class TransformadorVICI:
         else:
             raise ValueError("Tipo de archivo no soportado")
         
+        # Normalizar nombres de columnas
         df.columns = df.columns.str.lower().str.strip()
         
+        # ✅ NORMALIZAR LA COLUMNA DE RESULTADO (status)
+        col_codigo = self.config['vici']['codigo_resultado']
+        if col_codigo in df.columns:
+            # Limpiar valores: eliminar espacios, convertir a string, mayúsculas
+            df[col_codigo] = df[col_codigo].astype(str).str.strip().str.upper()
+            # Reemplazar valores vacíos o 'nan' por None
+            df[col_codigo] = df[col_codigo].replace(['nan', 'None', ''], None)
+            self.logs.append(f"Columna '{col_codigo}' normalizada")
+        
+        # Normalizar columna de asesor
+        col_asesor = self.config['vici']['asesor']
+        if col_asesor in df.columns:
+            df[col_asesor] = df[col_asesor].astype(str).str.strip()
+            df[col_asesor] = df[col_asesor].replace(['nan', 'None', ''], None)
+        
+        # Validar columna de cuenta
         col_cuenta = self.config['vici']['cuenta']
         if col_cuenta not in df.columns:
             raise ValueError(f"Columna '{col_cuenta}' no encontrada en VICI")
@@ -209,12 +226,27 @@ class TransformadorVICI:
         col_codigo = self.config['vici']['codigo_resultado']
         tipologia = self.config['tipologia']
         
+        # ✅ APLICAR TIPOLOGIA CON DEBUG
+        codigos_unicos = self.df_vici[col_codigo].unique().tolist()
+        self.logs.append(f"Codigos encontrados en VICI: {codigos_unicos[:10]}")
+        
+        # Mapear
         self.df_vici['_resultado_desc'] = self.df_vici[col_codigo].map(tipologia)
+        
+        # Contar cuántos no fueron mapeados
+        no_mapeados = self.df_vici['_resultado_desc'].isna().sum()
+        if no_mapeados > 0:
+            self.logs.append(f"Advertencia: {no_mapeados} registros sin mapeo de tipologia")
+            # Mostrar ejemplos de códigos no mapeados
+            codigos_no_mapeados = self.df_vici[self.df_vici['_resultado_desc'].isna()][col_codigo].unique().tolist()
+            self.logs.append(f"Codigos sin mapeo: {codigos_no_mapeados[:5]}")
+        
+        # Rellenar los que no tienen mapeo con el código original
         self.df_vici['_resultado_desc'] = self.df_vici['_resultado_desc'].fillna(
             self.df_vici[col_codigo]
         )
         
-        self.logs.append("Tipologia aplicada")
+        self.logs.append(f"Tipologia aplicada")
     
     def aplicar_reglas(self):
         """Aplica reglas de negocio especificas del proyecto"""
@@ -370,7 +402,6 @@ class TransformadorVICI:
             if pd.isna(fecha):
                 return ''
             if isinstance(fecha, (pd.Timestamp, datetime)):
-                # Access: d/m/yyyy
                 return fecha.strftime('%-d/%-m/%Y')
             return str(fecha)
         
@@ -381,20 +412,30 @@ class TransformadorVICI:
                 return fecha.strftime('%Y-%m-%d %H:%M:%S')
             return str(fecha)
         
+        # ✅ VERIFICAR QUE LOS CAMPOS EXISTAN
+        self.logs.append("Generando CSV...")
+        self.logs.append(f"Columnas disponibles: {list(self.df_vici.columns)}")
+        
         df_final = pd.DataFrame({
             'Created At': self.df_vici['created_at'].apply(formatear_fecha_created_at),
             'Fecha de Reprogramación': self.df_vici['fecha de reprogramacion'].apply(formatear_fecha_access),
             'Assigned To': self.df_vici[col_asesor].astype(str),
             'Num de Contacto': self.df_vici[col_telefono].astype(str),
             'Cuenta': self.df_vici[col_cuenta].astype(str),
-            proyecto_nombre: self.df_vici['_campo_proyecto'].astype(str),
-            'Resultado de la llamada': self.df_vici['_resultado_desc'].astype(str),
-            'Comentario': self.df_vici['_comentario'].astype(str),
+            proyecto_nombre: self.df_vici['_campo_proyecto'].astype(str) if '_campo_proyecto' in self.df_vici.columns else '',
+            'Resultado de la llamada': self.df_vici['_resultado_desc'].astype(str) if '_resultado_desc' in self.df_vici.columns else '',
+            'Comentario': self.df_vici['_comentario'].astype(str) if '_comentario' in self.df_vici.columns else '',
             'Estado de la cuenta': self.df_vici['estado de la cuenta'].astype(str),
         })
         
         df_final = df_final.fillna('')
         self.resultados = df_final.to_dict('records')
+        
+        # ✅ CONTAR REGISTROS CON Y SIN RESULTADO
+        con_resultado = (df_final['Resultado de la llamada'] != '').sum()
+        sin_resultado = (df_final['Resultado de la llamada'] == '').sum()
+        self.logs.append(f"Registros con resultado: {con_resultado}")
+        self.logs.append(f"Registros sin resultado: {sin_resultado}")
         
         self.logs.append(f"CSV generado: {len(df_final)} registros")
         return df_final

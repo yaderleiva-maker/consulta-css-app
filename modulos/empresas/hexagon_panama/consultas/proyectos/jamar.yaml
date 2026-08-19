@@ -1,0 +1,43 @@
+proyecto: JAMAR
+
+# Mapeo columnas VICI
+vici:
+  cuenta: city
+  telefono: phone_number
+  asesor: user
+  fecha_gestion: modify_date
+  codigo_resultado: status
+
+# Catálogo de tipología
+tipologia:
+  AA: "No contesta"
+  AB: "Tono ocupado / no da tono"
+  ADC: "Tono ocupado / no da tono"
+  BZN: "No contesta"
+  CLL: "Cuelga llamada"
+  NA: "No contesta"
+  NMQ: "Equivocado"
+  NRP: "No contesta"
+
+# Reglas de negocio
+reglas:
+  asesores:
+    VDAD: "nalvarado"
+  
+  comentario:
+    formato: "{telefono} {resultado}"
+  
+  campo_proyecto:
+    nombre: "JAMAR"
+    formato: "JAMAR::::{cuenta}"
+
+# Datos que vienen del CRM
+crm:
+  requiere:
+    - fecha_reprogramacion
+    - estado_cuenta
+
+# Valores por defecto / fallbacks
+fallbacks:
+  fecha_reprogramacion: "created_at + 1 day"
+  estado_cuenta: "No contacto"

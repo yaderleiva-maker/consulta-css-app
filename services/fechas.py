@@ -1,11 +1,13 @@
 """
 Servicio de normalización de fechas
 Maneja múltiples formatos de fecha del VICI
+Ubicación: services/fechas.py
 """
 
 import re
 from datetime import datetime
 import pandas as pd
+import numpy as np
 
 
 def normalizar_fecha_vici(valor) -> pd.Timestamp:
@@ -27,14 +29,20 @@ def normalizar_fecha_vici(valor) -> pd.Timestamp:
     
     valor_str = str(valor).strip()
     
+    # Si es "0000-00-00 00:00:00" o similar
+    if valor_str.startswith('0000-00-00') or valor_str.startswith('0-0-0'):
+        return pd.NaT
+    
     # Intentar diferentes formatos
     formatos = [
         ('%d-%m-%Y %H:%M:%S', r'\d{2}-\d{2}-\d{4} \d{2}:\d{2}:\d{2}'),
         ('%Y-%m-%d %H:%M:%S', r'\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}'),
         ('%d/%m/%Y %H:%M:%S', r'\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}'),
+        ('%m/%d/%Y %H:%M:%S', r'\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}'),
         ('%d-%m-%Y', r'\d{2}-\d{2}-\d{4}'),
         ('%Y-%m-%d', r'\d{4}-\d{2}-\d{2}'),
         ('%d/%m/%Y', r'\d{2}/\d{2}/\d{4}'),
+        ('%m/%d/%Y', r'\d{2}/\d{2}/\d{4}'),
     ]
     
     for fmt, pattern in formatos:
@@ -54,12 +62,31 @@ def normalizar_fecha_vici(valor) -> pd.Timestamp:
 def formatear_fecha_vtiger(fecha) -> str:
     """
     Formatea fecha para VTIGER (CSV)
-    Formato esperado: #MM/DD/YYYY HH:MM:SS# o similar
+    Formato esperado: MM/DD/YYYY HH:MM:SS
     """
     if pd.isna(fecha):
-        return '#01/01/2025 00:00:00#'
+        return ''
     
     if isinstance(fecha, (pd.Timestamp, datetime)):
-        return fecha.strftime('#%m/%d/%Y %H:%M:%S#')
+        return fecha.strftime('%m/%d/%Y %H:%M:%S')
     
     return str(fecha)
+
+
+def normalizar_fecha_access(fecha_str: str) -> datetime:
+    """
+    Normaliza fechas provenientes de Access (formato #MM/DD/YYYY#)
+    """
+    if not fecha_str:
+        return None
+    
+    # Limpiar formato Access
+    fecha_limpia = fecha_str.strip().strip('#')
+    
+    try:
+        return datetime.strptime(fecha_limpia, '%m/%d/%Y')
+    except:
+        try:
+            return datetime.strptime(fecha_limpia, '%m/%d/%Y %H:%M:%S')
+        except:
+            return None

@@ -368,39 +368,56 @@ class TransformadorVICI:
         
         self.logs.append(f"✅ Fechas normalizadas")
     
-    def generar_csv_vtiger(self) -> pd.DataFrame:
-        """Genera el DataFrame final en formato VTIGER"""
-        if self.df_vici is None or self.df_vici.empty:
-            raise ValueError("No hay datos para generar CSV")
-        
-        config = self.config
-        col_cuenta = config['vici']['cuenta']
-        col_telefono = config['vici']['telefono']
-        col_asesor = config['vici']['asesor']
-        proyecto_nombre = config['proyecto'].upper()
-        
-        # ✅ ASEGURAR QUE LAS FECHAS SON STRING PARA EL CSV
-        df_final = pd.DataFrame({
-            'Created At': self.df_vici['created_at'].apply(
-                lambda x: x.strftime('%m/%d/%Y %H:%M:%S') if pd.notna(x) else ''
-            ),
-            'Fecha de Reprogramación': self.df_vici['fecha de reprogramación'].apply(
-                lambda x: x.strftime('%m/%d/%Y %H:%M:%S') if pd.notna(x) else ''
-            ),
-            'Assigned To': self.df_vici[col_asesor].astype(str),
-            'Num de Contacto': self.df_vici[col_telefono].astype(str),
-            'Cuenta': self.df_vici[col_cuenta].astype(str),
-            proyecto_nombre: self.df_vici['_campo_proyecto'].astype(str),
-            'Resultado de la llamada': self.df_vici['_resultado_desc'].astype(str),
-            'Comentario': self.df_vici['_comentario'].astype(str),
-            'Estado de la cuenta': self.df_vici['estado de la cuenta'].astype(str),
-        })
-        
-        df_final = df_final.fillna('')
-        self.resultados = df_final.to_dict('records')
-        
-        self.logs.append(f"✅ CSV generado: {len(df_final)} registros")
-        return df_final
+def generar_csv_vtiger(self) -> pd.DataFrame:
+    """
+    Genera el DataFrame final en formato VTIGER
+    Exactamente igual al formato que genera Access
+    """
+    if self.df_vici is None or self.df_vici.empty:
+        raise ValueError("No hay datos para generar CSV")
+    
+    config = self.config
+    col_cuenta = config['vici']['cuenta']
+    col_telefono = config['vici']['telefono']
+    col_asesor = config['vici']['asesor']
+    proyecto_nombre = config['proyecto'].upper()
+    
+    # ✅ FUNCIÓN PARA FORMATEAR FECHA COMO ACCESS
+    def formatear_fecha_access(fecha):
+        """Formatea fecha como en Access: d/m/yyyy (sin hora)"""
+        if pd.isna(fecha):
+            return ''
+        if isinstance(fecha, (pd.Timestamp, datetime)):
+            # Access usa formato d/m/yyyy (día/mes/año)
+            return fecha.strftime('%-d/%-m/%Y')  # Sin ceros a la izquierda
+        return str(fecha)
+    
+    def formatear_fecha_created_at(fecha):
+        """Formatea fecha como en Access: yyyy-mm-dd HH:MM:SS"""
+        if pd.isna(fecha):
+            return ''
+        if isinstance(fecha, (pd.Timestamp, datetime)):
+            return fecha.strftime('%Y-%m-%d %H:%M:%S')
+        return str(fecha)
+    
+    # Construir DataFrame final
+    df_final = pd.DataFrame({
+        'Created At': self.df_vici['created_at'].apply(formatear_fecha_created_at),
+        'Fecha de Reprogramación': self.df_vici['fecha de reprogramación'].apply(formatear_fecha_access),
+        'Assigned To': self.df_vici[col_asesor].astype(str),
+        'Num de Contacto': self.df_vici[col_telefono].astype(str),
+        'Cuenta': self.df_vici[col_cuenta].astype(str),
+        proyecto_nombre: self.df_vici['_campo_proyecto'].astype(str),
+        'Resultado de la llamada': self.df_vici['_resultado_desc'].astype(str),
+        'Comentario': self.df_vici['_comentario'].astype(str),
+        'Estado de la cuenta': self.df_vici['estado de la cuenta'].astype(str),
+    })
+    
+    df_final = df_final.fillna('')
+    self.resultados = df_final.to_dict('records')
+    
+    self.logs.append(f"✅ CSV generado: {len(df_final)} registros")
+    return df_final
     
     def procesar(self, archivo_vici, archivo_crm=None, validar=False) -> pd.DataFrame:
         """Pipeline completo de transformación"""
@@ -414,6 +431,18 @@ class TransformadorVICI:
         if self.df_vici.empty:
             self.logs.append("⚠️ No hay datos en el archivo VICI")
             return pd.DataFrame()
+        
+        # ✅ Reporte de cuentas (sin bloquear)
+        if reportar:
+            self.logs.append("🔍 Generando reporte de cuentas...")
+            reporte = self.validar_cuentas_report()
+            if reporte.get('error'):
+                self.logs.append(f"⚠️ Error en reporte: {reporte['error']}")
+            else:
+                self.logs.append(f"✅ Cuentas en base: {reporte['encontradas']}")
+                self.logs.append(f"⚠️ Cuentas NO en base: {len(reporte['no_encontradas'])}")
+                if reporte['no_encontradas']:
+                    self.logs.append(f"   Ejemplos: {', '.join(reporte['no_encontradas'][:5])}")
         
         if validar:
             self.logs.append("🔍 Validando cuentas contra BigQuery...")
@@ -571,18 +600,71 @@ def render_transformador_vici():
                 
                 with tab3:
                     if not df_resultado.empty:
-                        csv = df_resultado.to_csv(index=False, encoding='utf-8-sig')
+                        # Opción 1: CSV (para subir a VTIGER)
+                        csv = df_resultado.to_csv(index=False, encoding='utf-8')
                         st.download_button(
-                            label="📥 Descargar CSV para VTIGER",
+                            label="📥 Descargar CSV para VTIGER (UTF-8)",
                             data=csv,
                             file_name=f"{proyecto_seleccionado.upper()}_VICI_transformado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                             mime="text/csv",
                             use_container_width=True
                         )
-                        st.caption("📌 Este CSV está listo para importar en VTIGER")
-                    else:
-                        st.info("No hay datos para descargar")
-                
-            except Exception as e:
-                st.error(f"❌ Error durante la transformación: {str(e)}")
-                st.exception(e)
+                        
+                        # Opción 2: Excel (para verificar)
+                        from io import BytesIO
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                            df_resultado.to_excel(writer, index=False, sheet_name='VICI Transformado')
+                        excel_data = output.getvalue()
+                        
+                        st.download_button(
+                            label="📥 Descargar Excel para verificar",
+                            data=excel_data,
+                            file_name=f"{proyecto_seleccionado.upper()}_VICI_transformado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True
+                        )
+                        
+                        st.caption("📌 Usa el CSV para importar en VTIGER. Usa Excel para verificar los datos.")
+
+def validar_cuentas_report(self) -> Dict:
+    """
+    Valida cuentas y genera un reporte de las que no están en la base
+    SIN BLOQUEAR EL PROCESO
+    """
+    if self.df_vici is None:
+        return {'total': 0, 'no_encontradas': [], 'encontradas': []}
+    
+    col_cuenta = self.config['vici']['cuenta']
+    cuentas = self.df_vici[col_cuenta].dropna().astype(str).unique().tolist()
+    
+    if not cuentas:
+        return {'total': 0, 'no_encontradas': [], 'encontradas': []}
+    
+    try:
+        client = self._get_client()
+        cuentas_str = "', '".join([str(c).replace("'", "''") for c in cuentas])
+        query = f"""
+            SELECT DISTINCT 
+                CAST(numero_cuenta AS STRING) as cuenta
+            FROM `proyecto-css-panama.cobranza.cuentas`
+            WHERE proyecto = '{self.config['proyecto']}'
+              AND CAST(numero_cuenta AS STRING) IN ('{cuentas_str}')
+        """
+        df_existentes = client.query(query).to_dataframe()
+        cuentas_encontradas = set(df_existentes['cuenta'].astype(str).tolist())
+        
+        cuentas_no_encontradas = [c for c in cuentas if c not in cuentas_encontradas]
+        
+        return {
+            'total': len(cuentas),
+            'encontradas': len(cuentas_encontradas),
+            'no_encontradas': cuentas_no_encontradas[:100]  # Limitar a 100
+        }
+    except Exception as e:
+        return {
+            'total': len(cuentas),
+            'encontradas': 0,
+            'no_encontradas': [],
+            'error': str(e)
+        }

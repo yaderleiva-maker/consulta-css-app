@@ -219,34 +219,47 @@ class TransformadorVICI:
         return self.df_vici
     
     def aplicar_tipologia(self):
-        """Aplica el mapeo de codigos a resultados descriptivos"""
+        """Aplica el mapeo de codigos a resultados descriptivos Y FILTRA"""
         if self.df_vici is None or self.df_vici.empty:
             return
         
         col_codigo = self.config['vici']['codigo_resultado']
         tipologia = self.config['tipologia']
         
-        # ✅ APLICAR TIPOLOGIA CON DEBUG
-        codigos_unicos = self.df_vici[col_codigo].unique().tolist()
-        self.logs.append(f"Codigos encontrados en VICI: {codigos_unicos[:10]}")
+        # Normalizar códigos (mayúsculas, sin espacios)
+        self.df_vici[col_codigo] = self.df_vici[col_codigo].astype(str).str.strip().str.upper()
         
-        # Mapear
+        # ✅ FILTRAR: Solo registrar códigos que están en la tipología
+        codigos_validos = list(tipologia.keys())
+        registros_originales = len(self.df_vici)
+        
+        # Filtrar solo los códigos válidos
+        self.df_vici = self.df_vici[self.df_vici[col_codigo].isin(codigos_validos)].copy()
+        
+        registros_filtrados = len(self.df_vici)
+        eliminados = registros_originales - registros_filtrados
+        
+        self.logs.append(f"Registros originales: {registros_originales}")
+        self.logs.append(f"Registros válidos (con tipología): {registros_filtrados}")
+        self.logs.append(f"Registros eliminados (sin tipología): {eliminados}")
+        
+        if self.df_vici.empty:
+            self.logs.append("No hay registros válidos para procesar")
+            return
+        
+        # Aplicar el mapeo
         self.df_vici['_resultado_desc'] = self.df_vici[col_codigo].map(tipologia)
         
-        # Contar cuántos no fueron mapeados
+        # Verificar que no hayan quedado nulos
         no_mapeados = self.df_vici['_resultado_desc'].isna().sum()
         if no_mapeados > 0:
-            self.logs.append(f"Advertencia: {no_mapeados} registros sin mapeo de tipologia")
-            # Mostrar ejemplos de códigos no mapeados
-            codigos_no_mapeados = self.df_vici[self.df_vici['_resultado_desc'].isna()][col_codigo].unique().tolist()
-            self.logs.append(f"Codigos sin mapeo: {codigos_no_mapeados[:5]}")
+            self.logs.append(f"Advertencia: {no_mapeados} registros sin mapeo (esto no debería pasar)")
+            # Rellenar con el código original
+            self.df_vici['_resultado_desc'] = self.df_vici['_resultado_desc'].fillna(
+                self.df_vici[col_codigo]
+            )
         
-        # Rellenar los que no tienen mapeo con el código original
-        self.df_vici['_resultado_desc'] = self.df_vici['_resultado_desc'].fillna(
-            self.df_vici[col_codigo]
-        )
-        
-        self.logs.append(f"Tipologia aplicada")
+        self.logs.append(f"Tipologia aplicada correctamente")
     
     def aplicar_reglas(self):
         """Aplica reglas de negocio especificas del proyecto"""
@@ -500,9 +513,15 @@ def render_transformador_vici():
     st.title("Transformador VICI -> CRM")
     st.caption("Convierte archivos de VICI al formato que espera VTIGER")
     
-    with st.sidebar:
-        st.header("Configuracion")
-        
+    # ============================================================
+    # ✅ SELECTOR DE PROYECTO EN EL ÁREA PRINCIPAL
+    # ============================================================
+    st.markdown("---")
+    
+    col_proy1, col_proy2, col_proy3 = st.columns([2, 2, 1])
+    
+    with col_proy1:
+        # Cargar proyectos disponibles
         proyectos_dir = Path(__file__).parent / "proyectos"
         proyectos_disponibles = []
         for yaml_file in proyectos_dir.glob("*.yaml"):
@@ -511,61 +530,78 @@ def render_transformador_vici():
                 proyectos_disponibles.append({
                     'nombre': config.get('proyecto', yaml_file.stem),
                     'archivo': yaml_file.stem,
+                    'descripcion': config.get('descripcion', '')
                 })
         
         if not proyectos_disponibles:
-            st.error("No hay proyectos configurados")
+            st.error("❌ No hay proyectos configurados")
             return
         
         proyecto_seleccionado = st.selectbox(
-            "Proyecto",
+            "📌 Selecciona el proyecto",
             options=[p['archivo'] for p in proyectos_disponibles],
-            format_func=lambda x: next((p['nombre'].upper() for p in proyectos_disponibles if p['archivo'] == x), x)
+            format_func=lambda x: next((p['nombre'].upper() for p in proyectos_disponibles if p['archivo'] == x), x),
+            key="proyecto_selector"
         )
-        
+    
+    with col_proy2:
+        # Mostrar información del proyecto seleccionado
+        proyecto_info = next((p for p in proyectos_disponibles if p['archivo'] == proyecto_seleccionado), None)
+        if proyecto_info and proyecto_info.get('descripcion'):
+            st.caption(f"📋 {proyecto_info['descripcion']}")
+    
+    with col_proy3:
+        # Opción de validación
         validar = st.checkbox(
-            "Validar cuentas contra BigQuery",
+            "Validar cuentas",
             value=False,
-            help="Solo activar si tienes permisos a la tabla cobranza.cuentas"
+            help="Verifica que las cuentas existan en BigQuery"
         )
-        
-        st.divider()
-        st.caption("El archivo VICI debe tener columnas:")
-        st.caption("- city (cuenta)")
-        st.caption("- phone_number (telefono)")
-        st.caption("- user (asesor)")
-        st.caption("- modify_date (fecha)")
-        st.caption("- status (codigo de gestion)")
+    
+    st.markdown("---")
+    
+    # ============================================================
+    # ÁREA DE ARCHIVOS
+    # ============================================================
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Archivo VICI (.txt)")
+        st.subheader("📁 Archivo VICI (.txt)")
         archivo_vici = st.file_uploader(
             "Subir archivo de VICI",
             type=['txt', 'csv'],
+            help="Archivo exportado de VICIDIAL",
             key="vici_upload"
         )
         if archivo_vici:
-            st.success(f"{archivo_vici.name} - {archivo_vici.size} bytes")
+            st.success(f"✅ {archivo_vici.name} - {archivo_vici.size} bytes")
     
     with col2:
-        st.subheader("Archivo CRM (.xlsx)")
+        st.subheader("📊 Archivo CRM (.xlsx)")
         archivo_crm = st.file_uploader(
             "Subir archivo de CRM (opcional)",
             type=['xlsx', 'xls'],
+            help="Archivo con fechas de reprogramación y estados",
             key="crm_upload"
         )
         if archivo_crm:
-            st.success(f"{archivo_crm.name} - {archivo_crm.size} bytes")
+            st.success(f"✅ {archivo_crm.name} - {archivo_crm.size} bytes")
     
-    if st.button("Transformar", type="primary", use_container_width=True):
+    # ============================================================
+    # BOTÓN DE PROCESAMIENTO
+    # ============================================================
+    
+    if st.button("🚀 Transformar", type="primary", use_container_width=True):
         if not archivo_vici:
-            st.error("Debes subir al menos el archivo VICI")
+            st.error("❌ Debes subir al menos el archivo VICI")
             st.stop()
         
-        with st.spinner("Procesando..."):
+        with st.spinner("🔄 Procesando... esto puede tomar unos segundos"):
             try:
+                # Mostrar qué proyecto se está usando
+                st.info(f"📌 Procesando proyecto: **{proyecto_seleccionado.upper()}**")
+                
                 transformer = TransformadorVICI(proyecto_seleccionado)
                 df_resultado = transformer.procesar(
                     archivo_vici=archivo_vici,
@@ -574,11 +610,12 @@ def render_transformador_vici():
                 )
                 
                 if df_resultado.empty:
-                    st.warning("No se generaron datos. Revisa el log.")
+                    st.warning("⚠️ No se generaron datos. Revisa el log.")
                 else:
-                    st.success(f"Transformacion completada: {len(df_resultado)} registros")
+                    st.success(f"✅ Transformación completada: {len(df_resultado)} registros")
                 
-                tab1, tab2, tab3 = st.tabs(["Datos", "Log", "Descargar"])
+                # Mostrar resultados
+                tab1, tab2, tab3 = st.tabs(["📊 Datos", "📋 Log", "📥 Descargar"])
                 
                 with tab1:
                     if not df_resultado.empty:
@@ -591,14 +628,14 @@ def render_transformador_vici():
                     log = transformer.obtener_log()
                     
                     if log['errores']:
-                        st.warning(f"{len(log['errores'])} errores encontrados")
+                        st.warning(f"⚠️ {len(log['errores'])} errores encontrados")
                         with st.expander("Ver errores"):
                             st.json(log['errores'][:50])
                     else:
-                        st.info("No se encontraron errores")
+                        st.info("✅ No se encontraron errores")
                     
                     if log['logs']:
-                        st.subheader("Detalle del proceso")
+                        st.subheader("📝 Detalle del proceso")
                         for msg in log['logs']:
                             st.text(msg)
                     
@@ -612,7 +649,7 @@ def render_transformador_vici():
                         # CSV para VTIGER
                         csv = df_resultado.to_csv(index=False, encoding='utf-8')
                         st.download_button(
-                            label="Descargar CSV para VTIGER",
+                            label="📥 Descargar CSV para VTIGER",
                             data=csv,
                             file_name=f"{proyecto_seleccionado.upper()}_VICI_transformado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                             mime="text/csv",
@@ -627,17 +664,17 @@ def render_transformador_vici():
                         excel_data = output.getvalue()
                         
                         st.download_button(
-                            label="Descargar Excel para verificar",
+                            label="📥 Descargar Excel para verificar",
                             data=excel_data,
                             file_name=f"{proyecto_seleccionado.upper()}_VICI_transformado_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             use_container_width=True
                         )
                         
-                        st.caption("Usa el CSV para importar en VTIGER. Usa Excel para verificar los datos.")
+                        st.caption("📌 Usa el CSV para importar en VTIGER. Usa Excel para verificar los datos.")
                     else:
                         st.info("No hay datos para descargar")
                 
             except Exception as e:
-                st.error(f"Error durante la transformacion: {str(e)}")
+                st.error(f"❌ Error durante la transformación: {str(e)}")
                 st.exception(e)

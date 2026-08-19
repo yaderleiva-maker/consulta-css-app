@@ -1,5 +1,5 @@
 proyecto: JAMAR
-descripcion: "Configuración para el proyecto JAMAR"
+descripcion: "Configuracion para el proyecto JAMAR"
 
 # Mapeo columnas VICI
 vici:
@@ -9,7 +9,7 @@ vici:
   fecha_gestion: modify_date
   codigo_resultado: status
 
-# Catálogo de tipología
+# Solo los 8 códigos que necesita Access
 tipologia:
   AA: "No contesta"
   AB: "Tono ocupado / no da tono"
@@ -19,19 +19,6 @@ tipologia:
   NA: "No contesta"
   NMQ: "Equivocado"
   NRP: "No contesta"
-  CONT: "Contactado"
-  DROP: "Drop"
-  PDROP: "Drop"
-  NEW: "Nuevo"
-  MCT: "Mensaje con tercero"
-  PPCT: "Promesa de pago"
-  PPABO: "Promesa de pago"
-  PPCPZ: "Promesa de pago"
-  CNP: "No puede pagar"
-  FLL: "Fallecido"
-  IEN: "IEN"
-  PEND: "Pendiente"
-  VDN: "VDN"
 
 # Reglas de negocio
 reglas:
@@ -52,7 +39,7 @@ crm:
     - fecha_reprogramacion
     - estado_cuenta
 
-# Valores por defecto / fallbacks
+# Valores por defecto
 fallbacks:
   fecha_reprogramacion: "created_at + 1 day"
   estado_cuenta: "No contacto"

@@ -1,7 +1,9 @@
 proyecto: JAMAR
-descripcion: "Configuracion para el proyecto JAMAR"
+descripcion: "Configuración integral del proyecto JAMAR (Transformación VICI, Validaciones y Reportería)"
 
-# Mapeo columnas VICI
+# ============================================================
+# 1. TRANSFORMADOR: VICI -> CRM (herramientas/convertidor.py)
+# ============================================================
 vici:
   cuenta: city
   telefono: phone_number
@@ -9,7 +11,6 @@ vici:
   fecha_gestion: modify_date
   codigo_resultado: status
 
-# Solo los 8 códigos que necesita Access
 tipologia:
   AA: "No contesta"
   AB: "Tono ocupado / no da tono"
@@ -20,26 +21,213 @@ tipologia:
   NMQ: "Equivocado"
   NRP: "No contesta"
 
-# Reglas de negocio
 reglas:
   asesores:
     VDAD: "nalvarado"
     vdad: "nalvarado"
-  
   comentario:
     formato: "{telefono} {resultado}"
-  
   campo_proyecto:
     nombre: "JAMAR"
     formato: "JAMAR::::{cuenta}"
 
-# Datos que vienen del CRM
 crm:
   requiere:
     - fecha_reprogramacion
     - estado_cuenta
 
-# Valores por defecto
 fallbacks:
   fecha_reprogramacion: "created_at + 1 day"
   estado_cuenta: "No contacto"
+
+# ============================================================
+# 2. VALIDADOR DE GESTIONES (cobranza/gestiones_diarias/)
+# ============================================================
+validaciones:
+  comentario_obligatorio: true
+  numero_contacto_obligatorio: true
+  resultado_obligatorio: true
+  promesa:
+    requiere_fecha: true
+    requiere_monto: true
+    fecha_no_puede_ser_anterior_a_gestion: true
+  comentario_no_contesta:
+    validar_contra_resultado: true
+
+# ============================================================
+# 3. ÁRBOL DE TIPOLOGÍAS Y HOMOLOGACIÓN (General)
+# ============================================================
+arbol_tipologias:
+  "PP-AL-DIA":
+    codigo_jamar: "89"
+    contactabilidad: "COMPROMISO DE PAGO"
+    es_promesa: true
+    prioridad: 1
+
+  "Cambia fecha de pago":
+    codigo_jamar: "01"
+    contactabilidad: "COMPROMISO DE PAGO"
+    es_promesa: true
+    prioridad: 1
+
+  "PP-ABO":
+    codigo_jamar: "01"
+    contactabilidad: "COMPROMISO DE PAGO"
+    es_promesa: true
+    prioridad: 1
+
+  "PP-AP":
+    codigo_jamar: "01"
+    contactabilidad: "COMPROMISO DE PAGO"
+    es_promesa: true
+    prioridad: 1
+
+  "PP-CT":
+    codigo_jamar: "01"
+    contactabilidad: "COMPROMISO DE PAGO"
+    es_promesa: true
+    prioridad: 1
+
+  "PP-CT-DOS":
+    codigo_jamar: "88"
+    contactabilidad: "COMPROMISO DE PAGO"
+    es_promesa: true
+    prioridad: 1
+
+  "No puede pagar":
+    codigo_jamar: "14"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: false
+    prioridad: 2
+
+  "Interesado en negociar":
+    codigo_jamar: "14"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: false
+    prioridad: 2
+
+  "Contacto codeudor":
+    codigo_jamar: "81"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: false
+    prioridad: 2
+
+  "Dice ya pago":
+    codigo_jamar: "01"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: true
+    prioridad: 1
+
+  "Devolver llamada":
+    codigo_jamar: "14"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: false
+    prioridad: 2
+
+  "Confirma pago":
+    codigo_jamar: "01"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: true
+    prioridad: 1
+
+  "Reclamo":
+    codigo_jamar: "84"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: false
+    prioridad: 2
+
+  "Contacto con empleo":
+    codigo_jamar: "00"
+    contactabilidad: "CONTACTO CON TERCERO"
+    es_promesa: false
+    prioridad: 3
+
+  "Mensaje con tercero":
+    codigo_jamar: "00"
+    contactabilidad: "CONTACTO CON TERCERO"
+    es_promesa: false
+    prioridad: 3
+
+  "Cuelga llamada":
+    codigo_jamar: "14"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: false
+    prioridad: 2
+
+  "Fallecido":
+    codigo_jamar: "83"
+    contactabilidad: "NO CONTACTOS"
+    es_promesa: false
+    prioridad: 4
+
+  "WhatsApp recibido":
+    codigo_jamar: "90"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: true
+    prioridad: 2
+
+  "Correo recibido":
+    codigo_jamar: "90"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: true
+    prioridad: 2
+
+  "No contesta":
+    codigo_jamar: "86"
+    contactabilidad: "NO CONTACTOS"
+    es_promesa: false
+    prioridad: 4
+
+  "Correo enviado":
+    codigo_jamar: "91"
+    contactabilidad: "NO CONTACTOS"
+    es_promesa: false
+    prioridad: 4
+
+  "WhatsApp enviado":
+    codigo_jamar: "91"
+    contactabilidad: "NO CONTACTOS"
+    es_promesa: false
+    prioridad: 4
+
+  "Tono ocupado / no da tono":
+    codigo_jamar: "10"
+    contactabilidad: "NO CONTACTOS"
+    es_promesa: false
+    prioridad: 4
+
+  "Equivocado":
+    codigo_jamar: "11"
+    contactabilidad: "NO CONTACTOS"
+    es_promesa: false
+    prioridad: 4
+
+  "Ilocalizable":
+    codigo_jamar: "15"
+    contactabilidad: "NO CONTACTOS"
+    es_promesa: false
+    prioridad: 4
+
+  "Comunicacion Cliente (No usar agente)":
+    codigo_jamar: "90"
+    contactabilidad: "CONTACTO EFECTIVO"
+    es_promesa: true
+    prioridad: 2
+
+# ============================================================
+# 4. REPORTE ESPECÍFICO DE PREDEMANDA (cobranza/reporte_clientes/)
+# ============================================================
+predemanda:
+  grupos_resultado:
+    "COMPROMISO DE PAGO":
+      prioridad: 1
+      codigos_jamar: ["01", "89", "88"]
+    "CONTACTO EFECTIVO":
+      prioridad: 2
+      codigos_jamar: ["14", "81", "90", "84"]
+    "CONTACTO CON TERCERO":
+      prioridad: 3
+      codigos_jamar: ["00", "0"]
+    "NO CONTACTOS":
+      prioridad: 4
+      codigos_jamar: ["83", "11", "15", "86", "10"]

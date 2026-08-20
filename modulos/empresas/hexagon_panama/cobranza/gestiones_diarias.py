@@ -1,4 +1,4 @@
-# cobranza/gestiones_diarias/cargar.py
+# cobranza/gestiones_diarias.py
 import streamlit as st
 import pandas as pd
 import yaml
@@ -72,7 +72,7 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
             if pd.isna(monto_promesa) or float(monto_promesa or 0) <= 0:
                 errores.append("Esta tipología requiere un monto de promesa válido")
 
-        # Registro procesado
+        # Registro procesado para BQ
         registro = {
             "cuenta": cuenta,
             "gestion": gestion,
@@ -80,7 +80,7 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
             "telefono": telefono,
             "fecha_gestion": pd.to_datetime(fecha_gestion) if pd.notna(fecha_gestion) else datetime.now(),
             "fecha_promesa": pd.to_datetime(fecha_promesa) if pd.notna(fecha_promesa) else None,
-            "monto_promesa": float(monto_promesa) if pd.notna(monto_promesa) and monto_promesa != "" else 0.0,
+            "monto_promesa": float(monto_promesa) if pd.notna(monto_promesa) and str(monto_promesa).strip() != "" else 0.0,
             "asesor": asesor,
             "codigo_jamar": codigo_jamar,
             "contactabilidad": contactabilidad,
@@ -106,12 +106,14 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
 # INTERFAZ STREAMLIT
 # ============================================================
 def render_ui():
-    st.title("💼 Carga Diaria de Gestiones")
-    st.caption("Módulo de procesamiento y validación operativa")
+    st.title("💼 Carga y Validación de Gestiones Diarias")
+    st.caption("Procesamiento operativo contra reglas de negocio YAML")
 
-    config = cargar_configuracion("jamar")
+    proyecto = st.selectbox("Selecciona el Proyecto", ["JAMAR"], index=0)
+    config = cargar_configuracion(proyecto)
+    
     if not config:
-        st.error("No se pudo cargar la configuración de Jamar.")
+        st.error("No se pudo cargar la configuración.")
         return
 
     archivo = st.file_uploader("Cargar archivo de gestiones (CSV o Excel)", type=["csv", "xlsx"])
@@ -123,33 +125,30 @@ def render_ui():
             else:
                 df_input = pd.read_excel(archivo)
 
-            st.subheader("Preview del archivo cargado")
+            st.subheader("Preview de datos a procesar")
             st.dataframe(df_input.head(5), use_container_width=True)
 
-            if st.button("🚀 Validar y Procesar Gestiones", type="primary"):
-                with st.spinner("Procesando y aplicando reglas de negocio..."):
+            if st.button("🚀 Validar y Cargar a BigQuery", type="primary"):
+                with st.spinner("Procesando y validando según árbol de tipologías..."):
                     df_validos, df_invalidos = procesar_y_validar_gestiones(df_input, config)
 
-                # Métricas rápidas
                 col1, col2, col3 = st.columns(3)
                 col1.metric("Total Registros", len(df_input))
-                col2.metric("Válidos (Listos para BQ)", len(df_validos))
-                col3.metric("Con Errores", len(df_invalidos))
+                col2.metric("Válidos (BigQuery)", len(df_validos))
+                col3.metric("Rechazados", len(df_invalidos))
 
-                # Guardar en BigQuery mediante el cliente existente
                 client = get_client()
 
                 if not df_validos.empty:
-                    st.success(f"✅ {len(df_validos)} gestiones listas para insertarse.")
                     job = client.load_table_from_dataframe(
                         df_validos, 
                         "proyecto-css-panama.cobranza.gestiones"
                     )
                     job.result()
-                    st.toast("Gestiones válidas subidas a BigQuery", icon="✅")
+                    st.success(f"✅ {len(df_validos)} gestiones insertadas en cobranza.gestiones")
 
                 if not df_invalidos.empty:
-                    st.warning(f"⚠️ {len(df_invalidos)} registros rechazados por reglas de negocio.")
+                    st.warning(f"⚠️ {len(df_invalidos)} registros con inconsistencias detectadas")
                     st.dataframe(df_invalidos[["datos_raw", "errores"]], use_container_width=True)
                     
                     job_err = client.load_table_from_dataframe(
@@ -157,7 +156,7 @@ def render_ui():
                         "proyecto-css-panama.cobranza.validaciones_gestiones"
                     )
                     job_err.result()
-                    st.toast("Errores guardados en log de validaciones", icon="⚠️")
+                    st.toast("Alertas guardadas en log de validaciones", icon="⚠️")
 
         except Exception as e:
             st.error(f"❌ Error al procesar el archivo: {e}")

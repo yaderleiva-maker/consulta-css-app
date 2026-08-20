@@ -170,6 +170,25 @@ def render_ui():
 
                 if not df_invalidos.empty:
                     st.warning(f"⚠️ {len(df_invalidos)} registros con inconsistencias detectadas")
+                    
+                    # 🔍 INSPECCIÓN DE TIPOS Y NOMBRES DE COLUMNAS
+                    st.subheader("🔍 Diagnóstico del DataFrame de Registros Inválidos")
+                    
+                    # 1. Inspeccionar Tipos de Datos de Pandas
+                    st.markdown("**Tipos de datos detectados (df_invalidos.dtypes):**")
+                    dtypes_df = pd.DataFrame({
+                        "Columna": df_invalidos.columns,
+                        "Tipo_Pandas": [str(df_invalidos[col].dtype) for col in df_invalidos.columns],
+                        "Ejemplo_Valor": [repr(df_invalidos[col].iloc[0]) for col in df_invalidos.columns]
+                    })
+                    st.dataframe(dtypes_df, use_container_width=True)
+                    
+                    # 2. Preview de los datos estructurados
+                    st.markdown("**Preview de las primeras filas:**")
+                    st.dataframe(df_invalidos.head(), use_container_width=True)
+                
+                if not df_invalidos.empty:
+                    st.warning(f"⚠️ {len(df_invalidos)} registros con inconsistencias detectadas")
                     st.dataframe(df_invalidos[["datos_raw", "errores"]], use_container_width=True)
                     
                     job_err = client.load_table_from_dataframe(

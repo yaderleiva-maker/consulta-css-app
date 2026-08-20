@@ -1,5 +1,5 @@
 proyecto: BGVIGENTES
-descripcion: "Transformación de gestiones VICI para Banco General"
+descripcion: "Transformación de gestiones VICI para Banco General (soporte múltiples archivos)"
 
 # ============================================================
 # 1. CONFIGURACIÓN VICI
@@ -12,26 +12,31 @@ vici:
   codigo_resultado: status
 
 # ============================================================
-# 2. MOTOR DE TRANSFORMACIONES ⚙️ (NUEVO)
+# 2. MOTOR DE TRANSFORMACIONES ⚙️
 # ============================================================
 transformaciones:
+  # Transformación del status (insertar punto)
   status:
     tipo: insertar_punto
     excepciones:
       - "TIMEOT"
-      - "AL"        # AL también es excepción (según Access)
-    descripcion: "Inserta punto después del primer carácter"
+      - "AL"
+    descripcion: "Inserta punto después del primer carácter (ej: eCCL → e.CCL)"
   
-  # Futuras transformaciones:
-  # fecha_gestion:
-  #   tipo: formato_access
-  #   formato: "MM-DD-YYYY"
+  # Regla especial: Asesor "Aris Samaniego" → status = "VDAD"
+  asignacion_especial:
+    tipo: sobrescribir_por_condicion
+    columna_origen: asesor
+    columna_destino: status
+    descripcion: "Si el asesor es 'Aris Samaniego', el status pasa a ser 'VDAD'"
+    mapeo:
+      "Aris Samaniego": "VDAD"
 
 # ============================================================
-# 3. TIPOLOGÍA (Códigos ya transformados)
+# 3. TIPOLOGÍA (Códigos normalizados → Descripciones)
 # ============================================================
 tipologia:
-  # Contactos exitosos (Prioridad 1)
+  # === CONTACTOS EXITOSOS (Prioridad 1) ===
   "b.OP": "b.OP-Obtuvo promesa"
   "y.CINPA": "y.CINPA-Cliente con intención de pago"
   "c.RPAG": "c.RPAG-Recordatorio de pago"
@@ -42,12 +47,12 @@ tipologia:
   "o.AAF": "o.AAF-Avisado a familiar"
   "x.CM": "x.CM-Cliente molesto"
   
-  # Contactos con terceros (Prioridad 2)
+  # === CONTACTOS CON TERCEROS (Prioridad 2) ===
   "v.TERC": "v.TERC-Terceros"
   "s.COSDM": "s.COSDM-Codeudor se deja mensaje"
   "t.COSDM": "t.COSDM-Codeudor no contesta"
   
-  # No contactos (Prioridad 3-4)
+  # === NO CONTACTOS (Prioridad 3-4) ===
   "d.CRIN": "d.CRIN-Cliente renuente o insolvente"
   "e.CCL": "e.CCL-Cliente cuelga llamada"
   "h.NC": "h.NC-No contesta"
@@ -63,9 +68,6 @@ tipologia:
 # 4. REGLAS DE NEGOCIO
 # ============================================================
 reglas:
-  asesores:
-    # Mapeo de usuarios si es necesario
-  
   comentario:
     formato: "{telefono} {resultado}"
   
@@ -74,33 +76,15 @@ reglas:
     formato: "BGVIGENTES::::{cuenta}"
 
 # ============================================================
-# 5. FALLBACKS
+# 5. CRM (Enriquecimiento)
+# ============================================================
+crm:
+  requiere:
+    - fecha_reprogramacion
+    - estado_cuenta
+
+# ============================================================
+# 6. FALLBACKS
 # ============================================================
 fallbacks:
   estado_cuenta: "No contacto"
-
-# ============================================================
-# 6. METADATOS PARA REPORTES
-# ============================================================
-arbol_tipologias:
-  "b.OP":
-    codigo_jamar: "89"
-    contactabilidad: "COMPROMISO DE PAGO"
-    es_promesa: true
-    prioridad: 1
-  # ... (todos los códigos mapeados)
-
-predemanda:
-  grupos_resultado:
-    "COMPROMISO DE PAGO":
-      prioridad: 1
-      codigos_jamar: ["89", "01", "88"]
-    "CONTACTO EFECTIVO":
-      prioridad: 2
-      codigos_jamar: ["14", "81", "90", "84"]
-    "CONTACTO CON TERCERO":
-      prioridad: 3
-      codigos_jamar: ["00", "0"]
-    "NO CONTACTOS":
-      prioridad: 4
-      codigos_jamar: ["83", "11", "15", "86", "10"]

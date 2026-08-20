@@ -10,7 +10,7 @@ from services.bigquery import get_client
 # HELPER: CARGAR CONFIGURACIÓN YAML UNIFICADA
 # ============================================================
 def cargar_configuracion(proyecto: str = "jamar") -> dict:
-    path = f"herramientas/proyectos/{proyecto.lower()}.yaml"
+    path = f"consultas/proyectos/{proyecto.lower()}.yaml"
     try:
         with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)

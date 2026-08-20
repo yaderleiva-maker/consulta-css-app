@@ -13,8 +13,8 @@ vici:
 
 tipologia:
   AA: "No contesta"
-  AB: "Tono ocupado / no da tono"
-  ADC: "Tono ocupado / no da tono"
+  #AB: "Tono ocupado / no da tono"
+  #ADC: "Tono ocupado / no da tono"
   BZN: "No contesta"
   CLL: "Cuelga llamada"
   NA: "No contesta"

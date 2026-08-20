@@ -186,7 +186,9 @@ def login():
                             "clautotini1224@gmail.com",
                             "sharonalarconhexagon@gmail.com",
                             "juanpangulo81@gmail.com",
-                            "juanestebanrochasanchez@gmail.com"
+                            "juanestebanrochasanchez@gmail.com",
+                            "santinovoa16@gmail.com",
+                            "betancourtmarco216@gmail.com"
                         ]
 
                         if email in usuarios_permitidos:

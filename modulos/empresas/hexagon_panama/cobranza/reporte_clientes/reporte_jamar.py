@@ -5,24 +5,27 @@ import yaml
 from services.bigquery import ejecutar_query
 
 def cargar_config_jamar():
-    with open("herramientas/proyectos/jamar.yaml", "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    path = "herramientas/proyectos/jamar.yaml"
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        st.error(f"Error al abrir {path}: {e}")
+        return {}
 
 def render_ui():
-    st.title("📋 Reporte Operativo - Jamar")
-    st.caption("Generación del reporte entregable con jerarquía de Predemanda")
+    st.title("📋 Reporte de Gestiones - Jamar")
+    st.caption("Salida operativa ajustada al formato de Predemanda")
 
     config = cargar_config_jamar()
     
-    # Filtros de fecha
     col1, col2 = st.columns(2)
     fecha_inicio = col1.date_input("Fecha Inicio", value=pd.to_datetime("today"))
     fecha_fin = col2.date_input("Fecha Fin", value=pd.to_datetime("today"))
 
-    if st.button("🔍 Generar Reporte Predemanda"):
+    if st.button("🔍 Consultar Gestiones Jamar", type="primary"):
         query = f"""
             SELECT 
-                cuenta,
                 codigo_jamar,
                 gestion AS mejor_gestion_jamar,
                 contactabilidad AS resultado,
@@ -33,21 +36,20 @@ def render_ui():
             ORDER BY prioridad ASC, fecha_gestion DESC
         """
         
-        with st.spinner("Consultando BigQuery..."):
+        with st.spinner("Generando entregable desde BigQuery..."):
             df_reporte = ejecutar_query(query)
 
         if df_reporte.empty:
-            st.warning("No se encontraron gestiones para el rango de fechas seleccionado.")
+            st.warning("No hay gestiones registradas para las fechas seleccionadas.")
         else:
-            st.success(f"Se encontraron {len(df_reporte)} registros.")
+            st.success(f"Se encontraron {len(df_reporte)} registros de gestiones.")
             st.dataframe(df_reporte, use_container_width=True)
 
-            # Exportador en Excel listo para cliente
             csv = df_reporte.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="📥 Descargar Reporte Predemanda (CSV)",
+                label="📥 Descargar Reporte (CSV)",
                 data=csv,
-                file_name=f"Reporte_Predemanda_Jamar_{fecha_inicio}_{fecha_fin}.csv",
+                file_name=f"Reporte_Jamar_Predemanda_{fecha_inicio}_{fecha_fin}.csv",
                 mime="text/csv"
             )
 

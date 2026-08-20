@@ -243,6 +243,12 @@ ROLES = {
     "juanestebanrochasanchez@gmail.com": {
         "NEXO_PEOPLE": True
     },
+    "santinovoa16@gmail.com": {
+        "NEXO_PEOPLE": True
+    },
+    "betancourtmarco216@gmail.com": {
+        "NEXO_PEOPLE": True
+    },
 }
 
 # =====================

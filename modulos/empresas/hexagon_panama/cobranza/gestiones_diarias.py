@@ -5,6 +5,7 @@ import yaml
 import json
 import uuid
 from datetime import datetime
+from google.cloud import bigquery
 from services.bigquery import get_client
 
 # ============================================================
@@ -51,10 +52,15 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
 
     filas_validas = []
     filas_invalidas = []
+    
+    # Contador de gestiones con al menos un error
+    gestiones_rechazadas_cnt = 0
 
     for idx, row in df.iterrows():
-        # Lista de tuplas para guardar (tipo_error, campo, mensaje_error)
         fallos = []
+        
+        # ID Único de esta gestión para vinculación relacional
+        id_gestion = str(uuid.uuid4())
         
         cuenta = str(row.get("cuenta", "")).strip()
         gestion = str(row.get("gestion", "")).strip()
@@ -104,6 +110,7 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
 
         # Registro operacional para cobranza.gestiones
         registro = {
+            "id_gestion": id_gestion,
             "cuenta": cuenta,
             "gestion": gestion,
             "comentario": comentario,
@@ -119,19 +126,21 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
         }
 
         if fallos:
-            # Armamos una fila por cada error respetando el ESQUEMA OFICIAL de la BD
+            gestiones_rechazadas_cnt += 1
             datos_raw_str = json.dumps(row.astype(str).to_dict(), ensure_ascii=False)
             now_ts = datetime.now()
             
+            # Generamos una fila de auditoría por cada error detectado vinculada a id_gestion
             for tipo_err, campo_err, msj_err in fallos:
                 registro_error = {
                     "id_validacion": str(uuid.uuid4()),
-                    "id_carga": id_carga_sesion,
-                    "id_proyecto": id_proyecto,
-                    "cuenta": cuenta,
-                    "tipo_error": tipo_err,
-                    "campo": campo_err,
-                    "mensaje_error": msj_err,
+                    "id_gestion": str(id_gestion),
+                    "id_carga": str(id_carga_sesion),
+                    "id_proyecto": str(id_proyecto),
+                    "cuenta": str(cuenta),
+                    "tipo_error": str(tipo_err),
+                    "campo": str(campo_err),
+                    "mensaje_error": str(msj_err),
                     "datos_raw": datos_raw_str,
                     "estado": "PENDIENTE",
                     "created_at": now_ts
@@ -140,7 +149,36 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
         else:
             filas_validas.append(registro)
 
-    return pd.DataFrame(filas_validas), pd.DataFrame(filas_invalidas)
+    df_validos = pd.DataFrame(filas_validas)
+    df_invalidos = pd.DataFrame(filas_invalidas)
+
+    # TIPADO Y ALINEACIÓN EXPLÍCITA DEL DATAFRAME DE ERRORES
+    columnas_validaciones = [
+        "id_validacion", "id_gestion", "id_carga", "id_proyecto", 
+        "cuenta", "tipo_error", "campo", "mensaje_error", 
+        "datos_raw", "estado", "created_at"
+    ]
+
+    if not df_invalidos.empty:
+        for col in columnas_validaciones:
+            if col not in df_invalidos.columns:
+                df_invalidos[col] = None
+
+        df_invalidos = df_invalidos[columnas_validaciones]
+
+        # Casting explícito de tipos STRING
+        columnas_string = [
+            "id_validacion", "id_gestion", "id_carga", "id_proyecto",
+            "cuenta", "tipo_error", "campo", "mensaje_error",
+            "datos_raw", "estado"
+        ]
+        for col in columnas_string:
+            df_invalidos[col] = df_invalidos[col].astype(str)
+
+        # Casting explícito a TIMESTAMP
+        df_invalidos["created_at"] = pd.to_datetime(df_invalidos["created_at"], errors="coerce")
+
+    return df_validos, df_invalidos, gestiones_rechazadas_cnt
 
 # ============================================================
 # INTERFAZ STREAMLIT
@@ -170,12 +208,14 @@ def render_ui():
 
             if st.button("🚀 Validar y Cargar a BigQuery", type="primary"):
                 with st.spinner("Procesando y aplicando normalización de columnas..."):
-                    df_validos, df_invalidos = procesar_y_validar_gestiones(df_input, config)
+                    df_validos, df_invalidos, rechazadas_cnt = procesar_y_validar_gestiones(df_input, config)
 
-                col1, col2, col3 = st.columns(3)
-                col1.metric("Total Registros", len(df_input))
-                col2.metric("Válidos (BigQuery)", len(df_validos))
-                col3.metric("Rechazados", len(df_invalidos))
+                # Muestra métricas transparentes al usuario
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Total Gestiones", len(df_input))
+                col2.metric("Válidas (BigQuery)", len(df_validos))
+                col3.metric("Gestiones Rechazadas", rechazadas_cnt)
+                col4.metric("Errores Detectados", len(df_invalidos))
 
                 client = get_client()
 
@@ -188,38 +228,42 @@ def render_ui():
                     job.result()
                     st.success(f"✅ {len(df_validos)} gestiones insertadas en cobranza.gestiones")
 
-                # 2. PROCESAMIENTO Y DIAGNÓSTICO DE REGISTROS INVÁLIDOS
+                # 2. CARGA DE REGISTROS DE AUDITORÍA Y CONTROL DE CALIDAD
                 if not df_invalidos.empty:
-                    st.warning(f"⚠️ {len(df_invalidos)} alertas/errores generados para revisión")
-                    
-                    # Panel de inspección
-                    st.subheader("📋 Resumen de Inconsistencias")
+                    st.warning(f"⚠️ {rechazadas_cnt} gestiones rechazadas ({len(df_invalidos)} errores detallados)")
                     st.dataframe(
                         df_invalidos[["cuenta", "tipo_error", "campo", "mensaje_error"]], 
                         use_container_width=True
                     )
 
-                    st.markdown("**Diagnóstico de Tipos de Datos (df_invalidos.dtypes):**")
-                    dtypes_df = pd.DataFrame({
-                        "Columna": df_invalidos.columns,
-                        "Tipo_Pandas": [str(df_invalidos[col].dtype) for col in df_invalidos.columns],
-                        "Ejemplo_Valor": [repr(df_invalidos[col].iloc[0]) for col in df_invalidos.columns]
-                    })
-                    st.dataframe(dtypes_df, use_container_width=True)
+                    # Configuración estricta del esquema según la definición oficial de BigQuery
+                    job_config = bigquery.LoadJobConfig(
+                        schema=[
+                            bigquery.SchemaField("id_validacion", "STRING", mode="REQUIRED"),
+                            bigquery.SchemaField("id_gestion", "STRING", mode="REQUIRED"),
+                            bigquery.SchemaField("id_carga", "STRING", mode="REQUIRED"),
+                            bigquery.SchemaField("id_proyecto", "STRING", mode="REQUIRED"),
+                            bigquery.SchemaField("cuenta", "STRING", mode="REQUIRED"),
+                            bigquery.SchemaField("tipo_error", "STRING", mode="REQUIRED"),
+                            bigquery.SchemaField("campo", "STRING", mode="REQUIRED"),
+                            bigquery.SchemaField("mensaje_error", "STRING", mode="REQUIRED"),
+                            bigquery.SchemaField("datos_raw", "JSON", mode="NULLABLE"),
+                            bigquery.SchemaField("estado", "STRING", mode="NULLABLE"),
+                            bigquery.SchemaField("created_at", "TIMESTAMP", mode="NULLABLE"),
+                        ],
+                        write_disposition="WRITE_APPEND"
+                    )
 
-                    # Carga aislada en BQ para capturar cualquier desalineación sin romper la pantalla
-                    try:
-                        job_err = client.load_table_from_dataframe(
-                            df_invalidos, 
-                            "proyecto-css-panama.cobranza.validaciones_gestiones"
-                        )
-                        job_err.result()
-                        st.toast("Alertas guardadas exitosamente en log de validaciones", icon="⚠️")
-                    except Exception as bq_err:
-                        st.error(f"❌ Error al guardar en cobranza.validaciones_gestiones: {bq_err}")
+                    job_err = client.load_table_from_dataframe(
+                        df_invalidos, 
+                        "proyecto-css-panama.cobranza.validaciones_gestiones",
+                        job_config=job_config
+                    )
+                    job_err.result()
+                    st.toast("Alertas guardadas en log de validaciones", icon="⚠️")
 
         except Exception as e:
-            st.error(f"❌ Error general al procesar el archivo: {e}")
+            st.error(f"❌ Error al procesar el archivo: {e}")
 
 if __name__ == "__main__":
     render_ui()

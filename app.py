@@ -13,7 +13,8 @@ from modulos.empresas.farmazone import carga_reportes
 from modulos.productos.nexo_people import nexo_people
 from modulos.empresas.hexagon_panama.cobranza.carga_cartera import render as render_carga_cartera
 from modulos.empresas.hexagon_panama.cobranza.investigacion import render as render_investigacion
-from cobranza.gestiones_diarias import render_ui as render_gestiones_diarias
+from modulos.empresas.hexagon_panama.cobranza.gestiones_diarias import render_ui as render_gestiones_diarias
+from modulos.empresas.hexagon_panama.cobranza.reporte_clientes.reporte_jamar import render_ui as render_reporte_jamar
 from modulos.empresas.hexagon_panama.reporteria import motor as reporteria_motor
 
 

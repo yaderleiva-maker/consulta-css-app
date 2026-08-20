@@ -183,7 +183,10 @@ def login():
                             "tmksolutionspty@gmail.com",
                             "nalvaradohexagon@gmail.com",
                             "hexagonclaudia@gmail.com",
-                            "clautotini1224@gmail.com"
+                            "clautotini1224@gmail.com",
+                            "sharonalarconhexagon@gmail.com",
+                            "juanpangulo81@gmail.com",
+                            "juanestebanrochasanchez@gmail.com"
                         ]
 
                         if email in usuarios_permitidos:

@@ -1,13 +1,18 @@
 """
 Transformador VICI -> CRM
 Motor generico que procesa archivos VICI segun configuracion YAML
+Soporte:
+- Múltiples archivos VICI (hasta 3)
+- Motor de transformaciones configurables
+- Validación contra BigQuery
+- Enriquecimiento con CRM
 """
 
 import pandas as pd
 import yaml
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List
 import logging
 import io
 import streamlit as st
@@ -97,14 +102,58 @@ class TransformadorVICI:
         
         return config
     
-    def cargar_vici(self, archivo) -> pd.DataFrame:
-        """Carga archivo VICI con manejo especial para 'NA'"""
+    # ============================================================
+    # CARGA DE ARCHIVOS (SOPORTE MÚLTIPLES VICI)
+    # ============================================================
+    
+    def cargar_vici(self, archivos) -> pd.DataFrame:
+        """
+        Carga uno o múltiples archivos VICI
+        - Si es un solo archivo: lo carga normalmente
+        - Si es una lista: concatena todos (máximo 3)
+        """
+        # Convertir a lista si es un solo archivo
+        if not isinstance(archivos, list):
+            archivos = [archivos]
+        
+        # Limitar a 3 archivos
+        if len(archivos) > 3:
+            self.logs.append(f"⚠️ Se recibieron {len(archivos)} archivos, solo se procesarán los primeros 3")
+            archivos = archivos[:3]
+        
+        dfs = []
+        for i, archivo in enumerate(archivos, 1):
+            self.logs.append(f"Cargando VICI {i}/{len(archivos)}...")
+            
+            try:
+                df = self._cargar_un_archivo_vici(archivo)
+                dfs.append(df)
+                self.logs.append(f"  ✅ VICI {i}: {len(df)} registros")
+            except Exception as e:
+                self.logs.append(f"  ❌ Error en VICI {i}: {str(e)[:100]}")
+                raise
+        
+        # Concatenar todos los DataFrames
+        if len(dfs) == 1:
+            self.df_vici = dfs[0]
+        else:
+            self.df_vici = pd.concat(dfs, ignore_index=True)
+            self.logs.append(f"✅ Total registros concatenados: {len(self.df_vici)}")
+        
+        # Normalizar después de concatenar
+        self._normalizar_columnas_vici()
+        
+        logger.info(f"VICI cargado: {len(self.df_vici)} registros")
+        self.logs.append(f"VICI cargado: {len(self.df_vici)} registros")
+        return self.df_vici
+    
+    def _cargar_un_archivo_vici(self, archivo) -> pd.DataFrame:
+        """Carga un único archivo VICI"""
         if hasattr(archivo, 'read'):
             contenido = archivo.read()
             if isinstance(contenido, bytes):
                 contenido = contenido.decode('utf-8')
             
-            # Leer todo como string para evitar que NA se convierta a NaN
             df = pd.read_csv(
                 io.StringIO(contenido), 
                 sep=None, 
@@ -127,42 +176,34 @@ class TransformadorVICI:
         else:
             raise ValueError("Tipo de archivo no soportado")
         
+        return df
+    
+    def _normalizar_columnas_vici(self):
+        """Normaliza columnas después de concatenar"""
+        if self.df_vici is None or self.df_vici.empty:
+            return
+        
         # Normalizar nombres de columnas
-        df.columns = df.columns.str.lower().str.strip()
+        self.df_vici.columns = self.df_vici.columns.str.lower().str.strip()
         
-        # NORMALIZAR LA COLUMNA DE RESULTADO (status)
         col_codigo = self.config['vici']['codigo_resultado']
-        if col_codigo in df.columns:
-            # Limpiar valores: eliminar espacios, convertir a string, mayúsculas
-            df[col_codigo] = df[col_codigo].astype(str).str.strip().str.upper()
-            # Reemplazar valores vacíos o 'nan' por None
-            df[col_codigo] = df[col_codigo].replace(['nan', 'None', ''], None)
+        if col_codigo in self.df_vici.columns:
+            self.df_vici[col_codigo] = self.df_vici[col_codigo].astype(str).str.strip().str.upper()
+            self.df_vici[col_codigo] = self.df_vici[col_codigo].replace(['nan', 'None', ''], None)
             
-            # CONTAR VALORES ÚNICOS PARA DEBUG
-            valores_unicos = df[col_codigo].unique().tolist()
+            # DEBUG: Contar valores únicos
+            valores_unicos = self.df_vici[col_codigo].unique().tolist()
             self.logs.append(f"Valores unicos en '{col_codigo}': {valores_unicos[:20]}")
-            
-            # VERIFICAR SI 'NA' ESTÁ EN LOS VALORES
-            if 'NA' in valores_unicos:
-                self.logs.append("'NA' encontrado en la columna status")
-            else:
-                self.logs.append("'NA' NO encontrado en la columna status")
         
-        # Normalizar columna de asesor
         col_asesor = self.config['vici']['asesor']
-        if col_asesor in df.columns:
-            df[col_asesor] = df[col_asesor].astype(str).str.strip()
-            df[col_asesor] = df[col_asesor].replace(['nan', 'None', ''], None)
+        if col_asesor in self.df_vici.columns:
+            self.df_vici[col_asesor] = self.df_vici[col_asesor].astype(str).str.strip()
+            self.df_vici[col_asesor] = self.df_vici[col_asesor].replace(['nan', 'None', ''], None)
         
         # Validar columna de cuenta
         col_cuenta = self.config['vici']['cuenta']
-        if col_cuenta not in df.columns:
+        if col_cuenta not in self.df_vici.columns:
             raise ValueError(f"Columna '{col_cuenta}' no encontrada en VICI")
-        
-        self.df_vici = df
-        logger.info(f"VICI cargado: {len(df)} registros")
-        self.logs.append(f"VICI cargado: {len(df)} registros")
-        return df
     
     def cargar_crm(self, archivo) -> pd.DataFrame:
         """Carga archivo CRM (Excel)"""
@@ -180,6 +221,109 @@ class TransformadorVICI:
         logger.info(f"CRM cargado: {len(df)} registros")
         self.logs.append(f"CRM cargado: {len(df)} registros")
         return df
+    
+    # ============================================================
+    # MOTOR DE TRANSFORMACIONES CONFIGURABLES
+    # ============================================================
+    
+    def aplicar_transformaciones(self):
+        """Aplica todas las transformaciones configuradas en el YAML"""
+        if self.df_vici is None or self.df_vici.empty:
+            return
+        
+        transform_config = self.config.get('transformaciones', {})
+        
+        if not transform_config:
+            self.logs.append("No hay transformaciones configuradas")
+            return
+        
+        for nombre_transf, config in transform_config.items():
+            self.logs.append(f"Aplicando transformación: {nombre_transf}")
+            
+            if nombre_transf == 'status':
+                # Transformación del status (insertar punto, etc.)
+                self._aplicar_transformacion_status(config)
+            
+            elif nombre_transf == 'asignacion_especial':
+                # Transformación condicional (ej: Aris Samaniego → VDAD)
+                self._aplicar_transformacion_condicional(config)
+            
+            # FUTURAS: quitar_prefijo, reemplazar, formato_fecha, etc.
+            # elif nombre_transf == 'quitar_prefijo':
+            #     self._aplicar_transformacion_quitar_prefijo(config)
+            
+            else:
+                self.logs.append(f"⚠️ Tipo de transformación '{nombre_transf}' no reconocido")
+    
+    def _aplicar_transformacion_status(self, config):
+        """Aplica transformación al campo status"""
+        col_codigo = self.config['vici']['codigo_resultado']
+        
+        if col_codigo not in self.df_vici.columns:
+            self.logs.append(f"⚠️ Columna '{col_codigo}' no encontrada para transformación")
+            return
+        
+        tipo = config.get('tipo')
+        self.logs.append(f"  Tipo: {tipo}")
+        
+        if tipo == 'insertar_punto':
+            excepciones = config.get('excepciones', [])
+            self.logs.append(f"  Excepciones: {excepciones}")
+            
+            # Aplicar transformación
+            self.df_vici[col_codigo] = self.df_vici[col_codigo].apply(
+                lambda x: self._transformar_insertar_punto(x, excepciones)
+            )
+            
+            self.logs.append(f"  ✅ Transformación 'insertar_punto' aplicada a '{col_codigo}'")
+        
+        # FUTUROS TIPOS:
+        # elif tipo == 'quitar_prefijo':
+        #     self._aplicar_transformacion_quitar_prefijo(config)
+    
+    def _aplicar_transformacion_condicional(self, config):
+        """Aplica transformación condicional (sobrescritura de status)"""
+        col_origen = config.get('columna_origen')
+        mapeo = config.get('mapeo', {})
+        col_destino = config.get('columna_destino', 'status')  # Por defecto 'status'
+        
+        if not col_origen or col_origen not in self.df_vici.columns:
+            self.logs.append(f"⚠️ Columna origen '{col_origen}' no encontrada")
+            return
+        
+        if col_destino not in self.df_vici.columns:
+            self.logs.append(f"⚠️ Columna destino '{col_destino}' no encontrada")
+            return
+        
+        self.logs.append(f"  Origen: {col_origen} → Destino: {col_destino}")
+        
+        for valor_origen, nuevo_valor in mapeo.items():
+            mask = self.df_vici[col_origen].astype(str).str.strip() == valor_origen
+            if mask.any():
+                count = mask.sum()
+                self.logs.append(f"  ✅ {count} registros con '{valor_origen}' → {col_destino} = '{nuevo_valor}'")
+                self.df_vici.loc[mask, col_destino] = nuevo_valor
+    
+    def _transformar_insertar_punto(self, valor, excepciones):
+        """Inserta punto después del primer carácter"""
+        if pd.isna(valor) or not valor:
+            return valor
+        
+        valor = str(valor).strip()
+        
+        # Verificar excepciones
+        if valor in excepciones:
+            return valor
+        
+        # Insertar punto después del primer carácter
+        if len(valor) > 1:
+            return f"{valor[0]}.{valor[1:]}"
+        
+        return valor
+    
+    # ============================================================
+    # VALIDACIÓN DE CUENTAS
+    # ============================================================
     
     def validar_cuentas(self) -> pd.DataFrame:
         """Valida cuentas contra BigQuery"""
@@ -243,6 +387,10 @@ class TransformadorVICI:
         self.df_vici = df_validas.drop(columns=['_valida']) if not df_validas.empty else df_validas
         return self.df_vici
     
+    # ============================================================
+    # APLICAR TIPOLOGÍA
+    # ============================================================
+    
     def aplicar_tipologia(self):
         """Aplica el mapeo de codigos a resultados descriptivos Y FILTRA"""
         if self.df_vici is None or self.df_vici.empty:
@@ -292,44 +440,26 @@ class TransformadorVICI:
         
         self.logs.append("Tipologia aplicada")
     
-    def aplicar_reglas(self):
-        """Aplica reglas de negocio especificas del proyecto"""
+    # ============================================================
+    # NORMALIZACIÓN DE FECHAS
+    # ============================================================
+    
+    def normalizar_fechas(self):
+        """Normaliza fechas del VICI"""
         if self.df_vici is None or self.df_vici.empty:
             return
         
-        config = self.config
-        reglas = config.get('reglas', {})
+        col_fecha = self.config['vici']['fecha_gestion']
+        self.df_vici['_fecha_normalizada'] = self.df_vici[col_fecha].apply(
+            normalizar_fecha_vici
+        )
+        self.df_vici['created_at'] = self.df_vici['_fecha_normalizada']
         
-        if 'asesores' in reglas:
-            asesores_map = reglas['asesores']
-            col_asesor = config['vici']['asesor']
-            self.df_vici[col_asesor] = self.df_vici[col_asesor].map(
-                lambda x: asesores_map.get(x, x) if pd.notna(x) else x
-            )
-            self.logs.append("Mapeo de asesores aplicado")
-        
-        if 'campo_proyecto' in reglas:
-            campo_conf = reglas['campo_proyecto']
-            col_cuenta = config['vici']['cuenta']
-            self.df_vici['_campo_proyecto'] = self.df_vici[col_cuenta].apply(
-                lambda x: campo_conf['formato'].format(
-                    proyecto=campo_conf['nombre'],
-                    cuenta=x
-                ) if pd.notna(x) else ''
-            )
-            self.logs.append("Campo proyecto creado")
-        
-        if 'comentario' in reglas:
-            formato = reglas['comentario']['formato']
-            col_telefono = config['vici']['telefono']
-            self.df_vici['_comentario'] = self.df_vici.apply(
-                lambda row: formato.format(
-                    telefono=row[col_telefono],
-                    resultado=row['_resultado_desc']
-                ) if pd.notna(row[col_telefono]) and pd.notna(row['_resultado_desc']) else '',
-                axis=1
-            )
-            self.logs.append("Comentario generado")
+        self.logs.append("Fechas normalizadas")
+    
+    # ============================================================
+    # ENRIQUECIMIENTO CON CRM
+    # ============================================================
     
     def enriquecer_con_crm(self):
         """Enriquece los datos con informacion del CRM"""
@@ -418,18 +548,52 @@ class TransformadorVICI:
                 fallbacks.get('estado_cuenta', 'No contacto')
             )
     
-    def normalizar_fechas(self):
-        """Normaliza fechas del VICI"""
+    # ============================================================
+    # REGLAS DE NEGOCIO
+    # ============================================================
+    
+    def aplicar_reglas(self):
+        """Aplica reglas de negocio especificas del proyecto"""
         if self.df_vici is None or self.df_vici.empty:
             return
         
-        col_fecha = self.config['vici']['fecha_gestion']
-        self.df_vici['_fecha_normalizada'] = self.df_vici[col_fecha].apply(
-            normalizar_fecha_vici
-        )
-        self.df_vici['created_at'] = self.df_vici['_fecha_normalizada']
+        config = self.config
+        reglas = config.get('reglas', {})
         
-        self.logs.append("Fechas normalizadas")
+        if 'asesores' in reglas:
+            asesores_map = reglas['asesores']
+            col_asesor = config['vici']['asesor']
+            self.df_vici[col_asesor] = self.df_vici[col_asesor].map(
+                lambda x: asesores_map.get(x, x) if pd.notna(x) else x
+            )
+            self.logs.append("Mapeo de asesores aplicado")
+        
+        if 'campo_proyecto' in reglas:
+            campo_conf = reglas['campo_proyecto']
+            col_cuenta = config['vici']['cuenta']
+            self.df_vici['_campo_proyecto'] = self.df_vici[col_cuenta].apply(
+                lambda x: campo_conf['formato'].format(
+                    proyecto=campo_conf['nombre'],
+                    cuenta=x
+                ) if pd.notna(x) else ''
+            )
+            self.logs.append("Campo proyecto creado")
+        
+        if 'comentario' in reglas:
+            formato = reglas['comentario']['formato']
+            col_telefono = config['vici']['telefono']
+            self.df_vici['_comentario'] = self.df_vici.apply(
+                lambda row: formato.format(
+                    telefono=row[col_telefono],
+                    resultado=row['_resultado_desc']
+                ) if pd.notna(row[col_telefono]) and pd.notna(row['_resultado_desc']) else '',
+                axis=1
+            )
+            self.logs.append("Comentario generado")
+    
+    # ============================================================
+    # GENERACIÓN DE CSV FINAL
+    # ============================================================
     
     def generar_csv_vtiger(self) -> pd.DataFrame:
         """Genera el DataFrame final en formato VTIGER"""
@@ -474,6 +638,10 @@ class TransformadorVICI:
         self.logs.append(f"CSV generado: {len(df_final)} registros")
         return df_final
     
+    # ============================================================
+    # PIPELINE PRINCIPAL
+    # ============================================================
+    
     def procesar(self, archivo_vici, archivo_crm=None, validar=False) -> pd.DataFrame:
         """Pipeline completo de transformacion"""
         self.logs = []
@@ -483,12 +651,18 @@ class TransformadorVICI:
         self.logs.append(f"Usando configuracion: proyectos/{self.proyecto}.yaml")
         self.logs.append(f"Tipologia: {len(self.config['tipologia'])} codigos mapeados")
         
+        # 1. Cargar VICI (soporta múltiples archivos)
         self.cargar_vici(archivo_vici)
         
         if self.df_vici.empty:
             self.logs.append("No hay datos en el archivo VICI")
             return pd.DataFrame()
         
+        # 2. APLICAR TRANSFORMACIONES CONFIGURABLES ⚙️
+        self.aplicar_transformaciones()
+        self.logs.append("Transformaciones aplicadas")
+        
+        # 3. Validar cuentas (opcional)
         if validar:
             self.logs.append("Validando cuentas contra BigQuery...")
             self.validar_cuentas()
@@ -498,15 +672,21 @@ class TransformadorVICI:
         else:
             self.logs.append("Validacion omitida (se procesan todas las cuentas)")
         
+        # 4. Normalizar fechas
         self.normalizar_fechas()
+        
+        # 5. Aplicar tipología (mapeo)
         self.aplicar_tipologia()
         
+        # 6. Enriquecer con CRM
         if archivo_crm:
             self.cargar_crm(archivo_crm)
-        
         self.enriquecer_con_crm()
+        
+        # 7. Aplicar reglas de negocio
         self.aplicar_reglas()
         
+        # 8. Generar CSV final
         df_final = self.generar_csv_vtiger()
         
         if self.errores:
@@ -526,9 +706,9 @@ class TransformadorVICI:
         }
 
 
-# =====================
-# FUNCION PARA STREAMLIT
-# =====================
+# ============================================================
+# FUNCIÓN PARA STREAMLIT
+# ============================================================
 
 def render_transformador_vici():
     """Funcion que se llama desde app.py"""
@@ -537,7 +717,7 @@ def render_transformador_vici():
     st.caption("Convierte archivos de VICI al formato que espera VTIGER")
     
     # ============================================================
-    # SELECTOR DE PROYECTO EN EL ÁREA PRINCIPAL
+    # SELECTOR DE PROYECTO
     # ============================================================
     st.markdown("---")
     
@@ -584,21 +764,31 @@ def render_transformador_vici():
     st.markdown("---")
     
     # ============================================================
-    # ÁREA DE ARCHIVOS
+    # ÁREA DE ARCHIVOS (SOPORTE MÚLTIPLES VICI)
     # ============================================================
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("Archivo VICI (.txt)")
-        archivo_vici = st.file_uploader(
-            "Subir archivo de VICI",
+        st.subheader("Archivo(s) VICI (.txt)")
+        
+        # 🔥 NUEVO: Permitir múltiples archivos (hasta 3)
+        archivos_vici = st.file_uploader(
+            "Subir archivo(s) de VICI (hasta 3)",
             type=['txt', 'csv'],
-            help="Archivo exportado de VICIDIAL",
+            accept_multiple_files=True,
+            help="Puedes subir hasta 3 archivos VICI. Se concatenarán automáticamente.",
             key="vici_upload"
         )
-        if archivo_vici:
-            st.success(f"{archivo_vici.name} - {archivo_vici.size} bytes")
+        
+        if archivos_vici:
+            if len(archivos_vici) > 3:
+                st.warning("⚠️ Máximo 3 archivos permitidos. Solo se procesarán los primeros 3.")
+                archivos_vici = archivos_vici[:3]
+            
+            st.success(f"✅ {len(archivos_vici)} archivo(s) cargado(s)")
+            for archivo in archivos_vici:
+                st.caption(f"📄 {archivo.name} - {archivo.size} bytes")
     
     with col2:
         st.subheader("Archivo CRM (.xlsx)")
@@ -616,18 +806,19 @@ def render_transformador_vici():
     # ============================================================
     
     if st.button("Transformar", type="primary", use_container_width=True):
-        if not archivo_vici:
-            st.error("Debes subir al menos el archivo VICI")
+        if not archivos_vici:
+            st.error("Debes subir al menos un archivo VICI")
             st.stop()
         
         with st.spinner("Procesando..."):
             try:
-                # Mostrar qué proyecto se está usando
                 st.info(f"Procesando proyecto: {proyecto_seleccionado.upper()}")
                 
                 transformer = TransformadorVICI(proyecto_seleccionado)
+                
+                # Pasar la lista de archivos VICI
                 df_resultado = transformer.procesar(
-                    archivo_vici=archivo_vici,
+                    archivo_vici=archivos_vici,  # ← LISTA DE ARCHIVOS
                     archivo_crm=archivo_crm if archivo_crm else None,
                     validar=validar
                 )

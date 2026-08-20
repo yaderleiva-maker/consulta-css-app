@@ -1,8 +1,9 @@
-# cobranza/gestiones_diarias.py
+# modulos/empresas/hexagon_panama/cobranza/gestiones_diarias.py
 import streamlit as st
 import pandas as pd
 import yaml
 import json
+import uuid
 from datetime import datetime
 from services.bigquery import get_client
 
@@ -10,7 +11,6 @@ from services.bigquery import get_client
 # HELPER: CARGAR CONFIGURACIÓN YAML UNIFICADA
 # ============================================================
 def cargar_configuracion(proyecto: str = "jamar") -> dict:
-    # Ruta física real dentro de la estructura de Nexo Suite
     path = f"modulos/empresas/hexagon_panama/consultas/proyectos/{proyecto.lower()}.yaml"
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -18,10 +18,32 @@ def cargar_configuracion(proyecto: str = "jamar") -> dict:
     except Exception as e:
         st.error(f"❌ Error al cargar la configuración de {proyecto} desde '{path}': {e}")
         return {}
+
+# ============================================================
+# HELPER: MAPEO Y NORMALIZACIÓN DE COLUMNAS DEL CRM
+# ============================================================
+def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
+    mapa_columnas = {
+        'Cuenta': 'cuenta',
+        'Resultado de la llamada': 'gestion',
+        'Comentario': 'comentario',
+        'Num de contacto': 'telefono',
+        'Created At': 'fecha_gestion',
+        'Fecha de Promesa de Pago': 'fecha_promesa',
+        'Monto de promesa de pago': 'monto_promesa',
+        'Asignado a': 'asesor',
+        'Estado de la cuenta': 'estado_cuenta',
+        'Fecha de reprogramación': 'fecha_reprogramacion'
+    }
+    return df.rename(columns=mapa_columnas)
+
 # ============================================================
 # MOTOR DE VALIDACIÓN Y HOMOLOGACIÓN
 # ============================================================
 def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
+    # 1. Mapeo de nombres de columnas
+    df = normalizar_columnas(df)
+    
     validaciones_cfg = config.get("validaciones", {})
     arbol = config.get("arbol_tipologias", {})
 
@@ -41,15 +63,15 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
         monto_promesa = row.get("monto_promesa")
         asesor = str(row.get("asesor", "")).strip()
 
-        # 1. Validaciones básicas
-        if validaciones_cfg.get("comentario_obligatorio") and not comentario:
+        # Validaciones de presencia
+        if validaciones_cfg.get("comentario_obligatorio") and (not comentario or comentario.lower() == 'nan'):
             errores.append("Comentario es obligatorio")
-        if validaciones_cfg.get("numero_contacto_obligatorio") and not telefono:
+        if validaciones_cfg.get("numero_contacto_obligatorio") and (not telefono or telefono.lower() == 'nan'):
             errores.append("Teléfono de contacto es obligatorio")
-        if validaciones_cfg.get("resultado_obligatorio") and not gestion:
+        if validaciones_cfg.get("resultado_obligatorio") and (not gestion or gestion.lower() == 'nan'):
             errores.append("Resultado/Gestión es obligatorio")
 
-        # 2. Homologación con árbol de tipologías
+        # Homologación con árbol de tipologías
         info_arbol = arbol.get(gestion)
         if not info_arbol:
             errores.append(f"La tipología '{gestion}' no existe en el árbol del proyecto")
@@ -63,24 +85,28 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
             contactabilidad = info_arbol.get("contactabilidad")
             prioridad = info_arbol.get("prioridad")
 
-        # 3. Validaciones de promesa de pago
+        # Validaciones de promesa de pago
         if es_promesa and validaciones_cfg.get("promesa", {}).get("requiere_fecha"):
-            if pd.isna(fecha_promesa) or str(fecha_promesa).strip() == "":
+            if pd.isna(fecha_promesa) or str(fecha_promesa).strip() in ["", "nan", "None"]:
                 errores.append("Esta tipología requiere fecha de promesa de pago")
                 
         if es_promesa and validaciones_cfg.get("promesa", {}).get("requiere_monto"):
-            if pd.isna(monto_promesa) or float(monto_promesa or 0) <= 0:
-                errores.append("Esta tipología requiere un monto de promesa válido")
+            try:
+                monto_val = float(monto_promesa) if pd.notna(monto_promesa) else 0.0
+                if monto_val <= 0:
+                    errores.append("Esta tipología requiere un monto de promesa válido")
+            except (ValueError, TypeError):
+                errores.append("El monto de promesa no es un número válido")
 
-        # Registro procesado para BQ
+        # Construcción de registro para BQ
         registro = {
             "cuenta": cuenta,
             "gestion": gestion,
             "comentario": comentario,
             "telefono": telefono,
             "fecha_gestion": pd.to_datetime(fecha_gestion) if pd.notna(fecha_gestion) else datetime.now(),
-            "fecha_promesa": pd.to_datetime(fecha_promesa) if pd.notna(fecha_promesa) else None,
-            "monto_promesa": float(monto_promesa) if pd.notna(monto_promesa) and str(monto_promesa).strip() != "" else 0.0,
+            "fecha_promesa": pd.to_datetime(fecha_promesa) if pd.notna(fecha_promesa) and str(fecha_promesa).strip() not in ["", "nan", "None"] else None,
+            "monto_promesa": float(monto_promesa) if pd.notna(monto_promesa) and str(monto_promesa).strip() not in ["", "nan", "None"] else 0.0,
             "asesor": asesor,
             "codigo_jamar": codigo_jamar,
             "contactabilidad": contactabilidad,
@@ -90,6 +116,7 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
 
         if errores:
             registro_error = {
+                "id_validacion": str(uuid.uuid4()),  # Campo obligatorio para el esquema de BigQuery
                 "fecha_proceso": datetime.now(),
                 "proyecto": config.get("proyecto", "JAMAR"),
                 "archivo": "Carga_Manual_Streamlit",
@@ -129,7 +156,7 @@ def render_ui():
             st.dataframe(df_input.head(5), use_container_width=True)
 
             if st.button("🚀 Validar y Cargar a BigQuery", type="primary"):
-                with st.spinner("Procesando y validando según árbol de tipologías..."):
+                with st.spinner("Procesando y aplicando normalización de columnas..."):
                     df_validos, df_invalidos = procesar_y_validar_gestiones(df_input, config)
 
                 col1, col2, col3 = st.columns(3)

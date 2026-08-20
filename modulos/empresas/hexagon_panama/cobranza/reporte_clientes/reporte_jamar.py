@@ -26,6 +26,7 @@ def render_ui():
     if st.button("🔍 Consultar Gestiones Jamar", type="primary"):
         query = f"""
             SELECT 
+                cuenta,
                 codigo_jamar,
                 gestion AS mejor_gestion_jamar,
                 contactabilidad AS resultado,
@@ -35,7 +36,6 @@ def render_ui():
             WHERE DATE(fecha_gestion) BETWEEN '{fecha_inicio}' AND '{fecha_fin}'
             ORDER BY prioridad ASC, fecha_gestion DESC
         """
-        
         with st.spinner("Generando entregable desde BigQuery..."):
             df_reporte = ejecutar_query(query)
 

@@ -46,11 +46,15 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
     validaciones_cfg = config.get("validaciones", {})
     arbol = config.get("arbol_tipologias", {})
 
+    id_carga_sesion = str(uuid.uuid4())
+    id_proyecto = str(config.get("proyecto", "JAMAR"))
+
     filas_validas = []
     filas_invalidas = []
 
     for idx, row in df.iterrows():
-        errores = []
+        # Lista de tuplas para guardar (tipo_error, campo, mensaje_error)
+        fallos = []
         
         cuenta = str(row.get("cuenta", "")).strip()
         gestion = str(row.get("gestion", "")).strip()
@@ -61,16 +65,20 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
         monto_promesa = row.get("monto_promesa")
         asesor = str(row.get("asesor", "")).strip()
 
+        # 1. Validaciones de presencia
         if validaciones_cfg.get("comentario_obligatorio") and (not comentario or comentario.lower() == 'nan'):
-            errores.append("Comentario es obligatorio")
+            fallos.append(("CAMPO_OBLIGATORIO", "comentario", "Comentario es obligatorio"))
+            
         if validaciones_cfg.get("numero_contacto_obligatorio") and (not telefono or telefono.lower() == 'nan'):
-            errores.append("Teléfono de contacto es obligatorio")
+            fallos.append(("CAMPO_OBLIGATORIO", "telefono", "Teléfono de contacto es obligatorio"))
+            
         if validaciones_cfg.get("resultado_obligatorio") and (not gestion or gestion.lower() == 'nan'):
-            errores.append("Resultado/Gestión es obligatorio")
+            fallos.append(("CAMPO_OBLIGATORIO", "gestion", "Resultado/Gestión es obligatorio"))
 
+        # 2. Homologación con árbol de tipologías
         info_arbol = arbol.get(gestion)
         if not info_arbol:
-            errores.append(f"La tipología '{gestion}' no existe en el árbol del proyecto")
+            fallos.append(("TIPOLOGIA_INVALIDA", "gestion", f"La tipología '{gestion}' no existe en el árbol del proyecto"))
             es_promesa = False
             codigo_jamar = None
             contactabilidad = None
@@ -81,18 +89,20 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
             contactabilidad = info_arbol.get("contactabilidad")
             prioridad = info_arbol.get("prioridad")
 
+        # 3. Validaciones de promesa de pago
         if es_promesa and validaciones_cfg.get("promesa", {}).get("requiere_fecha"):
             if pd.isna(fecha_promesa) or str(fecha_promesa).strip() in ["", "nan", "None"]:
-                errores.append("Esta tipología requiere fecha de promesa de pago")
+                fallos.append(("PROMESA_SIN_FECHA", "fecha_promesa", "Esta tipología requiere fecha de promesa de pago"))
                 
         if es_promesa and validaciones_cfg.get("promesa", {}).get("requiere_monto"):
             try:
                 monto_val = float(monto_promesa) if pd.notna(monto_promesa) else 0.0
                 if monto_val <= 0:
-                    errores.append("Esta tipología requiere un monto de promesa válido")
+                    fallos.append(("PROMESA_MONTO_INVALIDO", "monto_promesa", "Esta tipología requiere un monto de promesa válido"))
             except (ValueError, TypeError):
-                errores.append("El monto de promesa no es un número válido")
+                fallos.append(("PROMESA_MONTO_INVALIDO", "monto_promesa", "El monto de promesa no es un número válido"))
 
+        # Registro operacional para cobranza.gestiones
         registro = {
             "cuenta": cuenta,
             "gestion": gestion,
@@ -108,16 +118,25 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
             "created_at": datetime.now()
         }
 
-        if errores:
-            registro_error = {
-                "id_validacion": uuid.uuid4().bytes,  # 👈 Genera exactamente 16 BYTES para BigQuery
-                "fecha_proceso": datetime.now(),
-                "proyecto": config.get("proyecto", "JAMAR"),
-                "archivo": "Carga_Manual_Streamlit",
-                "datos_raw": json.dumps(row.astype(str).to_dict(), ensure_ascii=False),
-                "errores": " | ".join(errores)
-            }
-            filas_invalidas.append(registro_error)
+        if fallos:
+            # Armamos una fila por cada error respetando el ESQUEMA OFICIAL de la BD
+            datos_raw_str = json.dumps(row.astype(str).to_dict(), ensure_ascii=False)
+            now_ts = datetime.now()
+            
+            for tipo_err, campo_err, msj_err in fallos:
+                registro_error = {
+                    "id_validacion": str(uuid.uuid4()),
+                    "id_carga": id_carga_sesion,
+                    "id_proyecto": id_proyecto,
+                    "cuenta": cuenta,
+                    "tipo_error": tipo_err,
+                    "campo": campo_err,
+                    "mensaje_error": msj_err,
+                    "datos_raw": datos_raw_str,
+                    "estado": "PENDIENTE",
+                    "created_at": now_ts
+                }
+                filas_invalidas.append(registro_error)
         else:
             filas_validas.append(registro)
 
@@ -160,6 +179,7 @@ def render_ui():
 
                 client = get_client()
 
+                # 1. CARGA DE REGISTROS VÁLIDOS
                 if not df_validos.empty:
                     job = client.load_table_from_dataframe(
                         df_validos, 
@@ -168,38 +188,38 @@ def render_ui():
                     job.result()
                     st.success(f"✅ {len(df_validos)} gestiones insertadas en cobranza.gestiones")
 
+                # 2. PROCESAMIENTO Y DIAGNÓSTICO DE REGISTROS INVÁLIDOS
                 if not df_invalidos.empty:
-                    st.warning(f"⚠️ {len(df_invalidos)} registros con inconsistencias detectadas")
+                    st.warning(f"⚠️ {len(df_invalidos)} alertas/errores generados para revisión")
                     
-                    # 🔍 INSPECCIÓN DE TIPOS Y NOMBRES DE COLUMNAS
-                    st.subheader("🔍 Diagnóstico del DataFrame de Registros Inválidos")
-                    
-                    # 1. Inspeccionar Tipos de Datos de Pandas
-                    st.markdown("**Tipos de datos detectados (df_invalidos.dtypes):**")
+                    # Panel de inspección
+                    st.subheader("📋 Resumen de Inconsistencias")
+                    st.dataframe(
+                        df_invalidos[["cuenta", "tipo_error", "campo", "mensaje_error"]], 
+                        use_container_width=True
+                    )
+
+                    st.markdown("**Diagnóstico de Tipos de Datos (df_invalidos.dtypes):**")
                     dtypes_df = pd.DataFrame({
                         "Columna": df_invalidos.columns,
                         "Tipo_Pandas": [str(df_invalidos[col].dtype) for col in df_invalidos.columns],
                         "Ejemplo_Valor": [repr(df_invalidos[col].iloc[0]) for col in df_invalidos.columns]
                     })
                     st.dataframe(dtypes_df, use_container_width=True)
-                    
-                    # 2. Preview de los datos estructurados
-                    st.markdown("**Preview de las primeras filas:**")
-                    st.dataframe(df_invalidos.head(), use_container_width=True)
-                
-                if not df_invalidos.empty:
-                    st.warning(f"⚠️ {len(df_invalidos)} registros con inconsistencias detectadas")
-                    st.dataframe(df_invalidos[["datos_raw", "errores"]], use_container_width=True)
-                    
-                    job_err = client.load_table_from_dataframe(
-                        df_invalidos, 
-                        "proyecto-css-panama.cobranza.validaciones_gestiones"
-                    )
-                    job_err.result()
-                    st.toast("Alertas guardadas en log de validaciones", icon="⚠️")
+
+                    # Carga aislada en BQ para capturar cualquier desalineación sin romper la pantalla
+                    try:
+                        job_err = client.load_table_from_dataframe(
+                            df_invalidos, 
+                            "proyecto-css-panama.cobranza.validaciones_gestiones"
+                        )
+                        job_err.result()
+                        st.toast("Alertas guardadas exitosamente en log de validaciones", icon="⚠️")
+                    except Exception as bq_err:
+                        st.error(f"❌ Error al guardar en cobranza.validaciones_gestiones: {bq_err}")
 
         except Exception as e:
-            st.error(f"❌ Error al procesar el archivo: {e}")
+            st.error(f"❌ Error general al procesar el archivo: {e}")
 
 if __name__ == "__main__":
     render_ui()

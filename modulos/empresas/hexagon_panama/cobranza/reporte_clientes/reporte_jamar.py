@@ -5,12 +5,13 @@ import yaml
 from services.bigquery import ejecutar_query
 
 def cargar_config_jamar():
-    path = "herramientas/proyectos/jamar.yaml"
+    # Ruta física real apuntando a consultas/proyectos/
+    path = "modulos/empresas/hexagon_panama/consultas/proyectos/jamar.yaml"
     try:
         with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     except Exception as e:
-        st.error(f"Error al abrir {path}: {e}")
+        st.error(f"❌ Error al abrir {path}: {e}")
         return {}
 
 def render_ui():

@@ -41,7 +41,6 @@ def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
 # MOTOR DE VALIDACIÓN Y HOMOLOGACIÓN
 # ============================================================
 def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
-    # 1. Mapeo de nombres de columnas
     df = normalizar_columnas(df)
     
     validaciones_cfg = config.get("validaciones", {})
@@ -53,7 +52,6 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
     for idx, row in df.iterrows():
         errores = []
         
-        # Extracción de campos
         cuenta = str(row.get("cuenta", "")).strip()
         gestion = str(row.get("gestion", "")).strip()
         comentario = str(row.get("comentario", "")).strip()
@@ -63,7 +61,6 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
         monto_promesa = row.get("monto_promesa")
         asesor = str(row.get("asesor", "")).strip()
 
-        # Validaciones de presencia
         if validaciones_cfg.get("comentario_obligatorio") and (not comentario or comentario.lower() == 'nan'):
             errores.append("Comentario es obligatorio")
         if validaciones_cfg.get("numero_contacto_obligatorio") and (not telefono or telefono.lower() == 'nan'):
@@ -71,7 +68,6 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
         if validaciones_cfg.get("resultado_obligatorio") and (not gestion or gestion.lower() == 'nan'):
             errores.append("Resultado/Gestión es obligatorio")
 
-        # Homologación con árbol de tipologías
         info_arbol = arbol.get(gestion)
         if not info_arbol:
             errores.append(f"La tipología '{gestion}' no existe en el árbol del proyecto")
@@ -85,7 +81,6 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
             contactabilidad = info_arbol.get("contactabilidad")
             prioridad = info_arbol.get("prioridad")
 
-        # Validaciones de promesa de pago
         if es_promesa and validaciones_cfg.get("promesa", {}).get("requiere_fecha"):
             if pd.isna(fecha_promesa) or str(fecha_promesa).strip() in ["", "nan", "None"]:
                 errores.append("Esta tipología requiere fecha de promesa de pago")
@@ -98,7 +93,6 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
             except (ValueError, TypeError):
                 errores.append("El monto de promesa no es un número válido")
 
-        # Construcción de registro para BQ
         registro = {
             "cuenta": cuenta,
             "gestion": gestion,
@@ -116,7 +110,7 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
 
         if errores:
             registro_error = {
-                "id_validacion": str(uuid.uuid4()),  # Campo obligatorio para el esquema de BigQuery
+                "id_validacion": uuid.uuid4().bytes,  # 👈 Genera exactamente 16 BYTES para BigQuery
                 "fecha_proceso": datetime.now(),
                 "proyecto": config.get("proyecto", "JAMAR"),
                 "archivo": "Carga_Manual_Streamlit",

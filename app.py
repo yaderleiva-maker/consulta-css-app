@@ -234,6 +234,15 @@ ROLES = {
     "clautotini1224@gmail.com": {
         "NEXO_PEOPLE": True
     },
+    "sharonalarconhexagon@gmail.com": {
+        "NEXO_PEOPLE": True
+    },
+    "juanpangulo81@gmail.com": {
+        "NEXO_PEOPLE": True
+    },
+    "juanestebanrochasanchez@gmail.com": {
+        "NEXO_PEOPLE": True
+    },
 }
 
 # =====================

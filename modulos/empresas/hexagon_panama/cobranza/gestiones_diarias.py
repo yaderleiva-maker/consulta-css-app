@@ -10,14 +10,14 @@ from services.bigquery import get_client
 # HELPER: CARGAR CONFIGURACIÓN YAML UNIFICADA
 # ============================================================
 def cargar_configuracion(proyecto: str = "jamar") -> dict:
-    path = f"consultas/proyectos/{proyecto.lower()}.yaml"
+    # Ruta física real dentro de la estructura de Nexo Suite
+    path = f"modulos/empresas/hexagon_panama/consultas/proyectos/{proyecto.lower()}.yaml"
     try:
         with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     except Exception as e:
-        st.error(f"❌ Error al cargar la configuración de {proyecto}: {e}")
+        st.error(f"❌ Error al cargar la configuración de {proyecto} desde '{path}': {e}")
         return {}
-
 # ============================================================
 # MOTOR DE VALIDACIÓN Y HOMOLOGACIÓN
 # ============================================================

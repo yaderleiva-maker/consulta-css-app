@@ -2,10 +2,8 @@
 import streamlit as st
 import pandas as pd
 import yaml
-import json
 import uuid
 from datetime import datetime
-from google.cloud import bigquery
 from services.bigquery import get_client
 
 # ============================================================
@@ -49,17 +47,17 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
 
     id_carga_sesion = str(uuid.uuid4())
     id_proyecto = str(config.get("proyecto", "JAMAR"))
+    now_dt = datetime.now()
+    now_iso = now_dt.isoformat()
 
     filas_validas = []
-    filas_invalidas = []
+    registros_invalidos_json = []
     
-    # Contador de gestiones con al menos un error
     gestiones_rechazadas_cnt = 0
 
     for idx, row in df.iterrows():
         fallos = []
         
-        # ID Único de esta gestión para vinculación relacional
         id_gestion = str(uuid.uuid4())
         
         cuenta = str(row.get("cuenta", "")).strip()
@@ -70,6 +68,8 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
         fecha_promesa = row.get("fecha_promesa")
         monto_promesa = row.get("monto_promesa")
         asesor = str(row.get("asesor", "")).strip()
+        estado_cuenta = str(row.get("estado_cuenta", "")).strip()
+        fecha_reprogramacion = row.get("fecha_reprogramacion")
 
         # 1. Validaciones de presencia
         if validaciones_cfg.get("comentario_obligatorio") and (not comentario or comentario.lower() == 'nan'):
@@ -108,29 +108,11 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
             except (ValueError, TypeError):
                 fallos.append(("PROMESA_MONTO_INVALIDO", "monto_promesa", "El monto de promesa no es un número válido"))
 
-        # Registro operacional para cobranza.gestiones
-        registro = {
-            "id_gestion": id_gestion,
-            "cuenta": cuenta,
-            "gestion": gestion,
-            "comentario": comentario,
-            "telefono": telefono,
-            "fecha_gestion": pd.to_datetime(fecha_gestion) if pd.notna(fecha_gestion) else datetime.now(),
-            "fecha_promesa": pd.to_datetime(fecha_promesa) if pd.notna(fecha_promesa) and str(fecha_promesa).strip() not in ["", "nan", "None"] else None,
-            "monto_promesa": float(monto_promesa) if pd.notna(monto_promesa) and str(monto_promesa).strip() not in ["", "nan", "None"] else 0.0,
-            "asesor": asesor,
-            "codigo_jamar": codigo_jamar,
-            "contactabilidad": contactabilidad,
-            "prioridad": prioridad,
-            "created_at": datetime.now()
-        }
-
         if fallos:
             gestiones_rechazadas_cnt += 1
-            datos_raw_str = json.dumps(row.astype(str).to_dict(), ensure_ascii=False)
-            now_ts = datetime.now()
+            # Objeto dict directo para evitar conflicto con PyArrow y el campo JSON
+            row_dict_raw = row.astype(str).to_dict()
             
-            # Generamos una fila de auditoría por cada error detectado vinculada a id_gestion
             for tipo_err, campo_err, msj_err in fallos:
                 registro_error = {
                     "id_validacion": str(uuid.uuid4()),
@@ -141,44 +123,39 @@ def procesar_y_validar_gestiones(df: pd.DataFrame, config: dict):
                     "tipo_error": str(tipo_err),
                     "campo": str(campo_err),
                     "mensaje_error": str(msj_err),
-                    "datos_raw": datos_raw_str,
+                    "datos_raw": row_dict_raw,  # Dict nativo enviado directamente a JSON en BigQuery
                     "estado": "PENDIENTE",
-                    "created_at": now_ts
+                    "created_at": now_iso
                 }
-                filas_invalidas.append(registro_error)
+                registros_invalidos_json.append(registro_error)
         else:
-            filas_validas.append(registro)
+            # Registro operacional alineado al esquema oficial de cobranza.gestiones
+            registro_valido = {
+                "id_gestion": str(id_gestion),
+                "id_carga": str(id_carga_sesion),
+                "id_proyecto": str(id_proyecto),
+                "cuenta": str(cuenta),
+                "estado_cuenta": str(estado_cuenta) if estado_cuenta != 'nan' else None,
+                "resultado_llamada": str(gestion),
+                "asignado_a": str(asesor) if asesor != 'nan' else None,
+                "numero_contacto": str(telefono) if telefono != 'nan' else None,
+                "monto_promesa": float(monto_promesa) if pd.notna(monto_promesa) and str(monto_promesa).strip() not in ["", "nan", "None"] else 0.0,
+                "fecha_promesa": pd.to_datetime(fecha_promesa) if pd.notna(fecha_promesa) and str(fecha_promesa).strip() not in ["", "nan", "None"] else None,
+                "fecha_reprogramacion": pd.to_datetime(fecha_reprogramacion) if pd.notna(fecha_reprogramacion) and str(fecha_reprogramacion).strip() not in ["", "nan", "None"] else None,
+                "comentario": str(comentario),
+                "codigo_jamar": str(codigo_jamar) if codigo_jamar else None,
+                "contactabilidad": str(contactabilidad) if contactabilidad else None,
+                "prioridad": int(prioridad) if prioridad is not None else None,
+                "created_at": pd.to_datetime(fecha_gestion) if pd.notna(fecha_gestion) else now_dt,
+                "fuente": "CARGA_MANUAL_STREAMLIT",
+                "fecha_carga": now_dt,
+                "usuario_carga": "SISTEMA"
+            }
+            filas_validas.append(registro_valido)
 
     df_validos = pd.DataFrame(filas_validas)
-    df_invalidos = pd.DataFrame(filas_invalidas)
-
-    # TIPADO Y ALINEACIÓN EXPLÍCITA DEL DATAFRAME DE ERRORES
-    columnas_validaciones = [
-        "id_validacion", "id_gestion", "id_carga", "id_proyecto", 
-        "cuenta", "tipo_error", "campo", "mensaje_error", 
-        "datos_raw", "estado", "created_at"
-    ]
-
-    if not df_invalidos.empty:
-        for col in columnas_validaciones:
-            if col not in df_invalidos.columns:
-                df_invalidos[col] = None
-
-        df_invalidos = df_invalidos[columnas_validaciones]
-
-        # Casting explícito de tipos STRING
-        columnas_string = [
-            "id_validacion", "id_gestion", "id_carga", "id_proyecto",
-            "cuenta", "tipo_error", "campo", "mensaje_error",
-            "datos_raw", "estado"
-        ]
-        for col in columnas_string:
-            df_invalidos[col] = df_invalidos[col].astype(str)
-
-        # Casting explícito a TIMESTAMP
-        df_invalidos["created_at"] = pd.to_datetime(df_invalidos["created_at"], errors="coerce")
-
-    return df_validos, df_invalidos, gestiones_rechazadas_cnt
+    
+    return df_validos, registros_invalidos_json, gestiones_rechazadas_cnt
 
 # ============================================================
 # INTERFAZ STREAMLIT
@@ -208,14 +185,13 @@ def render_ui():
 
             if st.button("🚀 Validar y Cargar a BigQuery", type="primary"):
                 with st.spinner("Procesando y aplicando normalización de columnas..."):
-                    df_validos, df_invalidos, rechazadas_cnt = procesar_y_validar_gestiones(df_input, config)
+                    df_validos, registros_invalidos_json, rechazadas_cnt = procesar_y_validar_gestiones(df_input, config)
 
-                # Muestra métricas transparentes al usuario
                 col1, col2, col3, col4 = st.columns(4)
                 col1.metric("Total Gestiones", len(df_input))
                 col2.metric("Válidas (BigQuery)", len(df_validos))
                 col3.metric("Gestiones Rechazadas", rechazadas_cnt)
-                col4.metric("Errores Detectados", len(df_invalidos))
+                col4.metric("Errores Detectados", len(registros_invalidos_json))
 
                 client = get_client()
 
@@ -228,39 +204,26 @@ def render_ui():
                     job.result()
                     st.success(f"✅ {len(df_validos)} gestiones insertadas en cobranza.gestiones")
 
-                # 2. CARGA DE REGISTROS DE AUDITORÍA Y CONTROL DE CALIDAD
-                if not df_invalidos.empty:
-                    st.warning(f"⚠️ {rechazadas_cnt} gestiones rechazadas ({len(df_invalidos)} errores detallados)")
+                # 2. CARGA DE AUDITORÍA VÍA insert_rows_json (SIN PYARROW)
+                if registros_invalidos_json:
+                    st.warning(f"⚠️ {rechazadas_cnt} gestiones rechazadas ({len(registros_invalidos_json)} errores detallados)")
+                    
+                    df_preview_errors = pd.DataFrame(registros_invalidos_json)
                     st.dataframe(
-                        df_invalidos[["cuenta", "tipo_error", "campo", "mensaje_error"]], 
+                        df_preview_errors[["cuenta", "tipo_error", "campo", "mensaje_error"]], 
                         use_container_width=True
                     )
 
-                    # Configuración estricta del esquema según la definición oficial de BigQuery
-                    job_config = bigquery.LoadJobConfig(
-                        schema=[
-                            bigquery.SchemaField("id_validacion", "STRING", mode="REQUIRED"),
-                            bigquery.SchemaField("id_gestion", "STRING", mode="REQUIRED"),
-                            bigquery.SchemaField("id_carga", "STRING", mode="REQUIRED"),
-                            bigquery.SchemaField("id_proyecto", "STRING", mode="REQUIRED"),
-                            bigquery.SchemaField("cuenta", "STRING", mode="REQUIRED"),
-                            bigquery.SchemaField("tipo_error", "STRING", mode="REQUIRED"),
-                            bigquery.SchemaField("campo", "STRING", mode="REQUIRED"),
-                            bigquery.SchemaField("mensaje_error", "STRING", mode="REQUIRED"),
-                            bigquery.SchemaField("datos_raw", "JSON", mode="NULLABLE"),
-                            bigquery.SchemaField("estado", "STRING", mode="NULLABLE"),
-                            bigquery.SchemaField("created_at", "TIMESTAMP", mode="NULLABLE"),
-                        ],
-                        write_disposition="WRITE_APPEND"
+                    # Inserción directa en streaming/JSON sin pasar por PyArrow
+                    errores_bq = client.insert_rows_json(
+                        "proyecto-css-panama.cobranza.validaciones_gestiones",
+                        registros_invalidos_json
                     )
 
-                    job_err = client.load_table_from_dataframe(
-                        df_invalidos, 
-                        "proyecto-css-panama.cobranza.validaciones_gestiones",
-                        job_config=job_config
-                    )
-                    job_err.result()
-                    st.toast("Alertas guardadas en log de validaciones", icon="⚠️")
+                    if errores_bq:
+                        st.error(f"❌ Error al guardar log en BigQuery: {errores_bq}")
+                    else:
+                        st.toast(f"✅ {len(registros_invalidos_json)} errores registrados en validaciones_gestiones", icon="⚠️")
 
         except Exception as e:
             st.error(f"❌ Error al procesar el archivo: {e}")

@@ -1,5 +1,5 @@
 proyecto: BGVIGENTES
-descripcion: "Transformación de gestiones VICI para Banco General (soporte múltiples archivos)"
+descripcion: "Transformación de gestiones VICI para Banco General (sin CRM, múltiples archivos)"
 
 # ============================================================
 # 1. CONFIGURACIÓN VICI
@@ -76,15 +76,8 @@ reglas:
     formato: "BGVIGENTES::::{cuenta}"
 
 # ============================================================
-# 5. CRM (Enriquecimiento)
-# ============================================================
-crm:
-  requiere:
-    - fecha_reprogramacion
-    - estado_cuenta
-
-# ============================================================
-# 6. FALLBACKS
+# 5. FALLBACKS (Sin CRM, valores por defecto)
 # ============================================================
 fallbacks:
   estado_cuenta: "No contacto"
+  # NOTA: No hay fecha_reprogramacion porque no viene de CRM

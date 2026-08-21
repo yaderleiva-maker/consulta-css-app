@@ -463,6 +463,18 @@ class TransformadorVICI:
     
     def enriquecer_con_crm(self):
         """Enriquece los datos con informacion del CRM"""
+            # Si no hay configuración de CRM en el YAML, usar fallbacks directos
+        if 'crm' not in self.config:
+            self.logs.append("Proyecto sin CRM configurado - usando fallbacks")
+            self._aplicar_fallbacks()
+            return
+        
+        # Si no hay archivo CRM cargado
+        if self.df_crm is None:
+            self.logs.append("CRM no cargado, usando valores por defecto")
+            self._aplicar_fallbacks()
+            return
+        
         if self.df_crm is None:
             self.logs.append("CRM no cargado, usando valores por defecto")
             self._aplicar_fallbacks()

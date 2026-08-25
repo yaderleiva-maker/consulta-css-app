@@ -455,19 +455,7 @@ def obtener_cargas_disponibles():
 # ============================================================
 
 def render():
-    st.markdown("""
-    <style>
-        .main-header { font-size: 22px; font-weight: 600; color: #1a1a1a; margin-bottom: 4px; }
-        .sub-header { font-size: 14px; color: #6b6b6b; margin-bottom: 16px; }
-        .card { background-color: #ffffff; border-radius: 12px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border: 1px solid #f0f0f0; margin-bottom: 16px; }
-        .card-title { font-size: 15px; font-weight: 500; color: #1a1a1a; margin-bottom: 8px; }
-        .selected-file { background-color: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 10px 16px; display: flex; align-items: center; gap: 10px; }
-        .selected-file .file-name { font-weight: 500; color: #166534; }
-        .status-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
-        .status-badge.success { background-color: #dcfce7; color: #166534; }
-        .status-badge.warning { background-color: #fef3c7; color: #92400e; }
-    </style>
-    """, unsafe_allow_html=True)
+    st.markdown(""" ... """, unsafe_allow_html=True)
     
     st.markdown('<div class="main-header">Carga de Gestiones - Jamar</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Sube el reporte de gestiones diarias. El sistema procesará ambas hojas (CORREOS & WHATSAPP y LLAMADAS) y las anexará al histórico.</div>', unsafe_allow_html=True)
@@ -499,7 +487,7 @@ def render():
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # ---- Historial de cargas (por fecha del archivo) ----
+    # ---- Historial de cargas ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">📋 Historial de cargas</div>', unsafe_allow_html=True)
     
@@ -551,53 +539,54 @@ def render():
             try:
                 df = leer_archivo_gestiones(uploaded_file)
                 
-        # ---- Vista previa del archivo ----
-        st.markdown("---")
-        st.markdown("#### Vista previa del archivo")
-        st.dataframe(df.head(5), use_container_width=True)
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total registros", f"{len(df):,}")
-        with col2:
-            codigos = df['codigo_gestion'].nunique() if 'codigo_gestion' in df.columns else 0
-            st.metric("Codigos unicos", f"{codigos:,}")
-        with col3:
-            # 🔥 CORRECCIÓN: Extraer fecha del archivo
-            fecha_archivo = None
-            fecha_str = "No disponible"
-            
-            # Intentar 1: Extraer del nombre del archivo
-            import re
-            nombre = uploaded_file.name
-            match = re.search(r'(\d{4}-\d{2}-\d{2})', nombre) or re.search(r'(\d{2}-\d{2}-\d{4})', nombre)
-            if match:
-                fecha_str = match.group(1)
-                st.metric("Fecha del archivo", fecha_str)
-            else:
-                # Intentar 2: Usar columna 'Fecha'
-                try:
-                    if 'Fecha' in df.columns:
-                        fechas_validas = df['Fecha'].dropna()
-                        if not fechas_validas.empty:
-                            fecha = pd.to_datetime(fechas_validas.iloc[0], dayfirst=True, errors='coerce')
-                            if pd.notna(fecha):
-                                fecha_str = fecha.strftime('%d/%m/%Y')
-                except Exception as e:
-                    pass
+                # ---- Vista previa del archivo ----
+                st.markdown("---")
+                st.markdown("#### Vista previa del archivo")
+                st.dataframe(df.head(5), use_container_width=True)
                 
-                # Intentar 3: Usar primera fecha de fechahoragestion
-                if fecha_str == "No disponible":
-                    try:
-                        if 'fechahoragestion' in df.columns and not df.empty:
-                            fecha = pd.to_datetime(df['fechahoragestion'].iloc[0], errors='coerce')
-                            if pd.notna(fecha):
-                                fecha_str = fecha.strftime('%d/%m/%Y')
-                    except Exception as e:
-                        pass
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total registros", f"{len(df):,}")
+                with col2:
+                    codigos = df['codigo_gestion'].nunique() if 'codigo_gestion' in df.columns else 0
+                    st.metric("Codigos unicos", f"{codigos:,}")
+                with col3:
+                    # 🔥 CORRECCIÓN: Extraer fecha del archivo
+                    fecha_archivo = None
+                    fecha_str = "No disponible"
+                    
+                    # Intentar 1: Extraer del nombre del archivo
+                    import re
+                    nombre = uploaded_file.name
+                    match = re.search(r'(\d{4}-\d{2}-\d{2})', nombre) or re.search(r'(\d{2}-\d{2}-\d{4})', nombre)
+                    if match:
+                        fecha_str = match.group(1)
+                        st.metric("Fecha del archivo", fecha_str)
+                    else:
+                        # Intentar 2: Usar columna 'Fecha'
+                        try:
+                            if 'Fecha' in df.columns:
+                                fechas_validas = df['Fecha'].dropna()
+                                if not fechas_validas.empty:
+                                    fecha = pd.to_datetime(fechas_validas.iloc[0], dayfirst=True, errors='coerce')
+                                    if pd.notna(fecha):
+                                        fecha_str = fecha.strftime('%d/%m/%Y')
+                        except Exception as e:
+                            pass
+                        
+                        # Intentar 3: Usar primera fecha de fechahoragestion
+                        if fecha_str == "No disponible":
+                            try:
+                                if 'fechahoragestion' in df.columns and not df.empty:
+                                    fecha = pd.to_datetime(df['fechahoragestion'].iloc[0], errors='coerce')
+                                    if pd.notna(fecha):
+                                        fecha_str = fecha.strftime('%d/%m/%Y')
+                            except Exception as e:
+                                pass
+                        
+                        st.metric("Fecha del archivo", fecha_str)
                 
-                st.metric("Fecha del archivo", fecha_str)
-                
+                # ---- Botón Guardar ----
                 if st.button("Guardar Datos", type="primary", use_container_width=True):
                     guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID, uploaded_file.name)
                     
@@ -616,21 +605,20 @@ def render():
                     else:
                         st.error(f"❌ La carga falló: {detalle}")
                         st.stop()
-                
+            
             except Exception as e:
                 st.error(f"Error al procesar el archivo: {str(e)}")
                 st.exception(e)
     
     st.markdown('</div>', unsafe_allow_html=True)
-
+    
     # ---- Eliminar cargas ----
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title">🗑️ Eliminar carga</div>', unsafe_allow_html=True)
-
+    
     cargas_df = obtener_cargas_disponibles()
-
+    
     if not cargas_df.empty:
-        # Crear labels amigables
         cargas_df['label'] = cargas_df.apply(lambda row: 
             f"{row['fecha_carga'].strftime('%d/%m/%Y %H:%M')} - "
             f"{row['registros']} registros "
@@ -639,7 +627,7 @@ def render():
             else f"{row['registros']} registros",
             axis=1
         )
-
+        
         opciones = dict(zip(cargas_df['label'], cargas_df['id_carga']))
         
         seleccion = st.selectbox(
@@ -651,7 +639,6 @@ def render():
         if seleccion:
             id_carga = opciones[seleccion]
             
-            # Checkbox de confirmación (no botón anidado)
             confirmar = st.checkbox(
                 "⚠️ Entiendo que esta acción eliminará permanentemente la carga seleccionada.",
                 key="confirmar_eliminacion"
@@ -673,7 +660,7 @@ def render():
                     st.error(f"❌ {mensaje}")
     else:
         st.info("No hay cargas registradas para eliminar.")
-
+    
     st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":

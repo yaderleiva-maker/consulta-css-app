@@ -551,23 +551,52 @@ def render():
             try:
                 df = leer_archivo_gestiones(uploaded_file)
                 
-                st.markdown("---")
-                st.markdown("#### Vista previa del archivo")
-                st.dataframe(df.head(5), use_container_width=True)
+        # ---- Vista previa del archivo ----
+        st.markdown("---")
+        st.markdown("#### Vista previa del archivo")
+        st.dataframe(df.head(5), use_container_width=True)
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total registros", f"{len(df):,}")
+        with col2:
+            codigos = df['codigo_gestion'].nunique() if 'codigo_gestion' in df.columns else 0
+            st.metric("Codigos unicos", f"{codigos:,}")
+        with col3:
+            # 🔥 CORRECCIÓN: Extraer fecha del archivo
+            fecha_archivo = None
+            fecha_str = "No disponible"
+            
+            # Intentar 1: Extraer del nombre del archivo
+            import re
+            nombre = uploaded_file.name
+            match = re.search(r'(\d{4}-\d{2}-\d{2})', nombre) or re.search(r'(\d{2}-\d{2}-\d{4})', nombre)
+            if match:
+                fecha_str = match.group(1)
+                st.metric("Fecha del archivo", fecha_str)
+            else:
+                # Intentar 2: Usar columna 'Fecha'
+                try:
+                    if 'Fecha' in df.columns:
+                        fechas_validas = df['Fecha'].dropna()
+                        if not fechas_validas.empty:
+                            fecha = pd.to_datetime(fechas_validas.iloc[0], dayfirst=True, errors='coerce')
+                            if pd.notna(fecha):
+                                fecha_str = fecha.strftime('%d/%m/%Y')
+                except Exception as e:
+                    pass
                 
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total registros", f"{len(df):,}")
-                with col2:
-                    codigos = df['codigo_gestion'].nunique() if 'codigo_gestion' in df.columns else 0
-                    st.metric("Codigos unicos", f"{codigos:,}")
-                with col3:
-                    if 'fechahoragestion' in df.columns and not df.empty:
-                        try:
-                            fecha = pd.to_datetime(df['fechahoragestion'].iloc[0])
-                            st.metric("Fecha del archivo", fecha.strftime('%d/%m/%Y'))
-                        except:
-                            st.metric("Fecha del archivo", "No disponible")
+                # Intentar 3: Usar primera fecha de fechahoragestion
+                if fecha_str == "No disponible":
+                    try:
+                        if 'fechahoragestion' in df.columns and not df.empty:
+                            fecha = pd.to_datetime(df['fechahoragestion'].iloc[0], errors='coerce')
+                            if pd.notna(fecha):
+                                fecha_str = fecha.strftime('%d/%m/%Y')
+                    except Exception as e:
+                        pass
+                
+                st.metric("Fecha del archivo", fecha_str)
                 
                 if st.button("Guardar Datos", type="primary", use_container_width=True):
                     guardados, errores, detalle = guardar_gestiones_jamar(df, PROYECTO_ID, uploaded_file.name)

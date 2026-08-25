@@ -119,13 +119,17 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         SELECT 
             llave,
             valorpromesa,
-            fechapromesa
+            fechapromesa  -- 🔥 Es DATE en BigQuery, no STRING
         FROM `{PROYECTO_BQ}.gestiones_jamar`
         WHERE id_proyecto = '{proyecto_id}'
-          AND SAFE_CAST(codigo_gestion AS STRING) IN ('1', '88', '89')
+          AND SAFE_CAST(codigo_gestion AS STRING) IN ('1', '01', '88', '89')
           AND valorpromesa IS NOT NULL
           AND valorpromesa > 0
-        QUALIFY ROW_NUMBER() OVER (PARTITION BY llave ORDER BY fechapromesa DESC) = 1
+          AND fechapromesa IS NOT NULL  -- 🔥 Solo verificar NULL
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY llave 
+            ORDER BY fechapromesa DESC  -- 🔥 Ordenar por fecha de promesa
+        ) = 1
     ),
     
     datos_con_categoria AS (

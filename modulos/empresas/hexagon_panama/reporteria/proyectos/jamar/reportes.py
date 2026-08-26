@@ -131,7 +131,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             END AS estado_promesa
         FROM `{PROYECTO_BQ}.gestiones_jamar`
         WHERE id_proyecto = '{proyecto_id}'
-          AND SAFE_CAST(codigo_gestion AS STRING) IN ('1', '01', '88', '89')
+          AND SAFE_CAST(FLOOR(SAFE_CAST(codigo_gestion AS FLOAT64)) AS STRING) IN ('1', '88', '89', '01', '1.0')  -- 🔥 CORREGIDO
           AND valorpromesa IS NOT NULL
           AND valorpromesa > 0
           AND fechapromesa IS NOT NULL

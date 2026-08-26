@@ -115,20 +115,21 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         GROUP BY llave
     ),
     
-    ultima_promesa_valor AS (
+
+        ultima_promesa_valor AS (
         SELECT 
             llave,
             valorpromesa,
-            fechapromesa  -- 🔥 Es DATE en BigQuery, no STRING
+            fechapromesa  -- 🔥 Es DATE en BigQuery
         FROM `{PROYECTO_BQ}.gestiones_jamar`
         WHERE id_proyecto = '{proyecto_id}'
           AND SAFE_CAST(codigo_gestion AS STRING) IN ('1', '01', '88', '89')
           AND valorpromesa IS NOT NULL
           AND valorpromesa > 0
-          AND fechapromesa IS NOT NULL  -- 🔥 Solo verificar NULL
+          AND fechapromesa IS NOT NULL
         QUALIFY ROW_NUMBER() OVER (
             PARTITION BY llave 
-            ORDER BY fechapromesa DESC  -- 🔥 Ordenar por fecha de promesa
+            ORDER BY fechapromesa DESC
         ) = 1
     ),
     
@@ -170,21 +171,23 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             g.total_whatsapps,
             g.total_llamadas,
             
-            -- Promesas (TODAS)
+            -- 🔥 PROMESAS (TODAS, SIN FILTRO DE FECHA)
             up.valorpromesa AS ultimo_valor_promesa,
             up.fechapromesa AS fecha_ultima_promesa,
             
+            -- ESTADO DE LA PROMESA (TODAS)
+            CASE 
+                WHEN up.fechapromesa IS NULL THEN 'SIN PROMESA'
+                WHEN up.fechapromesa >= CURRENT_DATE('America/Bogota') THEN 'ACTIVA'
+                ELSE 'INCUMPLIDA'
+            END AS estado_promesa,
+            
             -- ============================================================
-            -- 🔥 CATEGORÍA FINAL (UNIFICADA - SIN WHATSAPP/CORREO SEPARADO)
+            -- 🔥 CATEGORÍA FINAL (UNIFICADA)
             -- ============================================================
             CASE 
                 WHEN g.llave IS NULL THEN 'SIN GESTION AL CORTE'
-                
-                -- 🔥 Si tiene codigo_gestion = '90' → SIEMPRE CONTACTO EFECTIVO
-                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
-                    'CONTACTO EFECTIVO'
-                
-                -- Si tiene resultado_gestion
+                WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 'CONTACTO EFECTIVO'
                 WHEN g.ultimo_resultado IS NOT NULL THEN
                     CASE 
                         WHEN g.ultimo_resultado = 'CONTACTO EFECTIVO' THEN 'CONTACTO EFECTIVO'
@@ -194,8 +197,6 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                         WHEN g.ultimo_resultado IN ('Tono ocupado', 'Equivocado', 'Ilocalizable') THEN 'NO CONTACTOS'
                         ELSE 'SIN CONTACTO'
                     END
-                
-                -- Si NO tiene resultado_gestion, usar codigo_gestion
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('0') THEN 'CONTACTO CON TERCERO'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('1', '01', '88', '89') THEN 'COMPROMISO DE PAGO'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) IN ('14', '81', '84') THEN 'CONTACTO EFECTIVO'
@@ -205,9 +206,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 ELSE 'SIN CONTACTO'
             END AS categoria_final,
             
-            -- ============================================================
-            -- RAZÓN DE LA CATEGORÍA (con detalle de canal)
-            -- ============================================================
+            -- RAZÓN DE LA CATEGORÍA
             CASE 
                 WHEN g.llave IS NULL THEN 'Sin gestión en el período'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
@@ -223,22 +222,14 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 WHEN g.ultimo_codigo_gestion IS NOT NULL THEN 
                     CONCAT('codigo_gestion=', SAFE_CAST(g.ultimo_codigo_gestion AS STRING), ' (sin resultado_gestion)')
                 ELSE 'Sin clasificación'
-            END AS razon_categoria,
-            
-            -- ESTADO DE LA PROMESA (TODAS)
-            CASE 
-                WHEN up.fechapromesa IS NULL THEN 'SIN PROMESA'
-                WHEN up.fechapromesa >= CURRENT_DATE('America/Bogota') THEN 'ACTIVA'
-                ELSE 'INCUMPLIDA'
-            END AS estado_promesa
+            END AS razon_categoria
             
         FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
         LEFT JOIN pagos_agrupados p ON c.llave = p.llave
         LEFT JOIN gestiones_agrupadas g ON c.llave = g.llave
-        LEFT JOIN ultima_promesa_valor up ON c.llave = up.llave
+        LEFT JOIN ultima_promesa_valor up ON c.llave = up.llave  -- 🔥 SIEMPRE UNIR POR LLAVE
         WHERE c.id_proyecto = '{proyecto_id}'
-    )
-    
+    )    
     SELECT 
         llave,
         codigo_agencia,

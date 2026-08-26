@@ -64,6 +64,10 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         AND DATE(g.fechahoragestion) = '{fecha_reporte_str}'
         """
     
+# ============================================================
+# PASO 1: CONSTRUIR DATOS COMPLETOS (TABLA MAESTRA)
+# ============================================================
+
     query_datos_completos = f"""
     WITH pagos_agrupados AS (
         SELECT 
@@ -94,7 +98,7 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             ARRAY_AGG(fechahoragestion ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultima_fecha_gestion,
             ARRAY_AGG(numeromarcado ORDER BY fechahoragestion DESC LIMIT 1)[OFFSET(0)] AS ultimo_numeromarcado,
             
-            -- Canal de la última gestión (para Datos Completos)
+            -- Canal de la última gestión
             ARRAY_AGG(
                 CASE 
                     WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 'CORREO'
@@ -105,32 +109,33 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 LIMIT 1
             )[OFFSET(0)] AS ultimo_canal,
             
-            -- Totales por canal (para Cuadro de Gestión)
+            -- Totales por canal
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND (numeromarcado IS NULL OR numeromarcado IN ('0', '00000000', '')) THEN 1 END) AS total_correos,
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) = '90' AND numeromarcado IS NOT NULL AND numeromarcado NOT IN ('0', '00000000', '') AND LENGTH(numeromarcado) >= 7 THEN 1 END) AS total_whatsapps,
             COUNT(CASE WHEN SAFE_CAST(codigo_gestion AS STRING) != '90' THEN 1 END) AS total_llamadas
         FROM `{PROYECTO_BQ}.gestiones_jamar` g
         WHERE g.id_proyecto = '{proyecto_id}'
-          {filtro_fechas_gestiones}
+          {filtro_fechas_gestiones}  -- 🔥 SOLO GESTIONES DEL DÍA
         GROUP BY llave
     ),
     
-
-        ultima_promesa_valor AS (
+    -- 🔥 🔥 🔥 PROMESAS: INDEPENDIENTES DEL FILTRO DE FECHA 🔥 🔥 🔥
+    promesas_independientes AS (
         SELECT 
             llave,
             valorpromesa,
-            fechapromesa  -- 🔥 Es DATE en BigQuery
+            fechapromesa,
+            CASE 
+                WHEN fechapromesa >= CURRENT_DATE('America/Bogota') THEN 'ACTIVA'
+                ELSE 'INCUMPLIDA'
+            END AS estado_promesa
         FROM `{PROYECTO_BQ}.gestiones_jamar`
         WHERE id_proyecto = '{proyecto_id}'
           AND SAFE_CAST(codigo_gestion AS STRING) IN ('1', '01', '88', '89')
           AND valorpromesa IS NOT NULL
           AND valorpromesa > 0
           AND fechapromesa IS NOT NULL
-        QUALIFY ROW_NUMBER() OVER (
-            PARTITION BY llave 
-            ORDER BY fechapromesa DESC
-        ) = 1
+        QUALIFY ROW_NUMBER() OVER (PARTITION BY llave ORDER BY fechapromesa DESC) = 1
     ),
     
     datos_con_categoria AS (
@@ -147,12 +152,12 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             c.saldo_total_vencido,
             c.fecha_ultimo_pago AS fecha_ultimo_pago_cartera,
             
-            -- Datos de pagos (TODOS)
+            -- Datos de pagos
             p.cantidad_pagos,
             p.total_recaudo,
             p.fecha_ultimo_pago_real,
             
-            -- Datos de gestiones (SOLO DEL DÍA)
+            -- Datos de gestiones
             g.total_toques,
             g.fecha_ultima_gestion,
             g.promesas,
@@ -165,25 +170,19 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
             g.ultima_fecha_gestion,
             g.ultimo_numeromarcado,
             
-            -- Datos de canal (SOLO DEL DÍA)
+            -- Datos de canal
             g.ultimo_canal,
             g.total_correos,
             g.total_whatsapps,
             g.total_llamadas,
             
-            -- 🔥 PROMESAS (TODAS, SIN FILTRO DE FECHA)
+            -- 🔥 PROMESAS (INDEPENDIENTES)
             up.valorpromesa AS ultimo_valor_promesa,
             up.fechapromesa AS fecha_ultima_promesa,
-            
-            -- ESTADO DE LA PROMESA (TODAS)
-            CASE 
-                WHEN up.fechapromesa IS NULL THEN 'SIN PROMESA'
-                WHEN up.fechapromesa >= CURRENT_DATE('America/Bogota') THEN 'ACTIVA'
-                ELSE 'INCUMPLIDA'
-            END AS estado_promesa,
+            up.estado_promesa,  -- 🔥 YA VIENE CALCULADO
             
             -- ============================================================
-            -- 🔥 CATEGORÍA FINAL (UNIFICADA)
+            -- CATEGORÍA FINAL (UNIFICADA)
             -- ============================================================
             CASE 
                 WHEN g.llave IS NULL THEN 'SIN GESTION AL CORTE'
@@ -206,7 +205,9 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
                 ELSE 'SIN CONTACTO'
             END AS categoria_final,
             
+            -- ============================================================
             -- RAZÓN DE LA CATEGORÍA
+            -- ============================================================
             CASE 
                 WHEN g.llave IS NULL THEN 'Sin gestión en el período'
                 WHEN SAFE_CAST(g.ultimo_codigo_gestion AS STRING) = '90' THEN 
@@ -227,9 +228,10 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         FROM `{PROYECTO_BQ}.cartera_predemanda_jamar` c
         LEFT JOIN pagos_agrupados p ON c.llave = p.llave
         LEFT JOIN gestiones_agrupadas g ON c.llave = g.llave
-        LEFT JOIN ultima_promesa_valor up ON c.llave = up.llave  -- 🔥 SIEMPRE UNIR POR LLAVE
+        LEFT JOIN promesas_independientes up ON c.llave = up.llave  -- 🔥 UNIÓN POR LLAVE, SIN FILTRO DE FECHA
         WHERE c.id_proyecto = '{proyecto_id}'
-    )    
+    )
+    
     SELECT 
         llave,
         codigo_agencia,
@@ -255,19 +257,18 @@ def generar_resumen_cartera(proyecto_id, fecha_reporte=None):
         ultima_mejor_gestion,
         ultimo_codigo_gestion,
         ultima_fecha_gestion,
-        ultimo_canal,          -- 🔥 CANAL (WHATSAPP/CORREO/LLAMADA) para Datos Completos
-        total_correos,         -- 🔥 PARA CUADRO DE GESTIÓN
-        total_whatsapps,       -- 🔥 PARA CUADRO DE GESTIÓN
-        total_llamadas,        -- 🔥 PARA CUADRO DE GESTIÓN
+        ultimo_canal,
+        total_correos,
+        total_whatsapps,
+        total_llamadas,
         ultimo_valor_promesa,
         fecha_ultima_promesa,
         estado_promesa,
-        categoria_final,       -- 🔥 SIN WHATSAPP/CORREO SEPARADO
+        categoria_final,
         razon_categoria
     FROM datos_con_categoria
     ORDER BY saldo_total_adeudado DESC
-    """
-    
+    """    
     df_datos = ejecutar_query(query_datos_completos)
     df_datos = preparar_para_excel(df_datos)
     
